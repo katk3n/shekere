@@ -4,7 +4,7 @@ use kchfg::run;
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 struct Args {
-    /// Input shader file
+    /// Input shader file. Only wgsl is supported
     #[arg(value_name = "FILE")]
     shader_file: String,
 }
