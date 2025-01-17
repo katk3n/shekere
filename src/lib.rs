@@ -15,7 +15,7 @@ pub async fn run(shader_file: &str) {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
-        .with_title("kchfg")
+        .with_title("KaCHoFuGeTsu")
         .build(&event_loop)
         .unwrap();
 

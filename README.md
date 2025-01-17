@@ -1,6 +1,6 @@
-# KaChoFuGetsu
+# KaCHoFuGeTsu
 
-kchfg ("花鳥風月", which means beauties of nature) is a creative coding tool with shaders and sounds.
+kchfgt ("花鳥風月", which means beauties of nature) is a creative coding tool with shaders and sounds.
 
 It's still under development.
 
@@ -9,10 +9,10 @@ It's still under development.
 ```
 Creative coding tool with shaders and sounds
 
-Usage: kchfg <FILE>
+Usage: kchfgt <FILE>
 
 Arguments:
-  <FILE>  Input shader file. Only wgsl is supported
+  <FILE>  Input fragment shader file. Only wgsl is supported
 
 Options:
   -h, --help     Print help

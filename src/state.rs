@@ -96,7 +96,7 @@ impl<'a> State<'a> {
 
         let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Vertex Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("vertex.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/vertex.wgsl").into()),
         });
 
         let fs_str = std::fs::read_to_string(shader_file).unwrap();

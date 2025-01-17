@@ -1,5 +1,5 @@
 [package]
-name = "kchfg"
+name = "kchfgt"
 version = "0.1.0"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
