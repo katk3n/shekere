@@ -9,12 +9,14 @@ It's still under development.
 ```
 Creative coding tool with shaders and sounds
 
-Usage: kchfgt <FILE>
+Usage: kchfgt [OPTIONS] <FILE>
 
 Arguments:
   <FILE>  Input fragment shader file. Only wgsl is supported
 
 Options:
-  -h, --help     Print help
-  -V, --version  Print version
+      --width <WIDTH>    Window width [default: 1280]
+      --height <HEIGHT>  Window height [default: 720]
+  -h, --help             Print help
+  -V, --version          Print version
 ```
