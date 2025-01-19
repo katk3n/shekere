@@ -90,7 +90,11 @@ impl<'a> State<'a> {
             height: size.height,
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
+            view_formats: if !surface_format.is_srgb() {
+                vec![surface_format.add_srgb_suffix()]
+            } else {
+                vec![]
+            },
             desired_maximum_frame_latency: 2,
         };
 
@@ -102,8 +106,7 @@ impl<'a> State<'a> {
         let fs_str = std::fs::read_to_string(shader_file).unwrap();
         let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Fragment Shader"),
-            //source: wgpu::ShaderSource::Wgsl(include_str!("fragment.wgsl").into()),
-            source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(&fs_str)),
+            source: wgpu::ShaderSource::Wgsl(fs_str.into()),
         });
 
         // Uniforms
@@ -292,9 +295,10 @@ impl<'a> State<'a> {
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.config.format.add_srgb_suffix()),
+            ..Default::default()
+        });
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {

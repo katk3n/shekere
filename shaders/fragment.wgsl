@@ -22,6 +22,12 @@ fn colorPalette(t: f32) -> vec3<f32> {
     return a + b * cos(6.28318 * (c * t + d));
 }
 
+fn to_linear_rgb(col: vec3<f32>) -> vec3<f32> {
+    let gamma = 2.2;
+    let c = clamp(col, vec3(0.0), vec3(1.0));
+    return vec3(pow(c, vec3(gamma)));
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var uv = (in.position.xy * 2.0 - window.resolution.xy) / min(window.resolution.x, window.resolution.y);
@@ -42,6 +48,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         finalColor += col * d;
     }
 
-    return vec4<f32>(finalColor, 1.0);
+    return vec4<f32>(to_linear_rgb(finalColor), 1.0);
 }
 

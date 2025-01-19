@@ -5,17 +5,19 @@ mod vertex;
 
 use state::State;
 use winit::{
+    dpi::LogicalSize,
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::WindowBuilder,
 };
 
-pub async fn run(shader_file: &str) {
+pub async fn run(shader_file: &str, width: u32, height: u32) {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("KaCHoFuGeTsu")
+        .with_inner_size(LogicalSize::new(width, height))
         .build(&event_loop)
         .unwrap();
 

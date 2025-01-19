@@ -1,10 +1,11 @@
 [package]
 name = "kchfgt"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/katk3n/kachofugetsu"
 
 [dependencies]
 winit = { version = "0.29", features = ["rwh_05"] }
