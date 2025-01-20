@@ -1,5 +1,8 @@
 use crate::timer::Timer;
-use crate::uniforms::{TimeUniform, WindowUniform, TIME_BINDING_INDEX, WINDOW_BINDING_INDEX};
+use crate::uniforms::{
+    MouseUniform, TimeUniform, WindowUniform, MOUSE_BINDING_INDEX, TIME_BINDING_INDEX,
+    WINDOW_BINDING_INDEX,
+};
 use crate::vertex::{Vertex, INDICES, VERTICES};
 
 use wgpu::util::DeviceExt;
@@ -27,7 +30,10 @@ pub struct State<'a> {
     window_buffer: wgpu::Buffer,
     time_uniform: TimeUniform,
     time_buffer: wgpu::Buffer,
+    mouse_uniform: MouseUniform,
+    mouse_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+    device_bind_group: wgpu::BindGroup,
 }
 
 impl<'a> State<'a> {
@@ -124,12 +130,19 @@ impl<'a> State<'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let mouse_uniform = MouseUniform::new();
+        let mouse_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mouse Buffer"),
+            contents: bytemuck::cast_slice(&[mouse_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: WINDOW_BINDING_INDEX,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -139,7 +152,7 @@ impl<'a> State<'a> {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: TIME_BINDING_INDEX,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -150,7 +163,6 @@ impl<'a> State<'a> {
                 ],
                 label: Some("uniform_bind_group_layout"),
             });
-
         let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &uniform_bind_group_layout,
             entries: &[
@@ -166,11 +178,34 @@ impl<'a> State<'a> {
             label: Some("uniform_binding_group"),
         });
 
+        let device_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: MOUSE_BINDING_INDEX,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("device_bind_group_layout"),
+            });
+        let device_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &device_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: MOUSE_BINDING_INDEX,
+                resource: mouse_buffer.as_entire_binding(),
+            }],
+            label: Some("device_binding_group"),
+        });
+
         // Initialize render pipeline
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout],
+                bind_group_layouts: &[&uniform_bind_group_layout, &device_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -245,6 +280,9 @@ impl<'a> State<'a> {
             time_uniform,
             time_buffer,
             uniform_bind_group,
+            mouse_uniform,
+            mouse_buffer,
+            device_bind_group,
         }
     }
 
@@ -268,10 +306,10 @@ impl<'a> State<'a> {
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
-            WindowEvent::CursorMoved {
-                device_id: _,
-                position: _,
-            } => true,
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_uniform.update(position);
+                true
+            }
             _ => false,
         }
     }
@@ -290,6 +328,13 @@ impl<'a> State<'a> {
             &self.time_buffer,
             0,
             bytemuck::cast_slice(&[self.time_uniform]),
+        );
+
+        // Update MouseUniform
+        self.queue.write_buffer(
+            &self.mouse_buffer,
+            0,
+            bytemuck::cast_slice(&[self.mouse_uniform]),
         );
     }
 
@@ -323,6 +368,7 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.device_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

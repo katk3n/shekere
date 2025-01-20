@@ -1,7 +1,8 @@
-use winit::window::Window;
+use winit::{dpi::PhysicalPosition, window::Window};
 
 pub const WINDOW_BINDING_INDEX: u32 = 0;
 pub const TIME_BINDING_INDEX: u32 = 1;
+pub const MOUSE_BINDING_INDEX: u32 = 0;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -40,5 +41,23 @@ impl TimeUniform {
 
     pub fn update(&mut self, duration: f32) {
         self.duration = duration;
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MouseUniform {
+    position: [f32; 2],
+}
+
+impl MouseUniform {
+    pub fn new() -> Self {
+        Self {
+            position: [0.0, 0.0],
+        }
+    }
+
+    pub fn update(&mut self, position: &PhysicalPosition<f64>) {
+        self.position = [position.x as f32, position.y as f32];
     }
 }
