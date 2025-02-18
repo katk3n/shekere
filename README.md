@@ -12,13 +12,25 @@ Creative coding tool with shaders and sounds
 Usage: kchfgt [OPTIONS] <FILE>
 
 Arguments:
-  <FILE>  Input fragment shader file. Only wgsl is supported
+  <FILE>  Input configuration file
 
 Options:
-      --width <WIDTH>    Window width [default: 1280]
-      --height <HEIGHT>  Window height [default: 720]
   -h, --help             Print help
   -V, --version          Print version
+```
+
+## Config file format
+
+```toml
+[window]
+width = <Window width>
+height = <Window height>
+
+[[pipeline]]
+shader_type = "fragment"
+label = <Label of the shader>
+entry_point = <Entry point of the shader>
+file = <Path to the shader (wgsl) file>
 ```
 
 ## Fragment shaders
