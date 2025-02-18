@@ -1,7 +1,12 @@
+mod config;
+mod pipeline;
 mod state;
 mod timer;
 mod uniforms;
 mod vertex;
+
+pub use crate::config::Config;
+pub use crate::config::ShaderConfig;
 
 use state::State;
 use winit::{
@@ -12,16 +17,16 @@ use winit::{
     window::WindowBuilder,
 };
 
-pub async fn run(shader_file: &str, width: u32, height: u32) {
+pub async fn run(conf: &Config) {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
         .with_title("KaCHoFuGeTsu")
-        .with_inner_size(LogicalSize::new(width, height))
+        .with_inner_size(LogicalSize::new(conf.window.width, conf.window.height))
         .build(&event_loop)
         .unwrap();
 
-    let mut state = State::new(&window, shader_file).await;
+    let mut state = State::new(&window, &conf.pipeline[0]).await;
 
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {

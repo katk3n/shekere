@@ -1,9 +1,7 @@
 use crate::timer::Timer;
-use crate::uniforms::{
-    MouseUniform, TimeUniform, WindowUniform, MOUSE_BINDING_INDEX, TIME_BINDING_INDEX,
-    WINDOW_BINDING_INDEX,
-};
-use crate::vertex::{Vertex, INDICES, VERTICES};
+use crate::uniforms::{MouseUniform, TimeUniform, WindowUniform};
+use crate::vertex::{INDICES, VERTICES};
+use crate::ShaderConfig;
 
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
@@ -38,7 +36,7 @@ pub struct State<'a> {
 
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
-    pub async fn new(window: &'a Window, shader_file: &str) -> State<'a> {
+    pub async fn new(window: &'a Window, shader_config: &ShaderConfig) -> State<'a> {
         let size = window.inner_size();
         let timer = Timer::new();
 
@@ -104,44 +102,21 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        let vertex_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Vertex Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/vertex.wgsl").into()),
-        });
-
-        let fs_str = std::fs::read_to_string(shader_file).unwrap();
-        let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Fragment Shader"),
-            source: wgpu::ShaderSource::Wgsl(fs_str.into()),
-        });
-
         // Uniforms
         let window_uniform = WindowUniform::new(&window);
-        let window_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Window Buffer"),
-            contents: bytemuck::cast_slice(&[window_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let window_buffer = window_uniform.create_buffer(&device);
 
         let time_uniform = TimeUniform::new();
-        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Time Buffer"),
-            contents: bytemuck::cast_slice(&[time_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let time_buffer = time_uniform.create_buffer(&device);
 
         let mouse_uniform = MouseUniform::new();
-        let mouse_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Mouse Buffer"),
-            contents: bytemuck::cast_slice(&[mouse_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let mouse_buffer = mouse_uniform.create_buffer(&device);
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
-                        binding: WINDOW_BINDING_INDEX,
+                        binding: WindowUniform::BINDING_INDEX,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -151,7 +126,7 @@ impl<'a> State<'a> {
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
-                        binding: TIME_BINDING_INDEX,
+                        binding: TimeUniform::BINDING_INDEX,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
@@ -167,11 +142,11 @@ impl<'a> State<'a> {
             layout: &uniform_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
-                    binding: WINDOW_BINDING_INDEX,
+                    binding: WindowUniform::BINDING_INDEX,
                     resource: window_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
-                    binding: TIME_BINDING_INDEX,
+                    binding: TimeUniform::BINDING_INDEX,
                     resource: time_buffer.as_entire_binding(),
                 },
             ],
@@ -181,7 +156,7 @@ impl<'a> State<'a> {
         let device_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: MOUSE_BINDING_INDEX,
+                    binding: MouseUniform::BINDING_INDEX,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -195,60 +170,16 @@ impl<'a> State<'a> {
         let device_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &device_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
-                binding: MOUSE_BINDING_INDEX,
+                binding: MouseUniform::BINDING_INDEX,
                 resource: mouse_buffer.as_entire_binding(),
             }],
             label: Some("device_binding_group"),
         });
 
-        // Initialize render pipeline
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&uniform_bind_group_layout, &device_bind_group_layout],
-                push_constant_ranges: &[],
-            });
+        let bind_group_layouts = [&uniform_bind_group_layout, &device_bind_group_layout];
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &vertex_shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &fragment_shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
-                polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
-                unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+        let render_pipeline =
+            crate::pipeline::create_pipeline(&device, &shader_config, &config, &bind_group_layouts);
 
         // Initialize vertex buffer
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

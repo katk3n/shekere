@@ -1,0 +1,9 @@
+[window]
+width = 800
+height = 800
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Fragment Shader"
+entry_point = "fs_main"
+file = "examples/tsuki/fragment.wgsl"
