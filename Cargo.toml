@@ -17,3 +17,5 @@ bytemuck = { version = "1.16", features = ["derive"] }
 clap = { version = "4.5.26", features = ["derive"] }
 toml = "0.8.19"
 serde = { version = "1.0.217", features = ["derive"] }
+rosc = "0.10.1"
+async-std = "1.13.0"

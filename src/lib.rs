@@ -1,4 +1,5 @@
 mod config;
+mod osc;
 mod pipeline;
 mod state;
 mod timer;
@@ -27,6 +28,8 @@ pub async fn run(conf: &Config) {
         .unwrap();
 
     let mut state = State::new(&window, &conf.pipeline[0]).await;
+
+    let receiver = osc::osc_start().await;
 
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {
@@ -67,6 +70,11 @@ pub async fn run(conf: &Config) {
                         }
                     }
                     _ => {}
+                }
+
+                match receiver.try_recv() {
+                    Ok(packet) => osc::handle_packet(packet),
+                    Err(_) => {}
                 }
             }
         }
