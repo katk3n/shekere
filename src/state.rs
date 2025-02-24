@@ -1,8 +1,14 @@
+use crate::osc;
 use crate::timer::Timer;
-use crate::uniforms::{MouseUniform, TimeUniform, WindowUniform};
+use crate::uniforms::mouse_uniform::MouseUniform;
+use crate::uniforms::osc_uniform::OscUniform;
+use crate::uniforms::time_uniform::TimeUniform;
+use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
 use crate::ShaderConfig;
 
+use async_std::channel::Receiver;
+use rosc::OscPacket;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
@@ -23,15 +29,16 @@ pub struct State<'a> {
     // unsafe references to the window's resources.
     window: &'a Window,
 
+    osc_receiver: Receiver<OscPacket>,
+
     // uniforms
     window_uniform: WindowUniform,
-    window_buffer: wgpu::Buffer,
     time_uniform: TimeUniform,
-    time_buffer: wgpu::Buffer,
     mouse_uniform: MouseUniform,
-    mouse_buffer: wgpu::Buffer,
+    osc_uniform: OscUniform,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
+    sound_bind_group: wgpu::BindGroup,
 }
 
 impl<'a> State<'a> {
@@ -102,15 +109,13 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
+        let osc_receiver = osc::osc_start().await;
+
         // Uniforms
-        let window_uniform = WindowUniform::new(&window);
-        let window_buffer = window_uniform.create_buffer(&device);
-
-        let time_uniform = TimeUniform::new();
-        let time_buffer = time_uniform.create_buffer(&device);
-
-        let mouse_uniform = MouseUniform::new();
-        let mouse_buffer = mouse_uniform.create_buffer(&device);
+        let window_uniform = WindowUniform::new(&device, &window);
+        let time_uniform = TimeUniform::new(&device);
+        let mouse_uniform = MouseUniform::new(&device);
+        let osc_uniform = OscUniform::new(&device);
 
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -143,11 +148,11 @@ impl<'a> State<'a> {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: WindowUniform::BINDING_INDEX,
-                    resource: window_buffer.as_entire_binding(),
+                    resource: window_uniform.buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: TimeUniform::BINDING_INDEX,
-                    resource: time_buffer.as_entire_binding(),
+                    resource: time_uniform.buffer.as_entire_binding(),
                 },
             ],
             label: Some("uniform_binding_group"),
@@ -171,12 +176,39 @@ impl<'a> State<'a> {
             layout: &device_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: MouseUniform::BINDING_INDEX,
-                resource: mouse_buffer.as_entire_binding(),
+                resource: mouse_uniform.buffer.as_entire_binding(),
             }],
             label: Some("device_binding_group"),
         });
 
-        let bind_group_layouts = [&uniform_bind_group_layout, &device_bind_group_layout];
+        let sound_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: OscUniform::BINDING_INDEX,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("sound_bind_group_layout"),
+            });
+        let sound_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &sound_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: OscUniform::BINDING_INDEX,
+                resource: osc_uniform.buffer.as_entire_binding(),
+            }],
+            label: Some("sound_binding_group"),
+        });
+
+        let bind_group_layouts = [
+            &uniform_bind_group_layout,
+            &device_bind_group_layout,
+            &sound_bind_group_layout,
+        ];
 
         let render_pipeline =
             crate::pipeline::create_pipeline(&device, &shader_config, &config, &bind_group_layouts);
@@ -205,15 +237,15 @@ impl<'a> State<'a> {
             vertex_buffer,
             index_buffer,
             num_indices,
+            osc_receiver,
             window_uniform,
-            window_buffer,
             timer,
             time_uniform,
-            time_buffer,
             uniform_bind_group,
             mouse_uniform,
-            mouse_buffer,
             device_bind_group,
+            osc_uniform,
+            sound_bind_group,
         }
     }
 
@@ -246,27 +278,27 @@ impl<'a> State<'a> {
     }
 
     pub fn update(&mut self) {
-        // Update WindowUniform
-        self.queue.write_buffer(
-            &self.window_buffer,
-            0,
-            bytemuck::cast_slice(&[self.window_uniform]),
-        );
+        let time_duration = self.timer.get_duration();
+        let time_delta = time_duration - self.time_uniform.data.duration;
 
         // Update TimeUniform
-        self.time_uniform.update(self.timer.get_duration());
-        self.queue.write_buffer(
-            &self.time_buffer,
-            0,
-            bytemuck::cast_slice(&[self.time_uniform]),
-        );
+        self.time_uniform.update(time_duration);
 
-        // Update MouseUniform
-        self.queue.write_buffer(
-            &self.mouse_buffer,
-            0,
-            bytemuck::cast_slice(&[self.mouse_uniform]),
-        );
+        // Update OscUniform
+        match self.osc_receiver.try_recv() {
+            Ok(packet) => {
+                self.osc_uniform.update(packet);
+            }
+            Err(_) => {
+                self.osc_uniform.elapse(time_delta);
+            }
+        }
+
+        // Write buffer
+        self.window_uniform.write_buffer(&self.queue);
+        self.time_uniform.write_buffer(&self.queue);
+        self.mouse_uniform.write_buffer(&self.queue);
+        self.osc_uniform.write_buffer(&self.queue);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -300,6 +332,7 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
             render_pass.set_bind_group(1, &self.device_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.sound_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

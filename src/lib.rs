@@ -29,8 +29,6 @@ pub async fn run(conf: &Config) {
 
     let mut state = State::new(&window, &conf.pipeline[0]).await;
 
-    let receiver = osc::osc_start().await;
-
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {
             ref event,
@@ -70,11 +68,6 @@ pub async fn run(conf: &Config) {
                         }
                     }
                     _ => {}
-                }
-
-                match receiver.try_recv() {
-                    Ok(packet) => osc::handle_packet(packet),
-                    Err(_) => {}
                 }
             }
         }

@@ -25,14 +25,3 @@ pub async fn osc_start() -> Receiver<OscPacket> {
 
     receiver
 }
-
-pub fn handle_packet(packet: OscPacket) {
-    match packet {
-        OscPacket::Message(msg) => {
-            println!("OSC msg: {} {:?}", msg.addr, msg.args);
-        }
-        OscPacket::Bundle(bundle) => {
-            println!("OSC Bundle: {:?}", bundle);
-        }
-    }
-}
