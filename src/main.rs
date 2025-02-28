@@ -16,5 +16,6 @@ fn main() {
     let args = Args::parse();
     let conf_str = std::fs::read_to_string(&args.config_file).unwrap();
     let conf: Config = toml::from_str(&conf_str).unwrap();
+    println!("{:?}", conf);
     pollster::block_on(run(&conf));
 }

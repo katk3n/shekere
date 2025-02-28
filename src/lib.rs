@@ -1,3 +1,4 @@
+mod bind_group_factory;
 mod config;
 mod osc;
 mod pipeline;
@@ -27,7 +28,7 @@ pub async fn run(conf: &Config) {
         .build(&event_loop)
         .unwrap();
 
-    let mut state = State::new(&window, &conf.pipeline[0]).await;
+    let mut state = State::new(&window, &conf).await;
 
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {

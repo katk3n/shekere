@@ -5,8 +5,8 @@ use async_std::task;
 use rosc::OscPacket;
 use std::str::FromStr;
 
-pub async fn osc_start() -> Receiver<OscPacket> {
-    let addr = match SocketAddrV4::from_str("0.0.0.0:2020") {
+pub async fn osc_start(port: u32) -> Receiver<OscPacket> {
+    let addr = match SocketAddrV4::from_str(&format!("0.0.0.0:{}", port)) {
         Ok(addr) => addr,
         Err(_) => panic!("Error"),
     };

@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use crate::{config::OscConfig, osc};
+use async_std::channel::Receiver;
 use rosc::{OscMessage, OscPacket, OscType};
 use wgpu::util::DeviceExt;
 
@@ -16,15 +20,17 @@ pub struct OscUniformData {
     trucks: [OscTruck; 16],
 }
 
-pub struct OscUniform {
+pub struct OscUniform<'a> {
     pub data: OscUniformData,
     pub buffer: wgpu::Buffer,
+    pub sound_map: HashMap<&'a str, i32>,
+    pub receiver: Receiver<OscPacket>,
 }
 
-impl OscUniform {
+impl<'a> OscUniform<'a> {
     pub const BINDING_INDEX: u32 = 0;
 
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub async fn new(device: &wgpu::Device, config: &'a OscConfig) -> Self {
         let data = OscUniformData {
             trucks: [OscTruck {
                 sound: 0,
@@ -38,7 +44,17 @@ impl OscUniform {
             contents: bytemuck::cast_slice(&[data]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        Self { data, buffer }
+        let mut sound_map = HashMap::new();
+        for s in &config.sound {
+            sound_map.insert(s.name.as_str(), s.id);
+        }
+        let receiver = osc::osc_start(config.port).await;
+        Self {
+            data,
+            buffer,
+            sound_map,
+            receiver,
+        }
     }
 
     fn handle_message(&mut self, msg: &OscMessage) {
@@ -47,6 +63,7 @@ impl OscUniform {
         let mut ttl = 0.0;
         let mut note = 0.0;
         let mut gain = 0.0;
+        let mut sound = 0;
         for (i, v) in msg.args.iter().enumerate() {
             match v {
                 OscType::String(val) => match val.as_str() {
@@ -74,26 +91,37 @@ impl OscUniform {
                             gain = *g;
                         }
                     }
+                    "sound" | "s" => {
+                        let s = &msg.args[i + 1];
+                        if let OscType::String(s) = s {
+                            if let Some(sound_id) = self.sound_map.get(s.as_str()) {
+                                sound = *sound_id;
+                            }
+                        }
+                    }
                     _ => {}
                 },
                 _ => {}
             }
         }
+        self.data.trucks[id].sound = sound;
         self.data.trucks[id].ttl = ttl;
         self.data.trucks[id].note = note;
         self.data.trucks[id].gain = gain;
     }
 
-    pub fn update(&mut self, packet: OscPacket) {
-        match packet {
-            OscPacket::Message(msg) => {
-                println!("OSC msg: {} {:?}", msg.addr, msg.args);
-            }
-            OscPacket::Bundle(bundle) => {
-                let content = &bundle.content[0];
-                if let OscPacket::Message(msg) = content {
-                    self.handle_message(msg);
+    pub fn update(&mut self, time_elapsed: f32) {
+        match self.receiver.try_recv() {
+            Ok(packet) => {
+                if let OscPacket::Bundle(bundle) = packet {
+                    let content = &bundle.content[0];
+                    if let OscPacket::Message(msg) = content {
+                        self.handle_message(msg);
+                    }
                 }
+            }
+            Err(_) => {
+                self.elapse(time_elapsed);
             }
         }
     }
@@ -109,6 +137,7 @@ impl OscUniform {
             let t = tr.ttl - time_delta;
             if t > 0.0 {
                 trucks[i].ttl = t;
+                trucks[i].sound = tr.sound;
                 trucks[i].note = tr.note;
                 trucks[i].gain = tr.gain;
             }
