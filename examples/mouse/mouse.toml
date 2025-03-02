@@ -6,4 +6,4 @@ height = 800
 shader_type = "fragment"
 label = "Fragment Shader"
 entry_point = "fs_main"
-file = "examples/tsuki/fragment.wgsl"
+file = "fragment.wgsl"

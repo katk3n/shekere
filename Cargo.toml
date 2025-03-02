@@ -1,6 +1,6 @@
 [package]
 name = "kchfgt"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
 edition = "2021"

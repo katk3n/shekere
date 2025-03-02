@@ -58,7 +58,7 @@ impl<'a> OscUniform<'a> {
     }
 
     fn handle_message(&mut self, msg: &OscMessage) {
-        println!("OSC msg: {} {:?}", msg.addr, msg.args);
+        //println!("OSC msg: {} {:?}", msg.addr, msg.args);
         let mut id: usize = 0;
         let mut ttl = 0.0;
         let mut note = 0.0;

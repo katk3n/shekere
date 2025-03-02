@@ -11,13 +11,12 @@ pub async fn osc_start(port: u32) -> Receiver<OscPacket> {
         Err(_) => panic!("Error"),
     };
     let sock = UdpSocket::bind(addr).await.unwrap();
-    println!("Listening to {}", addr);
+    println!("[OSC] Listening to {}", addr);
     let mut buf = [0u8; rosc::decoder::MTU];
     let (sender, receiver) = unbounded();
     task::spawn(async move {
         loop {
-            let (size, addr) = sock.recv_from(&mut buf).await.unwrap();
-            println!("Received packet with size {} from: {}", size, addr);
+            let (size, _addr) = sock.recv_from(&mut buf).await.unwrap();
             let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
             let _ = sender.send(packet).await;
         }

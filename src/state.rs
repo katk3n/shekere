@@ -7,6 +7,7 @@ use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
 use crate::Config;
 
+use std::path::Path;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
@@ -39,7 +40,7 @@ pub struct State<'a> {
 
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
-    pub async fn new(window: &'a Window, config: &'a Config) -> State<'a> {
+    pub async fn new(window: &'a Window, config: &'a Config, conf_dir: &Path) -> State<'a> {
         let shader_config = &config.pipeline[0];
         let size = window.inner_size();
         let timer = Timer::new();
@@ -152,6 +153,7 @@ impl<'a> State<'a> {
 
         let render_pipeline = crate::pipeline::create_pipeline(
             &device,
+            conf_dir,
             &shader_config,
             &surface_config,
             &bind_group_layouts,

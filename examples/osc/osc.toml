@@ -1,0 +1,25 @@
+[window]
+width = 800
+height = 800
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Fragment Shader"
+entry_point = "fs_main"
+file = "fragment.wgsl"
+
+[osc]
+port = 2020
+addr_pattern = "/dirt/play"
+
+[[osc.sound]]
+name = "bd"
+id = 1
+
+[[osc.sound]]
+name = "sd"
+id = 2
+
+[[osc.sound]]
+name = "hc"
+id = 3
