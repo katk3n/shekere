@@ -4,6 +4,11 @@ kchfgt ("花鳥風月", which means beauties of nature) is a creative coding too
 
 It's still under development.
 
+## Install
+```
+cargo install kchfgt
+```
+
 ## Usage
 
 ```
