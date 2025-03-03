@@ -1,8 +1,13 @@
+use crate::bind_group_factory::BindGroupFactory;
 use crate::timer::Timer;
-use crate::uniforms::{MouseUniform, TimeUniform, WindowUniform};
+use crate::uniforms::mouse_uniform::MouseUniform;
+use crate::uniforms::osc_uniform::OscUniform;
+use crate::uniforms::time_uniform::TimeUniform;
+use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
-use crate::ShaderConfig;
+use crate::Config;
 
+use std::path::Path;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
@@ -10,7 +15,7 @@ pub struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    surface_config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
@@ -25,18 +30,18 @@ pub struct State<'a> {
 
     // uniforms
     window_uniform: WindowUniform,
-    window_buffer: wgpu::Buffer,
     time_uniform: TimeUniform,
-    time_buffer: wgpu::Buffer,
     mouse_uniform: MouseUniform,
-    mouse_buffer: wgpu::Buffer,
+    osc_uniform: Option<OscUniform<'a>>,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
+    sound_bind_group: Option<wgpu::BindGroup>,
 }
 
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
-    pub async fn new(window: &'a Window, shader_config: &ShaderConfig) -> State<'a> {
+    pub async fn new(window: &'a Window, config: &'a Config, conf_dir: &Path) -> State<'a> {
+        let shader_config = &config.pipeline[0];
         let size = window.inner_size();
         let timer = Timer::new();
 
@@ -87,7 +92,7 @@ impl<'a> State<'a> {
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
+        let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
@@ -103,83 +108,56 @@ impl<'a> State<'a> {
         };
 
         // Uniforms
-        let window_uniform = WindowUniform::new(&window);
-        let window_buffer = window_uniform.create_buffer(&device);
+        let window_uniform = WindowUniform::new(&device, &window);
+        let time_uniform = TimeUniform::new(&device);
+        let mouse_uniform = MouseUniform::new(&device);
+        let osc_uniform = if let Some(osc_config) = &config.osc {
+            Some(OscUniform::new(&device, &osc_config).await)
+        } else {
+            None
+        };
 
-        let time_uniform = TimeUniform::new();
-        let time_buffer = time_uniform.create_buffer(&device);
+        // Create bind group for uniforms (window resolution, time)
+        let mut uniform_bind_group_factory = BindGroupFactory::new();
+        uniform_bind_group_factory.add_entry(WindowUniform::BINDING_INDEX, &window_uniform.buffer);
+        uniform_bind_group_factory.add_entry(TimeUniform::BINDING_INDEX, &time_uniform.buffer);
+        let (uniform_bind_group_layout, uniform_bind_group) =
+            uniform_bind_group_factory.create(&device, "uniform");
+        let (uniform_bind_group_layout, uniform_bind_group) = (
+            uniform_bind_group_layout.unwrap(),
+            uniform_bind_group.unwrap(),
+        );
 
-        let mouse_uniform = MouseUniform::new();
-        let mouse_buffer = mouse_uniform.create_buffer(&device);
+        // Create bind group for device (Mouse, etc.)
+        let mut device_bind_group_factory = BindGroupFactory::new();
+        device_bind_group_factory.add_entry(MouseUniform::BINDING_INDEX, &mouse_uniform.buffer);
+        let (device_bind_group_layout, device_bind_group) =
+            device_bind_group_factory.create(&device, "device");
+        let (device_bind_group_layout, device_bind_group) = (
+            device_bind_group_layout.unwrap(),
+            device_bind_group.unwrap(),
+        );
 
-        let uniform_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: WindowUniform::BINDING_INDEX,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: TimeUniform::BINDING_INDEX,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-                label: Some("uniform_bind_group_layout"),
-            });
-        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &uniform_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: WindowUniform::BINDING_INDEX,
-                    resource: window_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: TimeUniform::BINDING_INDEX,
-                    resource: time_buffer.as_entire_binding(),
-                },
-            ],
-            label: Some("uniform_binding_group"),
-        });
+        // Create bind group for sound
+        let mut sound_bind_group_factory = BindGroupFactory::new();
+        if let Some(ou) = &osc_uniform {
+            sound_bind_group_factory.add_entry(OscUniform::BINDING_INDEX, &ou.buffer);
+        }
+        let (sound_bind_group_layout, sound_bind_group) =
+            sound_bind_group_factory.create(&device, "sound");
 
-        let device_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: MouseUniform::BINDING_INDEX,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("device_bind_group_layout"),
-            });
-        let device_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &device_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: MouseUniform::BINDING_INDEX,
-                resource: mouse_buffer.as_entire_binding(),
-            }],
-            label: Some("device_binding_group"),
-        });
+        let mut bind_group_layouts = vec![&uniform_bind_group_layout, &device_bind_group_layout];
+        if let Some(layout) = &sound_bind_group_layout {
+            bind_group_layouts.push(&layout);
+        }
 
-        let bind_group_layouts = [&uniform_bind_group_layout, &device_bind_group_layout];
-
-        let render_pipeline =
-            crate::pipeline::create_pipeline(&device, &shader_config, &config, &bind_group_layouts);
+        let render_pipeline = crate::pipeline::create_pipeline(
+            &device,
+            conf_dir,
+            &shader_config,
+            &surface_config,
+            &bind_group_layouts,
+        );
 
         // Initialize vertex buffer
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -199,21 +177,20 @@ impl<'a> State<'a> {
             surface,
             device,
             queue,
-            config,
+            surface_config,
             size,
             render_pipeline,
             vertex_buffer,
             index_buffer,
             num_indices,
             window_uniform,
-            window_buffer,
             timer,
             time_uniform,
-            time_buffer,
             uniform_bind_group,
             mouse_uniform,
-            mouse_buffer,
             device_bind_group,
+            osc_uniform,
+            sound_bind_group,
         }
     }
 
@@ -228,9 +205,9 @@ impl<'a> State<'a> {
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
+            self.surface_config.width = new_size.width;
+            self.surface_config.height = new_size.height;
+            self.surface.configure(&self.device, &self.surface_config);
             self.window_uniform.update(&self.window);
         }
     }
@@ -246,33 +223,25 @@ impl<'a> State<'a> {
     }
 
     pub fn update(&mut self) {
-        // Update WindowUniform
-        self.queue.write_buffer(
-            &self.window_buffer,
-            0,
-            bytemuck::cast_slice(&[self.window_uniform]),
-        );
+        let time_duration = self.timer.get_duration();
+        let time_elapsed = time_duration - self.time_uniform.data.duration;
+        self.time_uniform.update(time_duration);
+        self.time_uniform.write_buffer(&self.queue);
 
-        // Update TimeUniform
-        self.time_uniform.update(self.timer.get_duration());
-        self.queue.write_buffer(
-            &self.time_buffer,
-            0,
-            bytemuck::cast_slice(&[self.time_uniform]),
-        );
+        self.window_uniform.write_buffer(&self.queue);
+        self.mouse_uniform.write_buffer(&self.queue);
 
-        // Update MouseUniform
-        self.queue.write_buffer(
-            &self.mouse_buffer,
-            0,
-            bytemuck::cast_slice(&[self.mouse_uniform]),
-        );
+        // Update OscUniform
+        if let Some(osc_uniform) = self.osc_uniform.as_mut() {
+            osc_uniform.update(time_elapsed);
+            osc_uniform.write_buffer(&self.queue);
+        }
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.config.format.add_srgb_suffix()),
+            format: Some(self.surface_config.format.add_srgb_suffix()),
             ..Default::default()
         });
         let mut encoder = self
@@ -300,6 +269,11 @@ impl<'a> State<'a> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
             render_pass.set_bind_group(1, &self.device_bind_group, &[]);
+
+            if let Some(sound_bind_group) = &self.sound_bind_group {
+                render_pass.set_bind_group(2, sound_bind_group, &[]);
+            }
+
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

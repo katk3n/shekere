@@ -1,9 +1,12 @@
+use std::path::Path;
+
 use crate::vertex::Vertex;
 use crate::ShaderConfig;
 use wgpu::{BindGroupLayout, Device, RenderPipeline, SurfaceConfiguration};
 
 pub fn create_pipeline(
     device: &Device,
+    conf_dir: &Path,
     shader_config: &ShaderConfig,
     surface_config: &SurfaceConfiguration,
     bind_group_layouts: &[&BindGroupLayout],
@@ -13,7 +16,8 @@ pub fn create_pipeline(
         source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/vertex.wgsl").into()),
     });
 
-    let fs_str = std::fs::read_to_string(&shader_config.file).unwrap();
+    let shader_path = conf_dir.join(&shader_config.file);
+    let fs_str = std::fs::read_to_string(shader_path.to_str().unwrap()).unwrap();
     let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(&shader_config.label),
         source: wgpu::ShaderSource::Wgsl(fs_str.into()),
