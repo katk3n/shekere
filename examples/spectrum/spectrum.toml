@@ -1,0 +1,14 @@
+[window]
+width = 800
+height = 800
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Fragment Shader"
+entry_point = "fs_main"
+file = "fragment.wgsl"
+
+[spectrum]
+min_frequency = 27.0
+max_frequency = 2000.0
+sampling_rate = 44100
