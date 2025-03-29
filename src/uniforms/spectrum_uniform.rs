@@ -28,7 +28,7 @@ struct SpectrumDataPoint {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SpectrumUniformData {
     data_points: [SpectrumDataPoint; NUM_SAMPLES],
-    num_frequencies: u32,
+    num_points: u32,
     max_frequency: f32,
     max_amplitude: f32,
     _padding: u32,
@@ -54,7 +54,7 @@ impl SpectrumUniform {
                 amplitude: 0.0,
                 _padding: [0; 2],
             }; NUM_SAMPLES],
-            num_frequencies: 0,
+            num_points: 0,
             max_frequency: 0.0,
             max_amplitude: 0.0,
             _padding: 0,
@@ -106,23 +106,14 @@ impl SpectrumUniform {
         for (i, f) in spectrum.data().iter().enumerate() {
             data_points[i].frequency = f.0.val();
             data_points[i].amplitude = f.1.val();
-            println!(
-                "fr: {}, amp: {}",
-                data_points[i].frequency, data_points[i].amplitude
-            );
         }
 
         let (max_fr, max_amp) = spectrum.max();
 
         self.data.data_points = data_points;
-        self.data.num_frequencies = spectrum.data().len() as u32;
+        self.data.num_points = spectrum.data().len() as u32;
         self.data.max_frequency = max_fr.val();
         self.data.max_amplitude = max_amp.val();
-
-        println!(
-            "max_fr: {}, max_amp: {}",
-            self.data.max_frequency, self.data.max_amplitude
-        );
     }
 
     pub fn write_buffer(&self, queue: &wgpu::Queue) {
