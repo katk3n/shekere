@@ -1,6 +1,6 @@
 [package]
 name = "kchfgt"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
 edition = "2021"
@@ -19,3 +19,6 @@ toml = "0.8.19"
 serde = { version = "1.0.217", features = ["derive"] }
 rosc = "0.10.1"
 async-std = "1.13.0"
+cpal = "0.15.3"
+ringbuf = "0.4.7"
+spectrum-analyzer = "1.6.0"

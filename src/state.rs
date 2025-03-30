@@ -2,6 +2,7 @@ use crate::bind_group_factory::BindGroupFactory;
 use crate::timer::Timer;
 use crate::uniforms::mouse_uniform::MouseUniform;
 use crate::uniforms::osc_uniform::OscUniform;
+use crate::uniforms::spectrum_uniform::SpectrumUniform;
 use crate::uniforms::time_uniform::TimeUniform;
 use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
@@ -33,6 +34,7 @@ pub struct State<'a> {
     time_uniform: TimeUniform,
     mouse_uniform: MouseUniform,
     osc_uniform: Option<OscUniform<'a>>,
+    spectrum_uniform: Option<SpectrumUniform>,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
     sound_bind_group: Option<wgpu::BindGroup>,
@@ -116,6 +118,11 @@ impl<'a> State<'a> {
         } else {
             None
         };
+        let spectrum_uniform = if let Some(audio_config) = &config.spectrum {
+            Some(SpectrumUniform::new(&device, &audio_config))
+        } else {
+            None
+        };
 
         // Create bind group for uniforms (window resolution, time)
         let mut uniform_bind_group_factory = BindGroupFactory::new();
@@ -142,6 +149,9 @@ impl<'a> State<'a> {
         let mut sound_bind_group_factory = BindGroupFactory::new();
         if let Some(ou) = &osc_uniform {
             sound_bind_group_factory.add_entry(OscUniform::BINDING_INDEX, &ou.buffer);
+        }
+        if let Some(su) = &spectrum_uniform {
+            sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
         }
         let (sound_bind_group_layout, sound_bind_group) =
             sound_bind_group_factory.create(&device, "sound");
@@ -190,6 +200,7 @@ impl<'a> State<'a> {
             mouse_uniform,
             device_bind_group,
             osc_uniform,
+            spectrum_uniform,
             sound_bind_group,
         }
     }
@@ -235,6 +246,12 @@ impl<'a> State<'a> {
         if let Some(osc_uniform) = self.osc_uniform.as_mut() {
             osc_uniform.update(time_elapsed);
             osc_uniform.write_buffer(&self.queue);
+        }
+
+        // Update AudioUniform
+        if let Some(spectrum_uniform) = self.spectrum_uniform.as_mut() {
+            spectrum_uniform.update();
+            spectrum_uniform.write_buffer(&self.queue);
         }
     }
 

@@ -1,3 +1,4 @@
+mod audio_stream;
 mod bind_group_factory;
 mod config;
 mod osc;
