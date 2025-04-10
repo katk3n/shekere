@@ -5,9 +5,16 @@ kchfgt ("花鳥風月", which means beauties of nature) is a creative coding too
 It's still under development.
 
 ## Install
+
+### Cargo
+
 ```
 cargo install kchfgt
 ```
+
+### Download binary
+
+Download binary from [releases](https://github.com/katk3n/kchfgt/releases).
 
 ## Usage
 
