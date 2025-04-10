@@ -5,7 +5,7 @@ authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/katk3n/kachofugetsu"
+repository = "https://github.com/katk3n/kchfgt"
 
 [dependencies]
 winit = { version = "0.29", features = ["rwh_05"] }
