@@ -1,0 +1,100 @@
+name: build
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-apple-darwin
+            os: macos-13
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: action-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --target=${{ matrix.target }}
+
+      - name: Package
+        run: >
+          zip --junk-paths
+          kchfgt-${{ matrix.target }}.zip target/${{ matrix.target }}/release/kchfgt
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: kchfgt-${{ matrix.target }}
+          path: kchfgt-${{ matrix.target }}.zip
+
+  create-release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: true
+      - run: >
+          echo '${{ steps.create-release.outputs.upload_url }}'
+          > release_upload_url.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: create-release
+          path: release_upload_url.txt
+
+  upload-release:
+    strategy:
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: create-release
+      - id: upload-url
+        run: |
+          echo "url=$(cat release_upload_url.txt)" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          name: kchfgt-${{ matrix.target }}
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.upload-url.outputs.url }}
+          asset_path: ./kchfgt-${{ matrix.target }}.zip
+          asset_name: kchfgt-${{ matrix.target }}.zip
+          asset_content_type: application/zip
