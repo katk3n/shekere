@@ -1,0 +1,100 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+kchfgt ("花鳥風月", beauties of nature) is a Rust-based creative coding tool that combines WebGPU-based fragment shaders with audio integration (OSC and spectrum analysis). It creates real-time visual effects driven by sound and user interaction.
+
+## Core Architecture
+
+The application follows a modular architecture centered around the State pattern:
+
+- **State (`src/state.rs`)**: Central state management handling WebGPU setup, uniforms, and render loop
+- **Config (`src/config.rs`)**: TOML-based configuration system for window, shaders, OSC, and audio spectrum
+- **Uniforms (`src/uniforms/`)**: Modular uniform system with separate modules for different data types:
+  - `window_uniform.rs`: Window resolution data
+  - `time_uniform.rs`: Time-based animation data
+  - `mouse_uniform.rs`: Mouse position tracking
+  - `osc_uniform.rs`: OSC (Open Sound Control) integration for Tidalcycles
+  - `spectrum_uniform.rs`: Real-time audio spectrum analysis via FFT
+- **Pipeline (`src/pipeline.rs`)**: WebGPU render pipeline creation and shader compilation
+- **BindGroupFactory (`src/bind_group_factory.rs`)**: Dynamic bind group creation for different uniform combinations
+
+## Development Commands
+
+### Build and Run
+```bash
+# Build the project
+cargo build
+
+# Run with a configuration file
+cargo run -- examples/spectrum/spectrum.toml
+
+# Build release version
+cargo build --release
+```
+
+### Testing
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+```
+
+### Linting and Formatting
+```bash
+# Check code formatting
+cargo fmt --check
+
+# Format code
+cargo fmt
+
+# Run clippy lints
+cargo clippy
+
+# Run clippy with all targets
+cargo clippy --all-targets
+```
+
+## Configuration System
+
+The application uses TOML configuration files with the following structure:
+
+- **Required**: `[window]` section with width/height
+- **Required**: `[[pipeline]]` array with shader configuration
+- **Optional**: `[osc]` for OSC integration with sound mapping
+- **Optional**: `[spectrum]` for audio spectrum analysis
+
+Example configuration files are in the `examples/` directory.
+
+## Shader Development
+
+Fragment shaders are written in WGSL (WebGPU Shading Language) and must:
+- Use entry point `fs_main`
+- Accept `VertexOutput` struct with `@builtin(position)`
+- Return `@location(0) vec4<f32>` color output
+- Access uniforms through predefined binding groups:
+  - Group 0: Window and Time uniforms (always available)
+  - Group 1: Device uniforms (mouse, etc.)
+  - Group 2: Sound uniforms (OSC, spectrum - when configured)
+
+## Audio Integration
+
+The application supports two audio input methods:
+
+1. **OSC Integration**: Receives OSC messages (typically from Tidalcycles) on configurable port
+2. **Spectrum Analysis**: Real-time FFT analysis of system audio input with configurable frequency range
+
+Both create GPU-accessible uniform data for shader consumption.
+
+## Key Implementation Details
+
+- Uses `winit` for window management and input handling
+- WebGPU backend selection via feature flags (PRIMARY backends on desktop, GL on WASM)
+- Async initialization pattern for WebGPU setup
+- Real-time uniform updates in the render loop
+- Modular bind group system allows dynamic uniform combinations
+- Configuration file path determines shader file resolution directory
