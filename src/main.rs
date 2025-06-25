@@ -3,8 +3,6 @@ use kchfgt::run;
 use kchfgt::Config;
 use std::path::Path;
 
-use toml;
-
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
 struct Args {
