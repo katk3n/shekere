@@ -1,204 +1,273 @@
 # KaCHoFuGeTsu
 
-kchfgt ("花鳥風月", which means beauties of nature) is a creative coding tool with shaders and sounds.
+kchfgt ("花鳥風月", which means beauties of nature) is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
 
-It's still under development.
+## Installation
 
-## Install
+### Install from Cargo
 
-### Cargo
-
-```
+```bash
 cargo install kchfgt
 ```
 
-### Download binary
+### Download Binary
 
-Download binary from [releases](https://github.com/katk3n/kchfgt/releases).
+Download binaries from [Releases](https://github.com/katk3n/kchfgt/releases).
 
-## Usage
+## Basic Usage
 
-```
-Creative coding tool with shaders and sounds
-
-Usage: kchfgt [OPTIONS] <FILE>
-
-Arguments:
-  <FILE>  Input configuration file
-
-Options:
-  -h, --help             Print help
-  -V, --version          Print version
+```bash
+kchfgt <config_file>
 ```
 
-## Config file format
+### Examples:
+
+```bash
+# Run mouse-controlled shader art
+kchfgt examples/mouse/mouse.toml
+
+# Run audio spectrum analyzer visualizer
+kchfgt examples/spectrum/spectrum.toml
+
+# Run shader art with TidalCycles integration
+kchfgt examples/osc/osc.toml
+```
+
+## Project Structure
+
+A typical kchfgt project has the following structure:
+
+```
+my_project/
+├── config.toml        # Configuration file
+└── fragment.wgsl      # Fragment shader
+```
+
+## Configuration File (TOML)
+
+### Basic Configuration
+
+Minimum configuration required for all projects:
 
 ```toml
-# window is required
 [window]
-width = 800   # Window width
-height = 800  # Window height
+width = 800
+height = 800
 
-# pipeline is required
 [[pipeline]]
-shader_type = "fragment"   # Type of shader (currently only fragment is supported)
-label = "Fragment Shader"  # Label of the shader
-entry_point = "fs_main"    # Entry point of the shader
-file = "fragment.wgsl"     # Path to the shader (wgsl) file
-
-# See Uniforms section for other uniform settings
-
+shader_type = "fragment"
+label = "Fragment Shader"
+entry_point = "fs_main"
+file = "fragment.wgsl"
 ```
 
-## Fragment shaders
+### Optional Configuration
 
-The following uniforms are available
+#### OSC (Integration with TidalCycles, etc.)
+
+```toml
+[osc]
+port = 2020
+addr_pattern = "/dirt/play"
+
+[[osc.sound]]
+name = "bd"    # Bass drum
+id = 1
+
+[[osc.sound]]
+name = "sd"    # Snare drum
+id = 2
+
+[[osc.sound]]
+name = "hc"    # Hi-hat
+id = 3
+```
+
+#### Audio Spectrum Analysis
+
+```toml
+[spectrum]
+min_frequency = 27.0
+max_frequency = 2000.0
+sampling_rate = 44100
+```
+
+## Shader Development Guide
+
+### Basic Fragment Shader
 
 ```wgsl
-// Import Uniforms
-// Other uniforms are also supported (see below)
+// Required uniform structures
 struct WindowUniform {
-    // window size in physical size
     resolution: vec2<f32>,
 }
 
 struct TimeUniform {
-    // time elapsed since the program started
     duration: f32,
 }
 
+// Required uniforms
 @group(0) @binding(0) var<uniform> window: WindowUniform;
 @group(0) @binding(1) var<uniform> time: TimeUniform;
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
-};
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Your shader codes here
+    // Calculate normalized UV coordinates
+    let min_xy = min(window.resolution.x, window.resolution.y);
+    let uv = (in.position.xy * 2.0 - window.resolution) / min_xy;
+    
+    // Time-based color animation
+    let color = vec3(
+        sin(time.duration) * 0.5 + 0.5,
+        cos(time.duration) * 0.5 + 0.5,
+        sin(time.duration * 2.0) * 0.5 + 0.5
+    );
+    
+    return vec4(color, 1.0);
 }
 ```
 
-## Uniforms
+## Available Uniforms
 
-The following uniforms are supported.
-
-### WindowUniform
-
-#### Shader (wgsl)
+### 1. WindowUniform (Required)
+- **Binding**: `@group(0) @binding(0)`
+- **Content**: Window resolution information
 
 ```wgsl
-@group(0) @binding(0) var<uniform> window: WindowUniform;
-
 struct WindowUniform {
-    // window size in physical size
-    resolution: vec2<f32>,
-};
-```
-
-### TimeUniform
-
-#### Shader (wgsl)
-
-```wgsl
-@group(0) @binding(1) var<uniform> time: TimeUniform;
-
-struct TimeUniform {
-    // time elapsed since the program started
-    duration: f32,
+    resolution: vec2<f32>,  // [width, height]
 }
 ```
 
-### MouseUniform
-
-#### Shader (wgsl)
+### 2. TimeUniform (Required)
+- **Binding**: `@group(0) @binding(1)`
+- **Content**: Elapsed time
 
 ```wgsl
-@group(1) @binding(0) var<uniform> mouse: MouseUniform;
+struct TimeUniform {
+    duration: f32,  // Seconds since program start
+}
+```
 
+### 3. MouseUniform (Optional)
+- **Binding**: `@group(1) @binding(0)`
+- **Content**: Mouse position
+
+```wgsl
 struct MouseUniform {
-    // mouse position in physical size
-    position: vec2<f32>,
-};
+    position: vec2<f32>,  // Mouse coordinates in pixels
+}
 ```
 
-### OscUniform
-
-OSC (Open Sound Control) which is used by Tidalcycles etc.
-See [example](/examples/osc/).
-
-#### Configuration
-
-```toml
-[osc]
-port = 2020  # Port for OSC device
-
-# currently not supported. all OSC messages are handled
-addr_pattern = "/dirt/play"  # Address pattern to handle OSC messages
-
-[[osc.sound]]
-name = "bd"  # Sound name to handle
-id = 1       # Number assigned for the sound in your shader
-
-[[osc.sound]]
-name = "sd"
-id = 2
-```
-
-#### Shader (wgsl)
+### 4. OscUniform (When OSC is configured)
+- **Binding**: `@group(2) @binding(0)`
+- **Content**: OSC parameters (TidalCycles, etc.)
 
 ```wgsl
-@group(2) @binding(0) var<uniform> osc: OscUniform;
-
 struct OscTruck {
-    // OSC parameters for each OSC truck
-    sound: i32,
-    ttl: f32,
-    note: f32,
-    gain: f32,
+    sound: i32,   // Sound ID
+    ttl: f32,     // Time to live (duration)
+    note: f32,    // Note/pitch
+    gain: f32,    // Volume/gain
 }
 
 struct OscUniform {
-    // OSC trucks (d1-d16), osc[0] for OSC d1
-    trucks: array<OscTruck, 16>,
-};
+    trucks: array<OscTruck, 16>,  // Corresponds to d1-d16
+}
 ```
 
-### SpectrumUniform
-
-Audio spectrum analyzed by FFT.
-See [example](/examples/spectrum/).
-
-#### Configuration
-
-```toml
-[spectrum]
-min_frequency = 27.0    # Min frequency to captrue
-max_frequency = 2000.0  # Max frequency to capture
-sampling_rate = 44100   # Sampling rate
-```
-
-#### Shader (wgsl)
+### 5. SpectrumUniform (When spectrum is configured)
+- **Binding**: `@group(2) @binding(1)`
+- **Content**: Audio spectrum analysis data
 
 ```wgsl
-@group(2) @binding(1) var<uniform> spectrum: SpectrumUniform;
-
 struct SpectrumDataPoint {
     frequency: f32,
     amplitude: f32,
-    // Not used but required to pass data to shader
     _padding: vec2<u32>,
 }
 
 struct SpectrumUniform {
-    // spectrum data points of audio input
     data_points: array<SpectrumDataPoint, 2048>,
-    // the number of data points
     num_points: u32,
-    // frequency of the data point with the max amplitude
     max_frequency: f32,
-    // max amplitude of audio input
     max_amplitude: f32,
 }
 ```
+
+## Commonly Used Functions
+
+### Color Conversion Functions
+
+```wgsl
+// Gamma correction
+fn to_linear_rgb(col: vec3<f32>) -> vec3<f32> {
+    let gamma = 2.2;
+    let c = clamp(col, vec3(0.0), vec3(1.0));
+    return pow(c, vec3(gamma));
+}
+
+// HSV to RGB conversion
+fn hue_to_rgb(hue: f32) -> vec3<f32> {
+    let kr = (5.0 + hue * 6.0) % 6.0;
+    let kg = (3.0 + hue * 6.0) % 6.0;
+    let kb = (1.0 + hue * 6.0) % 6.0;
+    
+    let r = 1.0 - max(min(min(kr, 4.0 - kr), 1.0), 0.0);
+    let g = 1.0 - max(min(min(kg, 4.0 - kg), 1.0), 0.0);
+    let b = 1.0 - max(min(min(kb, 4.0 - kb), 1.0), 0.0);
+    
+    return vec3(r, g, b);
+}
+```
+
+### Shape Drawing Functions
+
+```wgsl
+// Draw light orb
+fn orb(p: vec2<f32>, center: vec2<f32>, radius: f32, color: vec3<f32>) -> vec3<f32> {
+    let t = clamp(1.0 + radius - length(p - center), 0.0, 1.0);
+    return pow(t, 16.0) * color;
+}
+
+// Rectangle detection
+fn rect(uv: vec2<f32>, pos: vec2<f32>, size: vec2<f32>) -> bool {
+    let d = abs(uv - pos) - size;
+    return max(d.x, d.y) < 0.0;
+}
+
+// Bar drawing (useful for spectrum visualization)
+fn bar(uv: vec2<f32>, x: f32, width: f32, height: f32) -> bool {
+    if (uv.x > x) && (uv.x < x + width) && (abs(uv.y) < height) {
+        return true;
+    }
+    return false;
+}
+```
+
+## Sample Projects
+
+The included examples directory contains the following samples:
+
+- `examples/mouse/`: Mouse-controlled shader art
+- `examples/spectrum/`: Audio spectrum analysis visualizer
+- `examples/osc/`: TidalCycles integration shader art
+
+Use these as reference to create your own shader art projects.
+
+## Uniform Binding Reference
+
+### Group 0 (Always Available)
+- `@binding(0)`: WindowUniform
+- `@binding(1)`: TimeUniform
+
+### Group 1 (Device Uniforms)
+- `@binding(0)`: MouseUniform
+
+### Group 2 (Sound Uniforms)
+- `@binding(0)`: OscUniform (when OSC is configured)
+- `@binding(1)`: SpectrumUniform (when spectrum is configured)
