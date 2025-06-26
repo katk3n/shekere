@@ -43,18 +43,7 @@ jobs:
   build:
     name: Build
     needs: test
-    strategy:
-      matrix:
-        target:
-          - aarch64-apple-darwin
-          - x86_64-apple-darwin
-        include:
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          - target: x86_64-apple-darwin
-            os: macos-13
-
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -62,7 +51,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
@@ -76,18 +65,18 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
-        run: cargo build --release --target=${{ matrix.target }}
+        run: cargo build --release --target=aarch64-apple-darwin
 
       - name: Package
         run: >
           zip --junk-paths
-          kchfgt-${{ matrix.target }}.zip target/${{ matrix.target }}/release/kchfgt
+          kchfgt-aarch64-apple-darwin.zip target/aarch64-apple-darwin/release/kchfgt
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: kchfgt-${{ matrix.target }}
-          path: kchfgt-${{ matrix.target }}.zip
+          name: kchfgt-aarch64-apple-darwin
+          path: kchfgt-aarch64-apple-darwin.zip
 
   release:
     needs: [build]
@@ -99,15 +88,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: kchfgt-*
-          merge-multiple: true
+          name: kchfgt-aarch64-apple-darwin
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            kchfgt-aarch64-apple-darwin.zip
-            kchfgt-x86_64-apple-darwin.zip
+          files: kchfgt-aarch64-apple-darwin.zip
           draft: false
           prerelease: false
         env:
