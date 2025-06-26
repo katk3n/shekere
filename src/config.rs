@@ -9,7 +9,7 @@ pub struct Config {
     pub hot_reload: Option<HotReloadConfig>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone, Copy)]
 pub struct HotReloadConfig {
     pub enabled: bool,
 }
@@ -109,6 +109,7 @@ file = "test.wgsl"
         assert_eq!(config.pipeline[0].shader_type, "fragment");
         assert_eq!(config.osc, None);
         assert_eq!(config.spectrum, None);
+        assert_eq!(config.hot_reload, None);
     }
 
     #[test]
@@ -253,5 +254,117 @@ sampling_rate = 44100
         };
 
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_from_toml_with_hot_reload_enabled() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "test"
+entry_point = "fs_main"
+file = "test.wgsl"
+
+[hot_reload]
+enabled = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.hot_reload.is_some(), true);
+        assert_eq!(config.hot_reload.unwrap().enabled, true);
+    }
+
+    #[test]
+    fn test_config_from_toml_with_hot_reload_disabled() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "test"
+entry_point = "fs_main"
+file = "test.wgsl"
+
+[hot_reload]
+enabled = false
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.hot_reload.is_some(), true);
+        assert_eq!(config.hot_reload.unwrap().enabled, false);
+    }
+
+    #[test]
+    fn test_config_from_toml_without_hot_reload() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "test"
+entry_point = "fs_main"
+file = "test.wgsl"
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.hot_reload, None);
+    }
+
+    #[test]
+    fn test_hot_reload_config_equality() {
+        let config1 = HotReloadConfig { enabled: true };
+        let config2 = HotReloadConfig { enabled: true };
+        let config3 = HotReloadConfig { enabled: false };
+
+        assert_eq!(config1, config2);
+        assert_ne!(config1, config3);
+    }
+
+    #[test]
+    fn test_config_with_all_features_including_hot_reload() {
+        let toml_str = r#"
+[window]
+width = 1280
+height = 720
+
+[[pipeline]]
+shader_type = "fragment"
+label = "main"
+entry_point = "fs_main"
+file = "shader.wgsl"
+
+[osc]
+port = 57120
+addr_pattern = "/play"
+
+[[osc.sound]]
+name = "kick"
+id = 0
+
+[spectrum]
+min_frequency = 20.0
+max_frequency = 20000.0
+sampling_rate = 44100
+
+[hot_reload]
+enabled = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert!(config.validate().is_ok());
+        
+        // Check all components are present
+        assert!(config.osc.is_some());
+        assert!(config.spectrum.is_some());
+        assert!(config.hot_reload.is_some());
+        assert_eq!(config.hot_reload.unwrap().enabled, true);
     }
 }
