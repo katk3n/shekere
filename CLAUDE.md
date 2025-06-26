@@ -109,6 +109,35 @@ The application includes a hot reload system for live coding:
 - Modular bind group system allows dynamic uniform combinations
 - Configuration file path determines shader file resolution directory
 
+## Testing Requirements
+
+**MANDATORY**: When adding new features or modifying existing functionality:
+
+1. **Write comprehensive unit tests**:
+   - Test all public methods and functions
+   - Cover both success and error cases
+   - Include edge cases and boundary conditions
+   - Use mock objects for external dependencies (file system, network, etc.)
+   - Ensure tests are deterministic and not dependent on external state
+
+2. **Add integration tests when appropriate**:
+   - Test configuration parsing for new TOML sections
+   - Test feature interactions with existing systems
+   - Verify end-to-end workflows for complex features
+
+3. **Follow testing patterns**:
+   - Use `#[cfg(test)]` for test-only code and mocks
+   - Place unit tests in the same file as the implementation
+   - Place integration tests in `tests/` directory
+   - Use descriptive test names that explain the scenario
+   - Add helpful assertion messages for debugging
+
+4. **Test coverage requirements**:
+   - New features must have >90% test coverage
+   - Critical paths (error handling, safety mechanisms) must have 100% coverage
+   - Configuration parsing must be fully tested
+   - Mock external dependencies for reliable testing
+
 ## Documentation Maintenance
 
 **IMPORTANT**: When adding new features or modifying existing functionality:
