@@ -1,4 +1,5 @@
 use crate::bind_group_factory::BindGroupFactory;
+use crate::hot_reload::HotReloader;
 use crate::timer::Timer;
 use crate::uniforms::mouse_uniform::MouseUniform;
 use crate::uniforms::osc_uniform::OscUniform;
@@ -8,7 +9,7 @@ use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
 use crate::Config;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
@@ -28,6 +29,10 @@ pub struct State<'a> {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: &'a Window,
+
+    // hot reload
+    hot_reloader: Option<HotReloader>,
+    shader_path: PathBuf,
 
     // uniforms
     window_uniform: WindowUniform,
@@ -161,6 +166,28 @@ impl<'a> State<'a> {
             bind_group_layouts.push(&layout);
         }
 
+        let shader_path = conf_dir.join(&shader_config.file);
+
+        // Setup hot reload if enabled
+        let hot_reloader = if let Some(hot_reload_config) = &config.hot_reload {
+            if hot_reload_config.enabled {
+                match HotReloader::new(&shader_path) {
+                    Ok(reloader) => {
+                        log::info!("Hot reload enabled for shader: {:?}", shader_path);
+                        Some(reloader)
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to setup hot reload: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let render_pipeline = crate::pipeline::create_pipeline(
             &device,
             conf_dir,
@@ -202,6 +229,8 @@ impl<'a> State<'a> {
             osc_uniform,
             spectrum_uniform,
             sound_bind_group,
+            hot_reloader,
+            shader_path,
         }
     }
 
@@ -234,6 +263,16 @@ impl<'a> State<'a> {
     }
 
     pub fn update(&mut self) {
+        // Check for shader hot reload
+        if let Some(hot_reloader) = &self.hot_reloader {
+            if hot_reloader.check_for_changes() {
+                match self.reload_shader() {
+                    Ok(_) => log::info!("Shader reloaded successfully"),
+                    Err(e) => log::error!("Failed to reload shader: {}", e),
+                }
+            }
+        }
+
         let time_duration = self.timer.get_duration();
         let time_elapsed = time_duration - self.time_uniform.data.duration;
         self.time_uniform.update(time_duration);
@@ -253,6 +292,154 @@ impl<'a> State<'a> {
             spectrum_uniform.update();
             spectrum_uniform.write_buffer(&self.queue);
         }
+    }
+
+    fn reload_shader(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Reloading shader: {:?}", self.shader_path);
+
+        // Try to create new pipeline safely
+        match self.try_create_new_pipeline() {
+            Ok(new_pipeline) => {
+                // Only update if successful
+                self.render_pipeline = new_pipeline;
+                log::info!("Shader reloaded successfully");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Shader hot reload failed: {}", e);
+                log::info!("Fix the shader file and save to retry");
+                log::info!("Current shader remains active");
+                Err(e.into())
+            }
+        }
+    }
+
+    fn try_create_new_pipeline(&self) -> Result<wgpu::RenderPipeline, String> {
+        // Read the updated shader file
+        let fs_str = std::fs::read_to_string(&self.shader_path)
+            .map_err(|e| format!("Failed to read shader file: {}", e))?;
+
+        // Create new fragment shader module with panic catching
+        let fragment_shader = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Hot Reloaded Fragment Shader"),
+                    source: wgpu::ShaderSource::Wgsl(fs_str.into()),
+                })
+        })) {
+            Ok(shader) => shader,
+            Err(_) => {
+                return Err("WGSL compilation error - check shader syntax".to_string());
+            }
+        };
+
+        // Create vertex shader (same as before)
+        let vertex_shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Vertex Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/vertex.wgsl").into()),
+            });
+
+        // Recreate bind group layouts (same as in new())
+        let mut uniform_bind_group_factory = BindGroupFactory::new();
+        uniform_bind_group_factory
+            .add_entry(WindowUniform::BINDING_INDEX, &self.window_uniform.buffer);
+        uniform_bind_group_factory.add_entry(TimeUniform::BINDING_INDEX, &self.time_uniform.buffer);
+        let (uniform_bind_group_layout, _) =
+            uniform_bind_group_factory.create(&self.device, "uniform");
+        let uniform_bind_group_layout =
+            uniform_bind_group_layout.ok_or("Failed to create uniform bind group layout")?;
+
+        let mut device_bind_group_factory = BindGroupFactory::new();
+        device_bind_group_factory
+            .add_entry(MouseUniform::BINDING_INDEX, &self.mouse_uniform.buffer);
+        let (device_bind_group_layout, _) =
+            device_bind_group_factory.create(&self.device, "device");
+        let device_bind_group_layout =
+            device_bind_group_layout.ok_or("Failed to create device bind group layout")?;
+
+        let mut sound_bind_group_factory = BindGroupFactory::new();
+        if let Some(ou) = &self.osc_uniform {
+            sound_bind_group_factory.add_entry(OscUniform::BINDING_INDEX, &ou.buffer);
+        }
+        if let Some(su) = &self.spectrum_uniform {
+            sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
+        }
+        let (sound_bind_group_layout, _) = sound_bind_group_factory.create(&self.device, "sound");
+
+        let mut bind_group_layouts = vec![&uniform_bind_group_layout, &device_bind_group_layout];
+        if let Some(layout) = &sound_bind_group_layout {
+            bind_group_layouts.push(&layout);
+        }
+
+        // Create new pipeline layout with panic catching
+        let render_pipeline_layout =
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.device
+                    .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Hot Reload Render Pipeline Layout"),
+                        bind_group_layouts: &bind_group_layouts,
+                        push_constant_ranges: &[],
+                    })
+            })) {
+                Ok(layout) => layout,
+                Err(_) => {
+                    return Err("Failed to create pipeline layout".to_string());
+                }
+            };
+
+        // Create new render pipeline with panic catching
+        let new_render_pipeline =
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.device
+                    .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                        label: Some("Hot Reload Render Pipeline"),
+                        layout: Some(&render_pipeline_layout),
+                        vertex: wgpu::VertexState {
+                            module: &vertex_shader,
+                            entry_point: "vs_main",
+                            buffers: &[crate::vertex::Vertex::desc()],
+                            compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        },
+                        fragment: Some(wgpu::FragmentState {
+                            module: &fragment_shader,
+                            entry_point: "fs_main",
+                            targets: &[Some(wgpu::ColorTargetState {
+                                format: self.surface_config.format,
+                                blend: Some(wgpu::BlendState::REPLACE),
+                                write_mask: wgpu::ColorWrites::ALL,
+                            })],
+                            compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        }),
+                        primitive: wgpu::PrimitiveState {
+                            topology: wgpu::PrimitiveTopology::TriangleList,
+                            strip_index_format: None,
+                            front_face: wgpu::FrontFace::Ccw,
+                            cull_mode: Some(wgpu::Face::Back),
+                            polygon_mode: wgpu::PolygonMode::Fill,
+                            unclipped_depth: false,
+                            conservative: false,
+                        },
+                        depth_stencil: None,
+                        multisample: wgpu::MultisampleState {
+                            count: 1,
+                            mask: !0,
+                            alpha_to_coverage_enabled: false,
+                        },
+                        multiview: None,
+                        cache: None,
+                    })
+            })) {
+                Ok(pipeline) => pipeline,
+                Err(_) => {
+                    return Err(
+                        "Failed to create render pipeline - check shader compatibility".to_string(),
+                    );
+                }
+            };
+
+        Ok(new_render_pipeline)
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

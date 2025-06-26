@@ -7,3 +7,6 @@ shader_type = "fragment"
 label = "Fragment Shader"
 entry_point = "fs_main"
 file = "fragment.wgsl"
+
+[hot_reload]
+enabled = true

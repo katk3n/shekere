@@ -90,6 +90,16 @@ The application supports two audio input methods:
 
 Both create GPU-accessible uniform data for shader consumption.
 
+## Hot Reload System
+
+The application includes a hot reload system for live coding:
+
+- **File Watching**: Uses `notify` crate to monitor WGSL file changes
+- **Error Safety**: WGSL compilation errors and pipeline creation errors are caught using `std::panic::catch_unwind()`
+- **Graceful Degradation**: On error, the existing render pipeline is maintained and the application continues running
+- **Auto Recovery**: After file modification, automatic reload is attempted
+- **Configuration**: Enable with `[hot_reload] enabled = true`
+
 ## Key Implementation Details
 
 - Uses `winit` for window management and input handling
@@ -98,3 +108,52 @@ Both create GPU-accessible uniform data for shader consumption.
 - Real-time uniform updates in the render loop
 - Modular bind group system allows dynamic uniform combinations
 - Configuration file path determines shader file resolution directory
+
+## Testing Requirements
+
+**MANDATORY**: When adding new features or modifying existing functionality:
+
+1. **Write comprehensive unit tests**:
+   - Test all public methods and functions
+   - Cover both success and error cases
+   - Include edge cases and boundary conditions
+   - Use mock objects for external dependencies (file system, network, etc.)
+   - Ensure tests are deterministic and not dependent on external state
+
+2. **Add integration tests when appropriate**:
+   - Test configuration parsing for new TOML sections
+   - Test feature interactions with existing systems
+   - Verify end-to-end workflows for complex features
+
+3. **Follow testing patterns**:
+   - Use `#[cfg(test)]` for test-only code and mocks
+   - Place unit tests in the same file as the implementation
+   - Place integration tests in `tests/` directory
+   - Use descriptive test names that explain the scenario
+   - Add helpful assertion messages for debugging
+
+4. **Test coverage requirements**:
+   - New features must have >90% test coverage
+   - Critical paths (error handling, safety mechanisms) must have 100% coverage
+   - Configuration parsing must be fully tested
+   - Mock external dependencies for reliable testing
+
+## Documentation Maintenance
+
+**IMPORTANT**: When adding new features or modifying existing functionality:
+
+1. **Always update README.md** to reflect changes in:
+   - Configuration options and syntax
+   - Available uniforms and their bindings
+   - New shader development workflows
+   - Example code and usage patterns
+
+2. **Update this CLAUDE.md** with:
+   - New architectural patterns or design decisions
+   - Changes to core systems (uniforms, pipeline, etc.)
+   - Important implementation details for future development
+
+3. **Maintain consistency** between:
+   - Configuration examples in README.md
+   - Test cases in the codebase
+   - Example projects in `examples/` directory
