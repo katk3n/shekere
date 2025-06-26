@@ -360,7 +360,7 @@ enabled = true
 
         let config = Config::from_toml(toml_str).unwrap();
         assert!(config.validate().is_ok());
-        
+
         // Check all components are present
         assert!(config.osc.is_some());
         assert!(config.spectrum.is_some());
