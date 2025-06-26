@@ -12,3 +12,6 @@ file = "fragment.wgsl"
 min_frequency = 27.0
 max_frequency = 2000.0
 sampling_rate = 44100
+
+[hot_reload]
+enabled = true

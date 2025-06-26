@@ -90,6 +90,16 @@ The application supports two audio input methods:
 
 Both create GPU-accessible uniform data for shader consumption.
 
+## Hot Reload System
+
+The application includes a hot reload system for live coding:
+
+- **File Watching**: Uses `notify` crate to monitor WGSL file changes
+- **Error Safety**: WGSL compilation errors and pipeline creation errors are caught using `std::panic::catch_unwind()`
+- **Graceful Degradation**: On error, the existing render pipeline is maintained and the application continues running
+- **Auto Recovery**: After file modification, automatic reload is attempted
+- **Configuration**: Enable with `[hot_reload] enabled = true`
+
 ## Key Implementation Details
 
 - Uses `winit` for window management and input handling
@@ -98,3 +108,23 @@ Both create GPU-accessible uniform data for shader consumption.
 - Real-time uniform updates in the render loop
 - Modular bind group system allows dynamic uniform combinations
 - Configuration file path determines shader file resolution directory
+
+## Documentation Maintenance
+
+**IMPORTANT**: When adding new features or modifying existing functionality:
+
+1. **Always update README.md** to reflect changes in:
+   - Configuration options and syntax
+   - Available uniforms and their bindings
+   - New shader development workflows
+   - Example code and usage patterns
+
+2. **Update this CLAUDE.md** with:
+   - New architectural patterns or design decisions
+   - Changes to core systems (uniforms, pipeline, etc.)
+   - Important implementation details for future development
+
+3. **Maintain consistency** between:
+   - Configuration examples in README.md
+   - Test cases in the codebase
+   - Example projects in `examples/` directory

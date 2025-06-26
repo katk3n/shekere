@@ -6,6 +6,12 @@ pub struct Config {
     pub pipeline: Vec<ShaderConfig>,
     pub osc: Option<OscConfig>,
     pub spectrum: Option<SpectrumConfig>,
+    pub hot_reload: Option<HotReloadConfig>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct HotReloadConfig {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -181,6 +187,7 @@ sampling_rate = 44100
             }],
             osc: None,
             spectrum: None,
+            hot_reload: None,
         };
 
         assert!(config.validate().is_ok());
@@ -201,6 +208,7 @@ sampling_rate = 44100
             }],
             osc: None,
             spectrum: None,
+            hot_reload: None,
         };
 
         assert!(config.validate().is_err());
@@ -216,6 +224,7 @@ sampling_rate = 44100
             pipeline: vec![],
             osc: None,
             spectrum: None,
+            hot_reload: None,
         };
 
         assert!(config.validate().is_err());
@@ -240,6 +249,7 @@ sampling_rate = 44100
                 max_frequency: 500.0,
                 sampling_rate: 44100,
             }),
+            hot_reload: None,
         };
 
         assert!(config.validate().is_err());

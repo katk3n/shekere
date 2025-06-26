@@ -1,6 +1,7 @@
 mod audio_stream;
 mod bind_group_factory;
 mod config;
+mod hot_reload;
 mod osc;
 mod pipeline;
 mod state;

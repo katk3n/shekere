@@ -92,6 +92,17 @@ max_frequency = 2000.0
 sampling_rate = 44100
 ```
 
+#### Hot Reload
+
+Enable shader hot reload for live coding:
+
+```toml
+[hot_reload]
+enabled = true
+```
+
+When enabled, the application automatically reloads the shader when the WGSL file is modified, allowing for real-time shader development without restarting the application.
+
 ## Shader Development Guide
 
 ### Basic Fragment Shader
