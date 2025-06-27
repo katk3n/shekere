@@ -1,5 +1,9 @@
 # KaCHoFuGeTsu
 
+<div align="center">
+  <img src="logo.svg" alt="kchfgt logo" width="320">
+</div>
+
 kchfgt ("花鳥風月", which means beauties of nature) is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
 
 ## Installation
