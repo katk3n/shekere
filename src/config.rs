@@ -6,6 +6,7 @@ pub struct Config {
     pub pipeline: Vec<ShaderConfig>,
     pub osc: Option<OscConfig>,
     pub spectrum: Option<SpectrumConfig>,
+    pub midi: Option<MidiConfig>,
     pub hot_reload: Option<HotReloadConfig>,
 }
 
@@ -46,6 +47,11 @@ pub struct SpectrumConfig {
     pub min_frequency: f32,
     pub max_frequency: f32,
     pub sampling_rate: u32,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct MidiConfig {
+    pub enabled: bool,
 }
 
 impl Config {
@@ -109,6 +115,7 @@ file = "test.wgsl"
         assert_eq!(config.pipeline[0].shader_type, "fragment");
         assert_eq!(config.osc, None);
         assert_eq!(config.spectrum, None);
+        assert_eq!(config.midi, None);
         assert_eq!(config.hot_reload, None);
     }
 
@@ -188,6 +195,7 @@ sampling_rate = 44100
             }],
             osc: None,
             spectrum: None,
+            midi: None,
             hot_reload: None,
         };
 
@@ -209,6 +217,7 @@ sampling_rate = 44100
             }],
             osc: None,
             spectrum: None,
+            midi: None,
             hot_reload: None,
         };
 
@@ -225,6 +234,7 @@ sampling_rate = 44100
             pipeline: vec![],
             osc: None,
             spectrum: None,
+            midi: None,
             hot_reload: None,
         };
 
@@ -250,6 +260,7 @@ sampling_rate = 44100
                 max_frequency: 500.0,
                 sampling_rate: 44100,
             }),
+            midi: None,
             hot_reload: None,
         };
 
@@ -329,6 +340,28 @@ file = "test.wgsl"
     }
 
     #[test]
+    fn test_config_from_toml_with_midi() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "midi"
+entry_point = "fs_main"
+file = "midi.wgsl"
+
+[midi]
+enabled = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        let midi = config.midi.unwrap();
+        assert_eq!(midi.enabled, true);
+    }
+
+    #[test]
     fn test_config_with_all_features_including_hot_reload() {
         let toml_str = r#"
 [window]
@@ -354,6 +387,9 @@ min_frequency = 20.0
 max_frequency = 20000.0
 sampling_rate = 44100
 
+[midi]
+enabled = true
+
 [hot_reload]
 enabled = true
 "#;
@@ -364,7 +400,9 @@ enabled = true
         // Check all components are present
         assert!(config.osc.is_some());
         assert!(config.spectrum.is_some());
+        assert!(config.midi.is_some());
         assert!(config.hot_reload.is_some());
         assert_eq!(config.hot_reload.unwrap().enabled, true);
+        assert_eq!(config.midi.unwrap().enabled, true);
     }
 }

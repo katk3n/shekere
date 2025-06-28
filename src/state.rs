@@ -1,6 +1,7 @@
 use crate::bind_group_factory::BindGroupFactory;
 use crate::hot_reload::HotReloader;
 use crate::timer::Timer;
+use crate::uniforms::midi_uniform::MidiUniform;
 use crate::uniforms::mouse_uniform::MouseUniform;
 use crate::uniforms::osc_uniform::OscUniform;
 use crate::uniforms::spectrum_uniform::SpectrumUniform;
@@ -40,6 +41,7 @@ pub struct State<'a> {
     mouse_uniform: MouseUniform,
     osc_uniform: Option<OscUniform<'a>>,
     spectrum_uniform: Option<SpectrumUniform>,
+    midi_uniform: Option<MidiUniform>,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
     sound_bind_group: Option<wgpu::BindGroup>,
@@ -128,6 +130,11 @@ impl<'a> State<'a> {
         } else {
             None
         };
+        let midi_uniform = if let Some(midi_config) = &config.midi {
+            Some(MidiUniform::new(&device, &midi_config))
+        } else {
+            None
+        };
 
         // Create bind group for uniforms (window resolution, time)
         let mut uniform_bind_group_factory = BindGroupFactory::new();
@@ -157,6 +164,9 @@ impl<'a> State<'a> {
         }
         if let Some(su) = &spectrum_uniform {
             sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
+        }
+        if let Some(mu) = &midi_uniform {
+            sound_bind_group_factory.add_entry(MidiUniform::BINDING_INDEX, &mu.buffer);
         }
         let (sound_bind_group_layout, sound_bind_group) =
             sound_bind_group_factory.create(&device, "sound");
@@ -228,6 +238,7 @@ impl<'a> State<'a> {
             device_bind_group,
             osc_uniform,
             spectrum_uniform,
+            midi_uniform,
             sound_bind_group,
             hot_reloader,
             shader_path,
@@ -291,6 +302,12 @@ impl<'a> State<'a> {
         if let Some(spectrum_uniform) = self.spectrum_uniform.as_mut() {
             spectrum_uniform.update();
             spectrum_uniform.write_buffer(&self.queue);
+        }
+
+        // Update MidiUniform
+        if let Some(midi_uniform) = self.midi_uniform.as_mut() {
+            midi_uniform.update();
+            midi_uniform.write_buffer(&self.queue);
         }
     }
 
@@ -365,6 +382,9 @@ impl<'a> State<'a> {
         }
         if let Some(su) = &self.spectrum_uniform {
             sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
+        }
+        if let Some(mu) = &self.midi_uniform {
+            sound_bind_group_factory.add_entry(MidiUniform::BINDING_INDEX, &mu.buffer);
         }
         let (sound_bind_group_layout, _) = sound_bind_group_factory.create(&self.device, "sound");
 
