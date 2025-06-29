@@ -1,79 +1,4 @@
-struct WindowUniform {
-    // window size in physical size
-    resolution: vec2<f32>,
-}
-
-struct TimeUniform {
-    // time elapsed since the program started
-    duration: f32,
-}
-
-struct MouseUniform {
-    // mouse position in physical size
-    position: vec2<f32>,
-}
-
-struct MidiUniform {
-    // note velocities (0-127 normalized to 0.0-1.0) 
-    // Packed into vec4s for alignment: 128 values in 32 vec4s
-    notes: array<vec4<f32>, 32>,
-    // control change values (0-127 normalized to 0.0-1.0)
-    // Packed into vec4s for alignment: 128 values in 32 vec4s
-    cc: array<vec4<f32>, 32>,
-}
-
-@group(0) @binding(0) var<uniform> window: WindowUniform;
-@group(0) @binding(1) var<uniform> time: TimeUniform;
-@group(1) @binding(0) var<uniform> mouse: MouseUniform;
-@group(2) @binding(2) var<uniform> midi: MidiUniform;
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-}
-
-fn to_linear_rgb(col: vec3<f32>) -> vec3<f32> {
-    let gamma = 2.2;
-    let c = clamp(col, vec3(0.0), vec3(1.0));
-    return vec3(pow(c, vec3(gamma)));
-}
-
-// Helper function to get a note value from the packed array
-fn get_note(note_num: u32) -> f32 {
-    let vec4_index = note_num / 4u;
-    let element_index = note_num % 4u;
-    
-    if vec4_index >= 32u {
-        return 0.0;
-    }
-    
-    let note_vec = midi.notes[vec4_index];
-    switch element_index {
-        case 0u: { return note_vec.x; }
-        case 1u: { return note_vec.y; }
-        case 2u: { return note_vec.z; }
-        case 3u: { return note_vec.w; }
-        default: { return 0.0; }
-    }
-}
-
-// Helper function to get a CC value from the packed array
-fn get_cc(cc_num: u32) -> f32 {
-    let vec4_index = cc_num / 4u;
-    let element_index = cc_num % 4u;
-    
-    if vec4_index >= 32u {
-        return 0.0;
-    }
-    
-    let cc_vec = midi.cc[vec4_index];
-    switch element_index {
-        case 0u: { return cc_vec.x; }
-        case 1u: { return cc_vec.y; }
-        case 2u: { return cc_vec.z; }
-        case 3u: { return cc_vec.w; }
-        default: { return 0.0; }
-    }
-}
+// Common definitions (including MidiUniform, bindings, and MIDI helpers) are automatically included
 
 fn hue_to_rgb(hue: f32) -> vec3<f32> {
     let kr = (5.0 + hue * 6.0) % 6.0;
@@ -113,7 +38,7 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
     
     if dx <= pad_size * 0.5 && dy <= pad_size * 0.5 {
         let note_number = 36u + pad_index; // Notes 36-51 (16 pads)
-        let velocity = get_note(note_number);
+        let velocity = midi_note(note_number);
         
         // Base pad color varies by position
         let base_hue = f32(pad_index) / 16.0;
@@ -139,10 +64,9 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let min_xy = min(window.resolution.x, window.resolution.y);
     let uv = vec2(
-        (in.position.x / min_xy) * 2.0 - 1.0,
-        (1.0 - in.position.y / min_xy) * 2.0 - 1.0
+        normalized_coords(in.position.xy).x,
+        -normalized_coords(in.position.xy).y
     );
     
     let dist = length(uv);
@@ -154,14 +78,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Background effects controlled by CCs (applied everywhere)
     
     // CC 1 (Modulation Wheel) - Controls circular wave patterns across entire screen
-    let mod_wheel = get_cc(1u);
+    let mod_wheel = midi_control(1u);
     if mod_wheel > 0.0 {
         let circle_intensity = sin(dist * 8.0 + time.duration * 2.0) * mod_wheel;
         col += hue_to_rgb(angle / 6.28318) * circle_intensity * 0.4;
     }
     
     // CC 10 (Pan) - Controls horizontal wave displacement across entire screen
-    let pan = get_cc(10u);
+    let pan = midi_control(10u);
     if pan > 0.0 {
         let pan_shift = (pan - 0.5) * 2.0; // Convert to -1.0 to 1.0
         let wave_x = sin((uv.x + pan_shift) * 10.0 + time.duration) * pan;
@@ -169,14 +93,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // CC 11 (Expression) - Controls vertical ripple effects across entire screen
-    let expression = get_cc(11u);
+    let expression = midi_control(11u);
     if expression > 0.0 {
         let ripple = sin(uv.y * 12.0 + time.duration * 3.0) * expression;
         col += vec3(ripple * 0.3);
     }
     
     // CC 20 - Controls spiral patterns across entire screen
-    let cc20 = get_cc(20u);
+    let cc20 = midi_control(20u);
     if cc20 > 0.0 {
         let spiral_angle = angle + dist * 4.0 * cc20 + time.duration;
         let spiral_intensity = sin(spiral_angle) * cc20;
@@ -184,7 +108,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // CC 21 - Controls radial pulsing from center across entire screen
-    let cc21 = get_cc(21u);
+    let cc21 = midi_control(21u);
     if cc21 > 0.0 {
         let pulse = sin(time.duration * 4.0 + dist * 3.0) * 0.5 + 0.5;
         let pulse_intensity = pulse * cc21;
@@ -192,7 +116,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // CC 22 - Controls grid patterns across entire screen
-    let cc22 = get_cc(22u);
+    let cc22 = midi_control(22u);
     if cc22 > 0.0 {
         let grid_x = sin(uv.x * 20.0 * cc22 + time.duration);
         let grid_y = sin(uv.y * 20.0 * cc22 + time.duration);
@@ -209,7 +133,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // CC 7 (Volume) - Controls overall brightness (applied last)
-    let volume = get_cc(7u);
+    let volume = midi_control(7u);
     col *= (0.6 + volume * 0.8);
     
     return vec4(to_linear_rgb(col), 1.0);

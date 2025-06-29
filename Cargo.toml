@@ -24,6 +24,7 @@ ringbuf = "0.4.7"
 spectrum-analyzer = "1.6.0"
 notify = "6.1.1"
 midir = "0.10.0"
+thiserror = "1.0"
 
 [dev-dependencies]
 tempfile = "3.8.1"

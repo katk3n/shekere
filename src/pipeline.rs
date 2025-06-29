@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::shader_preprocessor::ShaderPreprocessor;
 use crate::vertex::Vertex;
 use crate::ShaderConfig;
 use wgpu::{BindGroupLayout, Device, RenderPipeline, SurfaceConfiguration};
@@ -17,7 +18,8 @@ pub fn create_pipeline(
     });
 
     let shader_path = conf_dir.join(&shader_config.file);
-    let fs_str = std::fs::read_to_string(shader_path.to_str().unwrap()).unwrap();
+    let preprocessor = ShaderPreprocessor::new(conf_dir);
+    let fs_str = preprocessor.process_file_with_embedded_defs(&shader_path).unwrap();
     let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(&shader_config.label),
         source: wgpu::ShaderSource::Wgsl(fs_str.into()),
