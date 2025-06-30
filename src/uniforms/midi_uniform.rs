@@ -50,7 +50,7 @@ impl MidiUniform {
     }
 
     fn setup_midi_input(data: Arc<Mutex<MidiUniformData>>) -> Option<MidiInputConnection<()>> {
-        let midi_in = MidiInput::new("kchfgt MIDI Input").ok()?;
+        let midi_in = MidiInput::new("shekere MIDI Input").ok()?;
 
         // Get available ports
         let in_ports = midi_in.ports();
@@ -68,7 +68,7 @@ impl MidiUniform {
 
         let connection = midi_in.connect(
             in_port,
-            "kchfgt-midi",
+            "shekere-midi",
             move |_timestamp, message, _| {
                 Self::handle_midi_message(&data, message);
             },

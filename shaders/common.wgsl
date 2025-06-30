@@ -1,4 +1,4 @@
-// Embedded common definitions for kchfgt shaders
+// Embedded common definitions for shekere shaders
 // This file is automatically included at the beginning of every shader
 
 // === UNIFORM STRUCTURES ===

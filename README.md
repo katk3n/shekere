@@ -1,45 +1,45 @@
-# KaCHoFuGeTsu
+# Shekere
 
 <div align="center">
-  <img src="logo.svg" alt="kchfgt logo" width="320">
+  <img src="shekere_logo.png" alt="Shekere Logo" width="320"/>
 </div>
 
-kchfgt ("花鳥風月", which means beauties of nature) is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
+shekere is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
 
 ## Installation
 
 ### Install from Cargo
 
 ```bash
-cargo install kchfgt
+cargo install shekere
 ```
 
 ### Download Binary
 
-Download binaries from [Releases](https://github.com/katk3n/kchfgt/releases).
+Download binaries from [Releases](https://github.com/katk3n/shekere/releases).
 
 ## Basic Usage
 
 ```bash
-kchfgt <config_file>
+shekere <config_file>
 ```
 
 ### Examples:
 
 ```bash
 # Run mouse-controlled shader art
-kchfgt examples/mouse/mouse.toml
+shekere examples/mouse/mouse.toml
 
 # Run audio spectrum analyzer visualizer
-kchfgt examples/spectrum/spectrum.toml
+shekere examples/spectrum/spectrum.toml
 
 # Run shader art with TidalCycles integration
-kchfgt examples/osc/osc.toml
+shekere examples/osc/osc.toml
 ```
 
 ## Project Structure
 
-A typical kchfgt project has the following structure:
+A typical shekere project has the following structure:
 
 ```
 my_project/
@@ -111,7 +111,7 @@ When enabled, the application automatically reloads the shader when the WGSL fil
 
 ### Basic Fragment Shader
 
-kchfgt automatically includes common definitions (uniforms, bindings, and helper functions) in every shader. You only need to write your fragment shader logic:
+shekere automatically includes common definitions (uniforms, bindings, and helper functions) in every shader. You only need to write your fragment shader logic:
 
 ```wgsl
 // Common definitions are automatically included - no need to define uniforms!
@@ -135,7 +135,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Available Helper Functions
 
-kchfgt provides these built-in helper functions:
+shekere provides these built-in helper functions:
 
 #### Coordinate Helpers
 ```wgsl
@@ -305,7 +305,7 @@ Use these as reference to create your own shader art projects.
 ### Getting Started
 1. Create a TOML config file with window settings and shader path
 2. Write a fragment shader using the built-in uniforms and helpers
-3. Run with `kchfgt config.toml`
+3. Run with `shekere config.toml`
 
 ### Essential Helpers
 - `normalized_coords(position)` - Convert to -1.0 to 1.0 coordinates

@@ -1,4 +1,4 @@
-use kchfgt::Config;
+use shekere::Config;
 use std::fs;
 use std::io::Write;
 use tempfile::NamedTempFile;
