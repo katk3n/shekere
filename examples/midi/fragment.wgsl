@@ -38,7 +38,7 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
     
     if dx <= pad_size * 0.5 && dy <= pad_size * 0.5 {
         let note_number = 36u + pad_index; // Notes 36-51 (16 pads)
-        let velocity = midi_note(note_number);
+        let velocity = MidiNote(note_number);
         
         // Base pad color varies by position
         let base_hue = f32(pad_index) / 16.0;
@@ -65,8 +65,8 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = vec2(
-        normalized_coords(in.position.xy).x,
-        -normalized_coords(in.position.xy).y
+        NormalizedCoords(in.position.xy).x,
+        -NormalizedCoords(in.position.xy).y
     );
     
     let dist = length(uv);
@@ -78,50 +78,50 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Background effects controlled by CCs (applied everywhere)
     
     // CC 1 (Modulation Wheel) - Controls circular wave patterns across entire screen
-    let mod_wheel = midi_control(1u);
+    let mod_wheel = MidiControl(1u);
     if mod_wheel > 0.0 {
-        let circle_intensity = sin(dist * 8.0 + time.duration * 2.0) * mod_wheel;
+        let circle_intensity = sin(dist * 8.0 + Time.duration * 2.0) * mod_wheel;
         col += hue_to_rgb(angle / 6.28318) * circle_intensity * 0.4;
     }
     
     // CC 10 (Pan) - Controls horizontal wave displacement across entire screen
-    let pan = midi_control(10u);
+    let pan = MidiControl(10u);
     if pan > 0.0 {
         let pan_shift = (pan - 0.5) * 2.0; // Convert to -1.0 to 1.0
-        let wave_x = sin((uv.x + pan_shift) * 10.0 + time.duration) * pan;
+        let wave_x = sin((uv.x + pan_shift) * 10.0 + Time.duration) * pan;
         col += vec3(wave_x * 0.3);
     }
     
     // CC 11 (Expression) - Controls vertical ripple effects across entire screen
-    let expression = midi_control(11u);
+    let expression = MidiControl(11u);
     if expression > 0.0 {
-        let ripple = sin(uv.y * 12.0 + time.duration * 3.0) * expression;
+        let ripple = sin(uv.y * 12.0 + Time.duration * 3.0) * expression;
         col += vec3(ripple * 0.3);
     }
     
     // CC 20 - Controls spiral patterns across entire screen
-    let cc20 = midi_control(20u);
+    let cc20 = MidiControl(20u);
     if cc20 > 0.0 {
-        let spiral_angle = angle + dist * 4.0 * cc20 + time.duration;
+        let spiral_angle = angle + dist * 4.0 * cc20 + Time.duration;
         let spiral_intensity = sin(spiral_angle) * cc20;
         col += hue_to_rgb(spiral_angle / 6.28318) * spiral_intensity * 0.5;
     }
     
     // CC 21 - Controls radial pulsing from center across entire screen
-    let cc21 = midi_control(21u);
+    let cc21 = MidiControl(21u);
     if cc21 > 0.0 {
-        let pulse = sin(time.duration * 4.0 + dist * 3.0) * 0.5 + 0.5;
+        let pulse = sin(Time.duration * 4.0 + dist * 3.0) * 0.5 + 0.5;
         let pulse_intensity = pulse * cc21;
         col += vec3(pulse_intensity * 0.4);
     }
     
     // CC 22 - Controls grid patterns across entire screen
-    let cc22 = midi_control(22u);
+    let cc22 = MidiControl(22u);
     if cc22 > 0.0 {
-        let grid_x = sin(uv.x * 20.0 * cc22 + time.duration);
-        let grid_y = sin(uv.y * 20.0 * cc22 + time.duration);
+        let grid_x = sin(uv.x * 20.0 * cc22 + Time.duration);
+        let grid_y = sin(uv.y * 20.0 * cc22 + Time.duration);
         let grid_intensity = grid_x * grid_y * cc22;
-        col += hue_to_rgb((uv.x + uv.y + time.duration) * 0.5) * grid_intensity * 0.5;
+        col += hue_to_rgb((uv.x + uv.y + Time.duration) * 0.5) * grid_intensity * 0.5;
     }
     
     // Draw 4x4 drum machine pads (centered on screen)
@@ -133,8 +133,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // CC 7 (Volume) - Controls overall brightness (applied last)
-    let volume = midi_control(7u);
+    let volume = MidiControl(7u);
     col *= (0.6 + volume * 0.8);
     
-    return vec4(to_linear_rgb(col), 1.0);
+    return vec4(ToLinearRgb(col), 1.0);
 }

@@ -1,7 +1,7 @@
 # Shekere
 
 <div align="center">
-  <img src="shekere_logo.png" alt="Shekere Logo" width="320"/>
+  <img src="shekere_logo.png" alt="Shekere Logo" width="480"/>
 </div>
 
 shekere is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
@@ -119,17 +119,17 @@ shekere automatically includes common definitions (uniforms, bindings, and helpe
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Use built-in helper functions
-    let uv = normalized_coords(in.position.xy);
-    let m = mouse_coords();
+    let uv = NormalizedCoords(in.position.xy);
+    let m = MouseCoords();
     
     // Time-based color animation
     let color = vec3(
-        sin(time.duration + uv.x * 3.0) * 0.5 + 0.5,
-        cos(time.duration + uv.y * 3.0 + m.x) * 0.5 + 0.5,
-        sin(time.duration * 2.0 + length(uv) * 5.0) * 0.5 + 0.5
+        sin(Time.duration + uv.x * 3.0) * 0.5 + 0.5,
+        cos(Time.duration + uv.y * 3.0 + m.x) * 0.5 + 0.5,
+        sin(Time.duration * 2.0 + length(uv) * 5.0) * 0.5 + 0.5
     );
     
-    return vec4(to_linear_rgb(color), 1.0);
+    return vec4(ToLinearRgb(color), 1.0);
 }
 ```
 
@@ -140,28 +140,28 @@ shekere provides these built-in helper functions:
 #### Coordinate Helpers
 ```wgsl
 // Convert screen position to normalized coordinates (-1.0 to 1.0)
-fn normalized_coords(position: vec2<f32>) -> vec2<f32>
+fn NormalizedCoords(position: vec2<f32>) -> vec2<f32>
 
 // Get normalized mouse coordinates
-fn mouse_coords() -> vec2<f32>
+fn MouseCoords() -> vec2<f32>
 ```
 
 #### Color Conversion
 ```wgsl
 // Convert to linear RGB (gamma correction)
-fn to_linear_rgb(col: vec3<f32>) -> vec3<f32>
+fn ToLinearRgb(col: vec3<f32>) -> vec3<f32>
 
 // Convert to sRGB
-fn to_srgb(col: vec3<f32>) -> vec3<f32>
+fn ToSrgb(col: vec3<f32>) -> vec3<f32>
 ```
 
 #### MIDI Helpers (when MIDI is configured)
 ```wgsl
 // Get MIDI note velocity (0.0-1.0) for note number (0-127)
-fn midi_note(note_num: u32) -> f32
+fn MidiNote(note_num: u32) -> f32
 
 // Get MIDI control change value (0.0-1.0) for CC number (0-127)  
-fn midi_control(cc_num: u32) -> f32
+fn MidiControl(cc_num: u32) -> f32
 ```
 
 ### Example Usage
@@ -170,15 +170,15 @@ fn midi_control(cc_num: u32) -> f32
 ```wgsl
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = normalized_coords(in.position.xy);
+    let uv = NormalizedCoords(in.position.xy);
     
     let color = vec3(
-        sin(time.duration + uv.x) * 0.5 + 0.5,
-        cos(time.duration + uv.y) * 0.5 + 0.5,
-        sin(time.duration + length(uv)) * 0.5 + 0.5
+        sin(Time.duration + uv.x) * 0.5 + 0.5,
+        cos(Time.duration + uv.y) * 0.5 + 0.5,
+        sin(Time.duration + length(uv)) * 0.5 + 0.5
     );
     
-    return vec4(to_linear_rgb(color), 1.0);
+    return vec4(ToLinearRgb(color), 1.0);
 }
 ```
 
@@ -186,8 +186,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 ```wgsl
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = normalized_coords(in.position.xy);
-    let m = mouse_coords();
+    let uv = NormalizedCoords(in.position.xy);
+    let m = MouseCoords();
     
     let dist = length(uv - m);
     let brightness = 1.0 - smoothstep(0.0, 0.5, dist);
@@ -200,18 +200,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 ```wgsl
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = normalized_coords(in.position.xy);
+    let uv = NormalizedCoords(in.position.xy);
     
     // Use MIDI note C4 (60) for color intensity
-    let note_intensity = midi_note(60u);
+    let note_intensity = MidiNote(60u);
     
     // Use MIDI CC 1 (modulation wheel) for animation speed
-    let mod_wheel = midi_control(1u);
+    let mod_wheel = MidiControl(1u);
     let speed = 1.0 + mod_wheel * 5.0;
     
-    let color = vec3(sin(time.duration * speed) * note_intensity);
+    let color = vec3(sin(Time.duration * speed) * note_intensity);
     
-    return vec4(to_linear_rgb(color), 1.0);
+    return vec4(ToLinearRgb(color), 1.0);
 }
 ```
 
@@ -221,34 +221,34 @@ All uniforms are automatically included and bound. You can directly use them in 
 
 ### Always Available Uniforms
 
-#### WindowUniform - `window`
+#### WindowUniform - `Window`
 ```wgsl
 struct WindowUniform {
     resolution: vec2<f32>,  // [width, height] in pixels
 }
-// Usage: window.resolution.x, window.resolution.y
+// Usage: Window.resolution.x, Window.resolution.y
 ```
 
-#### TimeUniform - `time`
+#### TimeUniform - `Time`
 ```wgsl
 struct TimeUniform {
     duration: f32,  // Seconds since program start
 }
-// Usage: time.duration
+// Usage: Time.duration
 ```
 
-#### MouseUniform - `mouse`
+#### MouseUniform - `Mouse`
 ```wgsl
 struct MouseUniform {
     position: vec2<f32>,  // Mouse coordinates in pixels
 }
-// Usage: mouse.position.x, mouse.position.y
-// Or use helper: mouse_coords() for normalized coordinates
+// Usage: Mouse.position.x, Mouse.position.y
+// Or use helper: MouseCoords() for normalized coordinates
 ```
 
 ### Sound Uniforms (when configured)
 
-#### OscUniform - `osc` (when OSC is enabled)
+#### OscUniform - `Osc` (when OSC is enabled)
 ```wgsl
 struct OscTruck {
     sound: i32,   // Sound ID (from config)
@@ -260,10 +260,10 @@ struct OscTruck {
 struct OscUniform {
     trucks: array<OscTruck, 16>,  // Corresponds to d1-d16 in TidalCycles
 }
-// Usage: osc.trucks[0].gain, osc.trucks[1].note, etc.
+// Usage: Osc.trucks[0].gain, Osc.trucks[1].note, etc.
 ```
 
-#### SpectrumUniform - `spectrum` (when spectrum analysis is enabled)
+#### SpectrumUniform - `Spectrum` (when spectrum analysis is enabled)
 ```wgsl
 struct SpectrumDataPoint {
     frequency: f32,
@@ -277,16 +277,16 @@ struct SpectrumUniform {
     max_frequency: f32,
     max_amplitude: f32,
 }
-// Usage: spectrum.data_points[i].amplitude, spectrum.max_amplitude, etc.
+// Usage: Spectrum.data_points[i].amplitude, Spectrum.max_amplitude, etc.
 ```
 
-#### MidiUniform - `midi` (when MIDI is enabled)
+#### MidiUniform - `Midi` (when MIDI is enabled)
 ```wgsl
 struct MidiUniform {
     notes: array<vec4<f32>, 32>,      // Note velocities (packed)
     controls: array<vec4<f32>, 32>,   // Control change values (packed)
 }
-// Usage: Use helper functions midi_note() and midi_control() instead of direct access
+// Usage: Use helper functions MidiNote() and MidiControl() instead of direct access
 ```
 
 
@@ -308,15 +308,15 @@ Use these as reference to create your own shader art projects.
 3. Run with `shekere config.toml`
 
 ### Essential Helpers
-- `normalized_coords(position)` - Convert to -1.0 to 1.0 coordinates
-- `mouse_coords()` - Get normalized mouse position
-- `to_linear_rgb(color)` - Apply gamma correction
-- `midi_note(60u)` - Get MIDI note velocity (when MIDI enabled)
-- `midi_control(1u)` - Get MIDI CC value (when MIDI enabled)
+- `NormalizedCoords(position)` - Convert to -1.0 to 1.0 coordinates
+- `MouseCoords()` - Get normalized mouse position
+- `ToLinearRgb(color)` - Apply gamma correction
+- `MidiNote(60u)` - Get MIDI note velocity (when MIDI enabled)
+- `MidiControl(1u)` - Get MIDI CC value (when MIDI enabled)
 
 ### Essential Uniforms
-- `window.resolution` - Screen size
-- `time.duration` - Elapsed time
-- `mouse.position` - Mouse position
-- `osc.trucks[0].gain` - OSC data (when enabled)
-- `spectrum.data_points[i].amplitude` - Audio data (when enabled)
+- `Window.resolution` - Screen size
+- `Time.duration` - Elapsed time
+- `Mouse.position` - Mouse position
+- `Osc.trucks[0].gain` - OSC data (when enabled)
+- `Spectrum.data_points[i].amplitude` - Audio data (when enabled)

@@ -7,8 +7,8 @@ fn orb(p: vec2<f32>, p0: vec2<f32>, r: f32, col: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = normalized_coords(in.position.xy);
-    let m = mouse_coords();
+    let uv = NormalizedCoords(in.position.xy);
+    let m = MouseCoords();
 
     let green = vec3(0.0, 1.0, 0.0);
     let black = vec3(0.0, 0.0, 0.0);
@@ -16,5 +16,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var col = black;
     col += orb(uv, m, 0.07, green);
 
-    return vec4(to_linear_rgb(col), 1.0);
+    return vec4(ToLinearRgb(col), 1.0);
 }
