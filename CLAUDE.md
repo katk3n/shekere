@@ -59,6 +59,8 @@ cargo clippy
 cargo clippy --all-targets
 ```
 
+**MANDATORY BEFORE COMMITS**: Always run `cargo fmt` and ensure it completes without errors before creating any commits. Code formatting must be consistent across the entire codebase.
+
 ## Configuration System
 
 The application uses TOML configuration files with the following structure:

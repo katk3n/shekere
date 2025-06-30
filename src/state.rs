@@ -334,7 +334,9 @@ impl<'a> State<'a> {
 
     fn try_create_new_pipeline(&self) -> Result<wgpu::RenderPipeline, String> {
         // Process the updated shader file with embedded definitions
-        let conf_dir = self.shader_path.parent()
+        let conf_dir = self
+            .shader_path
+            .parent()
             .ok_or("Failed to get shader directory")?;
         let preprocessor = ShaderPreprocessor::new(conf_dir);
         let fs_str = preprocessor
