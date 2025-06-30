@@ -1,5 +1,6 @@
 use crate::bind_group_factory::BindGroupFactory;
 use crate::hot_reload::HotReloader;
+use crate::shader_preprocessor::ShaderPreprocessor;
 use crate::timer::Timer;
 use crate::uniforms::midi_uniform::MidiUniform;
 use crate::uniforms::mouse_uniform::MouseUniform;
@@ -332,9 +333,13 @@ impl<'a> State<'a> {
     }
 
     fn try_create_new_pipeline(&self) -> Result<wgpu::RenderPipeline, String> {
-        // Read the updated shader file
-        let fs_str = std::fs::read_to_string(&self.shader_path)
-            .map_err(|e| format!("Failed to read shader file: {}", e))?;
+        // Process the updated shader file with embedded definitions
+        let conf_dir = self.shader_path.parent()
+            .ok_or("Failed to get shader directory")?;
+        let preprocessor = ShaderPreprocessor::new(conf_dir);
+        let fs_str = preprocessor
+            .process_file_with_embedded_defs(&self.shader_path)
+            .map_err(|e| format!("Failed to process shader file: {}", e))?;
 
         // Create new fragment shader module with panic catching
         let fragment_shader = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
