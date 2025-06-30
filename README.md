@@ -111,94 +111,159 @@ When enabled, the application automatically reloads the shader when the WGSL fil
 
 ### Basic Fragment Shader
 
+kchfgt automatically includes common definitions (uniforms, bindings, and helper functions) in every shader. You only need to write your fragment shader logic:
+
 ```wgsl
-// Required uniform structures
-struct WindowUniform {
-    resolution: vec2<f32>,
-}
-
-struct TimeUniform {
-    duration: f32,
-}
-
-// Required uniforms
-@group(0) @binding(0) var<uniform> window: WindowUniform;
-@group(0) @binding(1) var<uniform> time: TimeUniform;
-
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-}
+// Common definitions are automatically included - no need to define uniforms!
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Calculate normalized UV coordinates
-    let min_xy = min(window.resolution.x, window.resolution.y);
-    let uv = (in.position.xy * 2.0 - window.resolution) / min_xy;
+    // Use built-in helper functions
+    let uv = normalized_coords(in.position.xy);
+    let m = mouse_coords();
     
     // Time-based color animation
     let color = vec3(
-        sin(time.duration) * 0.5 + 0.5,
-        cos(time.duration) * 0.5 + 0.5,
-        sin(time.duration * 2.0) * 0.5 + 0.5
+        sin(time.duration + uv.x * 3.0) * 0.5 + 0.5,
+        cos(time.duration + uv.y * 3.0 + m.x) * 0.5 + 0.5,
+        sin(time.duration * 2.0 + length(uv) * 5.0) * 0.5 + 0.5
     );
     
-    return vec4(color, 1.0);
+    return vec4(to_linear_rgb(color), 1.0);
+}
+```
+
+### Available Helper Functions
+
+kchfgt provides these built-in helper functions:
+
+#### Coordinate Helpers
+```wgsl
+// Convert screen position to normalized coordinates (-1.0 to 1.0)
+fn normalized_coords(position: vec2<f32>) -> vec2<f32>
+
+// Get normalized mouse coordinates
+fn mouse_coords() -> vec2<f32>
+```
+
+#### Color Conversion
+```wgsl
+// Convert to linear RGB (gamma correction)
+fn to_linear_rgb(col: vec3<f32>) -> vec3<f32>
+
+// Convert to sRGB
+fn to_srgb(col: vec3<f32>) -> vec3<f32>
+```
+
+#### MIDI Helpers (when MIDI is configured)
+```wgsl
+// Get MIDI note velocity (0.0-1.0) for note number (0-127)
+fn midi_note(note_num: u32) -> f32
+
+// Get MIDI control change value (0.0-1.0) for CC number (0-127)  
+fn midi_control(cc_num: u32) -> f32
+```
+
+### Example Usage
+
+#### Basic Animation
+```wgsl
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = normalized_coords(in.position.xy);
+    
+    let color = vec3(
+        sin(time.duration + uv.x) * 0.5 + 0.5,
+        cos(time.duration + uv.y) * 0.5 + 0.5,
+        sin(time.duration + length(uv)) * 0.5 + 0.5
+    );
+    
+    return vec4(to_linear_rgb(color), 1.0);
+}
+```
+
+#### Mouse Interaction
+```wgsl
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = normalized_coords(in.position.xy);
+    let m = mouse_coords();
+    
+    let dist = length(uv - m);
+    let brightness = 1.0 - smoothstep(0.0, 0.5, dist);
+    
+    return vec4(vec3(brightness), 1.0);
+}
+```
+
+#### MIDI Control
+```wgsl
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = normalized_coords(in.position.xy);
+    
+    // Use MIDI note C4 (60) for color intensity
+    let note_intensity = midi_note(60u);
+    
+    // Use MIDI CC 1 (modulation wheel) for animation speed
+    let mod_wheel = midi_control(1u);
+    let speed = 1.0 + mod_wheel * 5.0;
+    
+    let color = vec3(sin(time.duration * speed) * note_intensity);
+    
+    return vec4(to_linear_rgb(color), 1.0);
 }
 ```
 
 ## Available Uniforms
 
-### 1. WindowUniform (Required)
-- **Binding**: `@group(0) @binding(0)`
-- **Content**: Window resolution information
+All uniforms are automatically included and bound. You can directly use them in your shaders:
 
+### Always Available Uniforms
+
+#### WindowUniform - `window`
 ```wgsl
 struct WindowUniform {
-    resolution: vec2<f32>,  // [width, height]
+    resolution: vec2<f32>,  // [width, height] in pixels
 }
+// Usage: window.resolution.x, window.resolution.y
 ```
 
-### 2. TimeUniform (Required)
-- **Binding**: `@group(0) @binding(1)`
-- **Content**: Elapsed time
-
+#### TimeUniform - `time`
 ```wgsl
 struct TimeUniform {
     duration: f32,  // Seconds since program start
 }
+// Usage: time.duration
 ```
 
-### 3. MouseUniform (Optional)
-- **Binding**: `@group(1) @binding(0)`
-- **Content**: Mouse position
-
+#### MouseUniform - `mouse`
 ```wgsl
 struct MouseUniform {
     position: vec2<f32>,  // Mouse coordinates in pixels
 }
+// Usage: mouse.position.x, mouse.position.y
+// Or use helper: mouse_coords() for normalized coordinates
 ```
 
-### 4. OscUniform (When OSC is configured)
-- **Binding**: `@group(2) @binding(0)`
-- **Content**: OSC parameters (TidalCycles, etc.)
+### Sound Uniforms (when configured)
 
+#### OscUniform - `osc` (when OSC is enabled)
 ```wgsl
 struct OscTruck {
-    sound: i32,   // Sound ID
+    sound: i32,   // Sound ID (from config)
     ttl: f32,     // Time to live (duration)
-    note: f32,    // Note/pitch
-    gain: f32,    // Volume/gain
+    note: f32,    // Note/pitch value
+    gain: f32,    // Volume/gain (0.0-1.0)
 }
 
 struct OscUniform {
-    trucks: array<OscTruck, 16>,  // Corresponds to d1-d16
+    trucks: array<OscTruck, 16>,  // Corresponds to d1-d16 in TidalCycles
 }
+// Usage: osc.trucks[0].gain, osc.trucks[1].note, etc.
 ```
 
-### 5. SpectrumUniform (When spectrum is configured)
-- **Binding**: `@group(2) @binding(1)`
-- **Content**: Audio spectrum analysis data
-
+#### SpectrumUniform - `spectrum` (when spectrum analysis is enabled)
 ```wgsl
 struct SpectrumDataPoint {
     frequency: f32,
@@ -212,57 +277,18 @@ struct SpectrumUniform {
     max_frequency: f32,
     max_amplitude: f32,
 }
+// Usage: spectrum.data_points[i].amplitude, spectrum.max_amplitude, etc.
 ```
 
-## Commonly Used Functions
-
-### Color Conversion Functions
-
+#### MidiUniform - `midi` (when MIDI is enabled)
 ```wgsl
-// Gamma correction
-fn to_linear_rgb(col: vec3<f32>) -> vec3<f32> {
-    let gamma = 2.2;
-    let c = clamp(col, vec3(0.0), vec3(1.0));
-    return pow(c, vec3(gamma));
+struct MidiUniform {
+    notes: array<vec4<f32>, 32>,      // Note velocities (packed)
+    controls: array<vec4<f32>, 32>,   // Control change values (packed)
 }
-
-// HSV to RGB conversion
-fn hue_to_rgb(hue: f32) -> vec3<f32> {
-    let kr = (5.0 + hue * 6.0) % 6.0;
-    let kg = (3.0 + hue * 6.0) % 6.0;
-    let kb = (1.0 + hue * 6.0) % 6.0;
-    
-    let r = 1.0 - max(min(min(kr, 4.0 - kr), 1.0), 0.0);
-    let g = 1.0 - max(min(min(kg, 4.0 - kg), 1.0), 0.0);
-    let b = 1.0 - max(min(min(kb, 4.0 - kb), 1.0), 0.0);
-    
-    return vec3(r, g, b);
-}
+// Usage: Use helper functions midi_note() and midi_control() instead of direct access
 ```
 
-### Shape Drawing Functions
-
-```wgsl
-// Draw light orb
-fn orb(p: vec2<f32>, center: vec2<f32>, radius: f32, color: vec3<f32>) -> vec3<f32> {
-    let t = clamp(1.0 + radius - length(p - center), 0.0, 1.0);
-    return pow(t, 16.0) * color;
-}
-
-// Rectangle detection
-fn rect(uv: vec2<f32>, pos: vec2<f32>, size: vec2<f32>) -> bool {
-    let d = abs(uv - pos) - size;
-    return max(d.x, d.y) < 0.0;
-}
-
-// Bar drawing (useful for spectrum visualization)
-fn bar(uv: vec2<f32>, x: f32, width: f32, height: f32) -> bool {
-    if (uv.x > x) && (uv.x < x + width) && (abs(uv.y) < height) {
-        return true;
-    }
-    return false;
-}
-```
 
 ## Sample Projects
 
@@ -274,15 +300,23 @@ The included examples directory contains the following samples:
 
 Use these as reference to create your own shader art projects.
 
-## Uniform Binding Reference
+## Quick Reference
 
-### Group 0 (Always Available)
-- `@binding(0)`: WindowUniform
-- `@binding(1)`: TimeUniform
+### Getting Started
+1. Create a TOML config file with window settings and shader path
+2. Write a fragment shader using the built-in uniforms and helpers
+3. Run with `kchfgt config.toml`
 
-### Group 1 (Device Uniforms)
-- `@binding(0)`: MouseUniform
+### Essential Helpers
+- `normalized_coords(position)` - Convert to -1.0 to 1.0 coordinates
+- `mouse_coords()` - Get normalized mouse position
+- `to_linear_rgb(color)` - Apply gamma correction
+- `midi_note(60u)` - Get MIDI note velocity (when MIDI enabled)
+- `midi_control(1u)` - Get MIDI CC value (when MIDI enabled)
 
-### Group 2 (Sound Uniforms)
-- `@binding(0)`: OscUniform (when OSC is configured)
-- `@binding(1)`: SpectrumUniform (when spectrum is configured)
+### Essential Uniforms
+- `window.resolution` - Screen size
+- `time.duration` - Elapsed time
+- `mouse.position` - Mouse position
+- `osc.trucks[0].gain` - OSC data (when enabled)
+- `spectrum.data_points[i].amplitude` - Audio data (when enabled)

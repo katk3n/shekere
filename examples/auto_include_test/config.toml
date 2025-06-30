@@ -1,0 +1,12 @@
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "auto_include_test"
+entry_point = "fs_main"
+file = "fragment.wgsl"
+
+[hot_reload]
+enabled = true

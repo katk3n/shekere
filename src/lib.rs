@@ -4,6 +4,7 @@ mod config;
 mod hot_reload;
 mod osc;
 mod pipeline;
+mod shader_preprocessor;
 mod state;
 mod timer;
 mod uniforms;

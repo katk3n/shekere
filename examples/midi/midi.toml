@@ -1,0 +1,15 @@
+[window]
+width = 800
+height = 800
+
+[[pipeline]]
+shader_type = "fragment"
+label = "MIDI Fragment Shader"
+entry_point = "fs_main"
+file = "fragment.wgsl"
+
+[midi]
+enabled = true
+
+[hot_reload]
+enabled = true
