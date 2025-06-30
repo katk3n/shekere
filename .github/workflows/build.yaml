@@ -70,13 +70,13 @@ jobs:
       - name: Package
         run: >
           zip --junk-paths
-          kchfgt-aarch64-apple-darwin.zip target/aarch64-apple-darwin/release/kchfgt
+          shekere-aarch64-apple-darwin.zip target/aarch64-apple-darwin/release/shekere
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: kchfgt-aarch64-apple-darwin
-          path: kchfgt-aarch64-apple-darwin.zip
+          name: shekere-aarch64-apple-darwin
+          path: shekere-aarch64-apple-darwin.zip
 
   release:
     needs: [build]
@@ -88,12 +88,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: kchfgt-aarch64-apple-darwin
+          name: shekere-aarch64-apple-darwin
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: kchfgt-aarch64-apple-darwin.zip
+          files: shekere-aarch64-apple-darwin.zip
           draft: false
           prerelease: false
         env:
