@@ -23,3 +23,6 @@ id = 2
 [[osc.sound]]
 name = "hc"
 id = 3
+
+[hot_reload]
+enabled = true

@@ -21,16 +21,16 @@ fn hue_to_rgb(hue: f32) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let min_xy = min(window.resolution.x, window.resolution.y);
+    let min_xy = min(Window.resolution.x, Window.resolution.y);
     let uv = vec2(in.position.x / min_xy,(1.0 - in.position.y / min_xy) * 2.0 - 1.0);
 
-    let num_steps = spectrum.num_points;
+    let num_steps = Spectrum.num_points;
     let width = 1.0 / f32(num_steps) / 2.0;
     let max_hue = 0.7;
 
     var col = vec3(0.0);
     for (var i = 0u; i < num_steps; i++) {
-        let height = spectrum.data_points[i].amplitude;
+        let height = Spectrum.data_points[i].amplitude;
         if bar(uv, f32(i) / f32(num_steps), width, height) {
             col = hue_to_rgb(max_hue * f32(i) / f32(num_steps));
             break;
@@ -42,5 +42,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         col = hue_to_rgb(max_hue * uv.x);
     }
 
-    return vec4(to_linear_rgb(col), 1.0);
+    return vec4(ToLinearRgb(col), 1.0);
 }

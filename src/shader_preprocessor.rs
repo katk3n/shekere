@@ -73,8 +73,8 @@ mod tests {
         // Should contain embedded definitions
         assert!(result.contains("struct WindowUniform"));
         assert!(result.contains("struct TimeUniform"));
-        assert!(result.contains("fn normalized_coords"));
-        assert!(result.contains("fn to_linear_rgb"));
+        assert!(result.contains("fn NormalizedCoords"));
+        assert!(result.contains("fn ToLinearRgb"));
 
         // Should contain user code
         assert!(result.contains("@fragment"));
@@ -122,10 +122,10 @@ mod tests {
         assert!(result.contains("struct TimeUniform"));
         assert!(result.contains("struct MouseUniform"));
         assert!(result.contains("struct VertexOutput"));
-        assert!(result.contains("@group(0) @binding(0) var<uniform> window"));
-        assert!(result.contains("@group(0) @binding(1) var<uniform> time"));
-        assert!(result.contains("@group(1) @binding(0) var<uniform> mouse"));
-        assert!(result.contains("fn to_linear_rgb"));
-        assert!(result.contains("fn normalized_coords"));
+        assert!(result.contains("@group(0) @binding(0) var<uniform> Window"));
+        assert!(result.contains("@group(0) @binding(1) var<uniform> Time"));
+        assert!(result.contains("@group(1) @binding(0) var<uniform> Mouse"));
+        assert!(result.contains("fn ToLinearRgb"));
+        assert!(result.contains("fn NormalizedCoords"));
     }
 }
