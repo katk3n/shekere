@@ -60,7 +60,6 @@ impl HotReloader {
         })
     }
 
-
     pub fn check_for_changes(&self) -> bool {
         let mut modified = self.shader_modified.lock().unwrap();
         if *modified {

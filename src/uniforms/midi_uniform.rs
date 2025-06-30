@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex};
 use midir::{MidiInput, MidiInputConnection};
+use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
 use crate::config::MidiConfig;
@@ -11,7 +11,7 @@ pub struct MidiUniformData {
     // Using vec4<f32> for alignment (16-byte alignment)
     notes: [[f32; 4]; 32], // 128 notes packed into 32 vec4s
     // control change values (0-127 normalized to 0.0-1.0)
-    // Using vec4<f32> for alignment (16-byte alignment) 
+    // Using vec4<f32> for alignment (16-byte alignment)
     cc: [[f32; 4]; 32], // 128 cc values packed into 32 vec4s
 }
 
@@ -51,7 +51,7 @@ impl MidiUniform {
 
     fn setup_midi_input(data: Arc<Mutex<MidiUniformData>>) -> Option<MidiInputConnection<()>> {
         let midi_in = MidiInput::new("kchfgt MIDI Input").ok()?;
-        
+
         // Get available ports
         let in_ports = midi_in.ports();
         if in_ports.is_empty() {
@@ -61,7 +61,9 @@ impl MidiUniform {
 
         // Use the first available port (could be made configurable)
         let in_port = &in_ports[0];
-        let port_name = midi_in.port_name(in_port).unwrap_or_else(|_| "Unknown".to_string());
+        let port_name = midi_in
+            .port_name(in_port)
+            .unwrap_or_else(|_| "Unknown".to_string());
         log::info!("Connecting to MIDI port: {}", port_name);
 
         let connection = midi_in.connect(
@@ -91,7 +93,7 @@ impl MidiUniform {
         }
 
         let mut data_guard = data.lock().unwrap();
-        
+
         match message[0] & 0xF0 {
             // Note On (0x90)
             0x90 => {
@@ -105,7 +107,7 @@ impl MidiUniform {
                     }
                 }
             }
-            // Note Off (0x80) 
+            // Note Off (0x80)
             0x80 => {
                 if message.len() >= 3 {
                     let note = message[1] as usize;
@@ -155,7 +157,7 @@ mod tests {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
         };
-        
+
         // Test that all values are initialized to 0.0
         assert!(data.notes.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
         assert!(data.cc.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
@@ -175,13 +177,15 @@ mod tests {
         let data_guard = data.lock().unwrap();
         let vec4_index = 60 / 4; // 15
         let element_index = 60 % 4; // 0
-        assert!((data_guard.notes[vec4_index][element_index] - (100.0 / 127.0)).abs() < f32::EPSILON);
-        
+        assert!(
+            (data_guard.notes[vec4_index][element_index] - (100.0 / 127.0)).abs() < f32::EPSILON
+        );
+
         // Check neighboring values are still 0
         let vec4_index_59 = 59 / 4; // 14
         let element_index_59 = 59 % 4; // 3
         assert_eq!(data_guard.notes[vec4_index_59][element_index_59], 0.0);
-        
+
         let element_index_61 = 61 % 4; // 1
         assert_eq!(data_guard.notes[vec4_index][element_index_61], 0.0);
     }
@@ -196,7 +200,7 @@ mod tests {
         // First set a note on
         let note_on = [0x90, 60, 100];
         MidiUniform::handle_midi_message(&data, &note_on);
-        
+
         // Then turn it off
         let note_off = [0x80, 60, 0];
         MidiUniform::handle_midi_message(&data, &note_off);
@@ -222,11 +226,11 @@ mod tests {
         let vec4_index = 7 / 4; // 1
         let element_index = 7 % 4; // 3
         assert!((data_guard.cc[vec4_index][element_index] - (64.0 / 127.0)).abs() < f32::EPSILON);
-        
+
         let vec4_index_6 = 6 / 4; // 1
         let element_index_6 = 6 % 4; // 2
         assert_eq!(data_guard.cc[vec4_index_6][element_index_6], 0.0);
-        
+
         let vec4_index_8 = 8 / 4; // 2
         let element_index_8 = 8 % 4; // 0
         assert_eq!(data_guard.cc[vec4_index_8][element_index_8], 0.0);
@@ -244,8 +248,14 @@ mod tests {
         MidiUniform::handle_midi_message(&data, &message);
 
         let data_guard = data.lock().unwrap();
-        assert!(data_guard.notes.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
-        assert!(data_guard.cc.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(data_guard
+            .notes
+            .iter()
+            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(data_guard
+            .cc
+            .iter()
+            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
     }
 
     #[test]
@@ -260,6 +270,9 @@ mod tests {
         MidiUniform::handle_midi_message(&data, &message);
 
         let data_guard = data.lock().unwrap();
-        assert!(data_guard.notes.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(data_guard
+            .notes
+            .iter()
+            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
     }
 }

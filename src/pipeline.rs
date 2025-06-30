@@ -19,7 +19,9 @@ pub fn create_pipeline(
 
     let shader_path = conf_dir.join(&shader_config.file);
     let preprocessor = ShaderPreprocessor::new(conf_dir);
-    let fs_str = preprocessor.process_file_with_embedded_defs(&shader_path).unwrap();
+    let fs_str = preprocessor
+        .process_file_with_embedded_defs(&shader_path)
+        .unwrap();
     let fragment_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(&shader_config.label),
         source: wgpu::ShaderSource::Wgsl(fs_str.into()),
