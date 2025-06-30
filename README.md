@@ -35,6 +35,9 @@ shekere examples/spectrum/spectrum.toml
 
 # Run shader art with TidalCycles integration
 shekere examples/osc/osc.toml
+
+# Run MIDI-controlled shader art
+shekere examples/midi/midi.toml
 ```
 
 ## Project Structure
@@ -95,6 +98,18 @@ min_frequency = 27.0
 max_frequency = 2000.0
 sampling_rate = 44100
 ```
+
+#### MIDI Input
+
+```toml
+[midi]
+enabled = true
+```
+
+Real-time MIDI input provides:
+- 128 note velocities (0-127 mapped to 0.0-1.0)
+- 128 control change values (0-127 mapped to 0.0-1.0)
+- Access via `MidiNote(note_num)` and `MidiControl(cc_num)` helper functions
 
 #### Hot Reload
 
@@ -297,6 +312,7 @@ The included examples directory contains the following samples:
 - `examples/mouse/`: Mouse-controlled shader art
 - `examples/spectrum/`: Audio spectrum analysis visualizer
 - `examples/osc/`: TidalCycles integration shader art
+- `examples/midi/`: MIDI-controlled shader art
 
 Use these as reference to create your own shader art projects.
 
