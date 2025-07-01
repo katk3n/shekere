@@ -81,7 +81,9 @@ Fragment shaders are written in WGSL (WebGPU Shading Language) and must:
 - Access uniforms through predefined binding groups:
   - Group 0: Window and Time uniforms (always available)
   - Group 1: Device uniforms (mouse, etc.)
-  - Group 2: Sound uniforms (OSC, spectrum - when configured)
+  - Group 2: Sound uniforms (OSC, spectrum, MIDI - when configured)
+- Use helper functions for uniform data access (e.g., `SpectrumAmplitude(i)`, `OscGain(i)`)
+- All sound uniforms use vec4 packing for WebGPU alignment optimization
 
 ## Audio Integration
 

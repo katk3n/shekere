@@ -1,4 +1,4 @@
-// Common definitions (including OscTruck, OscUniform, and bindings) are automatically included
+// Common definitions (including OscUniform and bindings) are automatically included
 
 fn orb(p: vec2<f32>, p0: vec2<f32>, r: f32, col: vec3<f32>) -> vec3<f32> {
     var t = clamp(1.0 + r - length(p - p0), 0.0, 1.0);
@@ -19,14 +19,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var gain2 = 0.0;  // gain of d2
     var gain3 = 0.0;  // gain of d3
 
-    if Osc.trucks[0].sound == 1 {  // bd
-        gain1 = Osc.trucks[0].gain * Osc.trucks[0].ttl * 0.1;
+    if OscSound(0u) == 1 {  // bd
+        gain1 = OscGain(0u) * OscTtl(0u) * 0.1;
     }
-    if Osc.trucks[1].sound == 2 {  // sd
-        gain2 = Osc.trucks[1].gain * Osc.trucks[1].ttl * 0.1;
+    if OscSound(1u) == 2 {  // sd
+        gain2 = OscGain(1u) * OscTtl(1u) * 0.1;
     }
-    if Osc.trucks[2].sound == 3 {  // hc
-        gain3 = Osc.trucks[2].gain * Osc.trucks[2].ttl * 0.1;
+    if OscSound(2u) == 3 {  // hc
+        gain3 = OscGain(2u) * OscTtl(2u) * 0.1;
     }
 
     let v = 0.3;

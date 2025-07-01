@@ -65,38 +65,30 @@ struct MouseUniform {
 
 #### OscUniform - `Osc`
 ```wgsl
-struct OscTruck {
-    sound: i32,   // Sound ID (from configuration)
-    ttl: f32,     // Time to live (duration of sound event)
-    note: f32,    // Note/pitch value
-    gain: f32,    // Volume/gain (0.0-1.0)
-}
-
 struct OscUniform {
-    trucks: array<OscTruck, 16>,  // OSC trucks (d1-d16 in TidalCycles)
+    sounds: array<vec4<i32>, 4>,  // Sound IDs (packed into vec4s)
+    ttls: array<vec4<f32>, 4>,    // Time to live values (packed)
+    notes: array<vec4<f32>, 4>,   // Note/pitch values (packed)
+    gains: array<vec4<f32>, 4>,   // Volume/gain values (packed)
 }
 ```
-- **Usage**: `Osc.trucks[0].gain`, `Osc.trucks[1].note`, etc.
+- **Usage**: Use helper functions `OscSound()`, `OscTtl()`, `OscNote()`, `OscGain()` instead of direct access
 - **Binding**: `@group(2) @binding(0)`
-- **Note**: `trucks[0]` corresponds to `d1` in TidalCycles, `trucks[1]` to `d2`, etc.
+- **Note**: Index 0 corresponds to `d1` in TidalCycles, index 1 to `d2`, etc.
 
 #### SpectrumUniform - `Spectrum`
 ```wgsl
-struct SpectrumDataPoint {
-    frequency: f32,
-    amplitude: f32,
-    _padding: vec2<u32>,
-}
-
 struct SpectrumUniform {
-    data_points: array<SpectrumDataPoint, 2048>,  // Spectrum analysis data
-    num_points: u32,                              // Number of valid data points
-    max_frequency: f32,                           // Frequency with max amplitude
-    max_amplitude: f32,                           // Maximum amplitude in current frame
+    frequencies: array<vec4<f32>, 512>,  // Frequency values (packed into vec4s)
+    amplitudes: array<vec4<f32>, 512>,   // Amplitude values (packed into vec4s)
+    num_points: u32,                     // Number of valid data points
+    max_frequency: f32,                  // Frequency with max amplitude
+    max_amplitude: f32,                  // Maximum amplitude in current frame
 }
 ```
-- **Usage**: `Spectrum.data_points[i].amplitude`, `Spectrum.max_amplitude`, etc.
+- **Usage**: Use helper functions `SpectrumFrequency()`, `SpectrumAmplitude()` instead of direct access
 - **Binding**: `@group(2) @binding(1)`
+- **Note**: Total of 2048 data points (512 × 4) packed for WebGPU alignment
 
 #### MidiUniform - `Midi`
 ```wgsl
@@ -170,6 +162,100 @@ Converts color to sRGB space.
 // Convert linear color back to sRGB
 let linear_color = vec3(0.5, 0.3, 0.8);
 let srgb_color = ToSrgb(linear_color);
+```
+
+### Audio Spectrum Helpers
+
+#### `SpectrumFrequency(index: u32) -> f32`
+Gets frequency value at a specific spectrum index.
+
+- **Input**: Spectrum data index (0-2047)
+- **Output**: Frequency value in Hz
+- **Range**: Depends on configuration (min_frequency to max_frequency)
+- **Invalid input**: Returns 0.0 for index > 2047
+
+```wgsl
+// Use spectrum data for color visualization
+for (var i = 0u; i < Spectrum.num_points; i++) {
+    let freq = SpectrumFrequency(i);
+    let amp = SpectrumAmplitude(i);
+    // Create color based on frequency and amplitude
+}
+```
+
+#### `SpectrumAmplitude(index: u32) -> f32`
+Gets amplitude value at a specific spectrum index.
+
+- **Input**: Spectrum data index (0-2047)
+- **Output**: Amplitude value (0.0-1.0+)
+- **Range**: 0.0 = silence, 1.0+ = loud (can exceed 1.0)
+- **Invalid input**: Returns 0.0 for index > 2047
+
+```wgsl
+// Create bars visualization
+let height = SpectrumAmplitude(i);
+if (uv.y < height) {
+    color = vec3(1.0, 0.0, 0.0);  // Red for audio activity
+}
+```
+
+### OSC Helpers
+
+#### `OscSound(index: u32) -> i32`
+Gets sound ID for a specific OSC track.
+
+- **Input**: OSC track index (0-15)
+- **Output**: Sound ID (from configuration)
+- **Range**: Depends on sound mapping in config
+- **Invalid input**: Returns 0 for index > 15
+
+```wgsl
+// Check if kick drum (sound ID 1) is playing on track 0
+if (OscSound(0u) == 1) {
+    gain = OscGain(0u);  // Get the gain for this sound
+}
+```
+
+#### `OscTtl(index: u32) -> f32`
+Gets time-to-live for a specific OSC track.
+
+- **Input**: OSC track index (0-15)
+- **Output**: Time remaining (seconds)
+- **Range**: 0.0+ (decreases over time)
+- **Invalid input**: Returns 0.0 for index > 15
+
+```wgsl
+// Fade effect based on time remaining
+let fade = OscTtl(0u) * 0.1;  // Scale factor
+let color = vec3(fade);
+```
+
+#### `OscNote(index: u32) -> f32`
+Gets note/pitch value for a specific OSC track.
+
+- **Input**: OSC track index (0-15)
+- **Output**: Note value (often MIDI note number)
+- **Range**: Depends on OSC message content
+- **Invalid input**: Returns 0.0 for index > 15
+
+```wgsl
+// Use note value for frequency-based effects
+let note = OscNote(0u);
+let freq = 440.0 * pow(2.0, (note - 69.0) / 12.0);  // Convert MIDI to Hz
+```
+
+#### `OscGain(index: u32) -> f32`
+Gets gain/volume for a specific OSC track.
+
+- **Input**: OSC track index (0-15)
+- **Output**: Gain value (0.0-1.0+)
+- **Range**: 0.0 = silent, 1.0+ = loud
+- **Invalid input**: Returns 0.0 for index > 15
+
+```wgsl
+// Use gain for brightness control
+let brightness = OscGain(0u);
+let color = vec3(brightness);
 ```
 
 ### MIDI Helpers

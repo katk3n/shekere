@@ -18,16 +18,10 @@ use crate::{
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct SpectrumDataPoint {
-    frequency: f32,
-    amplitude: f32,
-    _padding: [u32; 2],
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SpectrumUniformData {
-    data_points: [SpectrumDataPoint; NUM_SAMPLES],
+    // Packed into vec4s for WebGPU alignment (NUM_SAMPLES/4 = 512)
+    frequencies: [[f32; 4]; NUM_SAMPLES / 4],
+    amplitudes: [[f32; 4]; NUM_SAMPLES / 4],
     num_points: u32,
     max_frequency: f32,
     max_amplitude: f32,
@@ -49,11 +43,8 @@ impl SpectrumUniform {
 
     pub fn new(device: &wgpu::Device, config: &SpectrumConfig) -> Self {
         let data = SpectrumUniformData {
-            data_points: [SpectrumDataPoint {
-                frequency: 0.0,
-                amplitude: 0.0,
-                _padding: [0; 2],
-            }; NUM_SAMPLES],
+            frequencies: [[0.0; 4]; NUM_SAMPLES / 4],
+            amplitudes: [[0.0; 4]; NUM_SAMPLES / 4],
             num_points: 0,
             max_frequency: 0.0,
             max_amplitude: 0.0,
@@ -97,20 +88,20 @@ impl SpectrumUniform {
         )
         .unwrap();
 
-        let mut data_points = [SpectrumDataPoint {
-            frequency: 0.0,
-            amplitude: 0.0,
-            _padding: [0; 2],
-        }; NUM_SAMPLES];
+        let mut frequencies = [[0.0; 4]; NUM_SAMPLES / 4];
+        let mut amplitudes = [[0.0; 4]; NUM_SAMPLES / 4];
 
         for (i, f) in spectrum.data().iter().enumerate() {
-            data_points[i].frequency = f.0.val();
-            data_points[i].amplitude = f.1.val();
+            let vec4_index = i / 4;
+            let element_index = i % 4;
+            frequencies[vec4_index][element_index] = f.0.val();
+            amplitudes[vec4_index][element_index] = f.1.val();
         }
 
         let (max_fr, max_amp) = spectrum.max();
 
-        self.data.data_points = data_points;
+        self.data.frequencies = frequencies;
+        self.data.amplitudes = amplitudes;
         self.data.num_points = spectrum.data().len() as u32;
         self.data.max_frequency = max_fr.val();
         self.data.max_amplitude = max_amp.val();
