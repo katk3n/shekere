@@ -1,0 +1,9 @@
+[window]
+width = 800
+height = 800
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Circular Pattern Shader"
+entry_point = "fs_main"
+file = "fragment.wgsl"

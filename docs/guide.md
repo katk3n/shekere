@@ -95,15 +95,12 @@ shekere automatically includes common definitions (uniforms, bindings, and helpe
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Use built-in helper functions
     let uv = NormalizedCoords(in.position.xy);
-    let m = MouseCoords();
     
-    // Time-based color animation
     let color = vec3(
-        sin(Time.duration + uv.x * 3.0) * 0.5 + 0.5,
-        cos(Time.duration + uv.y * 3.0 + m.x) * 0.5 + 0.5,
-        sin(Time.duration * 2.0 + length(uv) * 5.0) * 0.5 + 0.5
+        sin(Time.duration + uv.x) * 0.5 + 0.5,
+        cos(Time.duration + uv.y) * 0.5 + 0.5,
+        sin(Time.duration + length(uv)) * 0.5 + 0.5
     );
     
     return vec4(ToLinearRgb(color), 1.0);
@@ -112,17 +109,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Example Usage
 
-#### Basic Animation
+#### Circular Pattern
 ```wgsl
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = NormalizedCoords(in.position.xy);
     
-    let color = vec3(
-        sin(Time.duration + uv.x) * 0.5 + 0.5,
-        cos(Time.duration + uv.y) * 0.5 + 0.5,
-        sin(Time.duration + length(uv)) * 0.5 + 0.5
-    );
+    // Create concentric circles
+    let dist = length(uv);
+    let rings = sin(dist * 10.0 - Time.duration * 3.0) * 0.5 + 0.5;
+    
+    let color = vec3(rings);
     
     return vec4(ToLinearRgb(color), 1.0);
 }

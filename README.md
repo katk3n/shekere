@@ -57,6 +57,8 @@ For detailed documentation, see:
 
 The included examples directory contains the following samples:
 
+- `examples/basic/`: Basic time-based animation
+- `examples/circular/`: Circular pattern with concentric rings
 - `examples/mouse/`: Mouse-controlled shader art
 - `examples/spectrum/`: Audio spectrum analysis visualizer
 - `examples/osc/`: TidalCycles integration shader art
