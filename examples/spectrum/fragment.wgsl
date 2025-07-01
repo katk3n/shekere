@@ -30,7 +30,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var col = vec3(0.0);
     for (var i = 0u; i < num_steps; i++) {
-        let height = Spectrum.data_points[i].amplitude;
+        let height = SpectrumAmplitude(i);
         if bar(uv, f32(i) / f32(num_steps), width, height) {
             col = hue_to_rgb(max_hue * f32(i) / f32(num_steps));
             break;

@@ -7,17 +7,12 @@ use wgpu::util::DeviceExt;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct OscTruck {
-    sound: i32,
-    ttl: f32,
-    note: f32,
-    gain: f32,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct OscUniformData {
-    trucks: [OscTruck; 16],
+    // Packed into vec4s for WebGPU alignment (16 values / 4 = 4 vec4s each)
+    sounds: [[i32; 4]; 4],
+    ttls: [[f32; 4]; 4],
+    notes: [[f32; 4]; 4],
+    gains: [[f32; 4]; 4],
 }
 
 pub struct OscUniform<'a> {
@@ -32,12 +27,10 @@ impl<'a> OscUniform<'a> {
 
     pub async fn new(device: &wgpu::Device, config: &'a OscConfig) -> Self {
         let data = OscUniformData {
-            trucks: [OscTruck {
-                sound: 0,
-                ttl: 0.0,
-                note: 0.0,
-                gain: 0.0,
-            }; 16],
+            sounds: [[0; 4]; 4],
+            ttls: [[0.0; 4]; 4],
+            notes: [[0.0; 4]; 4],
+            gains: [[0.0; 4]; 4],
         };
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Osc Buffer"),
@@ -104,10 +97,14 @@ impl<'a> OscUniform<'a> {
                 _ => {}
             }
         }
-        self.data.trucks[id].sound = sound;
-        self.data.trucks[id].ttl = ttl;
-        self.data.trucks[id].note = note;
-        self.data.trucks[id].gain = gain;
+        let vec4_index = id / 4;
+        let element_index = id % 4;
+        if vec4_index < 4 {
+            self.data.sounds[vec4_index][element_index] = sound;
+            self.data.ttls[vec4_index][element_index] = ttl;
+            self.data.notes[vec4_index][element_index] = note;
+            self.data.gains[vec4_index][element_index] = gain;
+        }
     }
 
     pub fn update(&mut self, time_elapsed: f32) {
@@ -127,22 +124,27 @@ impl<'a> OscUniform<'a> {
     }
 
     pub fn elapse(&mut self, time_delta: f32) {
-        let mut trucks = [OscTruck {
-            ttl: 0.0,
-            sound: 0,
-            note: 0.0,
-            gain: 0.0,
-        }; 16];
-        for (i, tr) in self.data.trucks.iter().enumerate() {
-            let t = tr.ttl - time_delta;
-            if t > 0.0 {
-                trucks[i].ttl = t;
-                trucks[i].sound = tr.sound;
-                trucks[i].note = tr.note;
-                trucks[i].gain = tr.gain;
+        let mut sounds = [[0; 4]; 4];
+        let mut ttls = [[0.0; 4]; 4];
+        let mut notes = [[0.0; 4]; 4];
+        let mut gains = [[0.0; 4]; 4];
+
+        for vec4_index in 0..4 {
+            for element_index in 0..4 {
+                let t = self.data.ttls[vec4_index][element_index] - time_delta;
+                if t > 0.0 {
+                    ttls[vec4_index][element_index] = t;
+                    sounds[vec4_index][element_index] = self.data.sounds[vec4_index][element_index];
+                    notes[vec4_index][element_index] = self.data.notes[vec4_index][element_index];
+                    gains[vec4_index][element_index] = self.data.gains[vec4_index][element_index];
+                }
             }
         }
-        self.data.trucks = trucks;
+
+        self.data.sounds = sounds;
+        self.data.ttls = ttls;
+        self.data.notes = notes;
+        self.data.gains = gains;
     }
 
     pub fn write_buffer(&self, queue: &wgpu::Queue) {
