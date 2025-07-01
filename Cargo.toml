@@ -1,6 +1,6 @@
 [package]
 name = "shekere"
-version = "0.7.0"
+version = "0.8.0"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
 edition = "2021"
