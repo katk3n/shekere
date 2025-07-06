@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use cpal::Stream;
 use ringbuf::{
+    HeapRb,
     traits::{Consumer, Observer},
     wrap::caching::Caching,
-    HeapRb,
 };
 use spectrum_analyzer::scaling::*;
 use spectrum_analyzer::windows::hann_window;
-use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+use spectrum_analyzer::{FrequencyLimit, samples_fft_to_spectrum};
 use wgpu::util::DeviceExt;
 
 use crate::{

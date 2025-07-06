@@ -1,9 +1,9 @@
 [package]
 name = "shekere"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["katk3n"]
 description = "Creative coding tool with shaders and sounds"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 repository = "https://github.com/katk3n/shekere"
 

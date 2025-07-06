@@ -1,6 +1,6 @@
 use clap::Parser;
-use shekere::run;
 use shekere::Config;
+use shekere::run;
 use std::path::Path;
 
 #[derive(Debug, Parser)]

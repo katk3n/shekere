@@ -1,5 +1,5 @@
-use async_std::channel::unbounded;
 use async_std::channel::Receiver;
+use async_std::channel::unbounded;
 use async_std::net::{SocketAddrV4, UdpSocket};
 use async_std::task;
 use rosc::OscPacket;

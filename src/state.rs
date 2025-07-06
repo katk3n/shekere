@@ -1,3 +1,4 @@
+use crate::Config;
 use crate::bind_group_factory::BindGroupFactory;
 use crate::hot_reload::HotReloader;
 use crate::shader_preprocessor::ShaderPreprocessor;
@@ -9,7 +10,6 @@ use crate::uniforms::spectrum_uniform::SpectrumUniform;
 use crate::uniforms::time_uniform::TimeUniform;
 use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
-use crate::Config;
 
 use std::path::{Path, PathBuf};
 use wgpu::util::DeviceExt;
