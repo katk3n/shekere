@@ -248,14 +248,18 @@ mod tests {
         MidiUniform::handle_midi_message(&data, &message);
 
         let data_guard = data.lock().unwrap();
-        assert!(data_guard
-            .notes
-            .iter()
-            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
-        assert!(data_guard
-            .cc
-            .iter()
-            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(
+            data_guard
+                .notes
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
+        assert!(
+            data_guard
+                .cc
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
     }
 
     #[test]
@@ -270,9 +274,11 @@ mod tests {
         MidiUniform::handle_midi_message(&data, &message);
 
         let data_guard = data.lock().unwrap();
-        assert!(data_guard
-            .notes
-            .iter()
-            .all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(
+            data_guard
+                .notes
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
     }
 }

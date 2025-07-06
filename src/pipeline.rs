@@ -1,8 +1,8 @@
 use std::path::Path;
 
+use crate::ShaderConfig;
 use crate::shader_preprocessor::ShaderPreprocessor;
 use crate::vertex::Vertex;
-use crate::ShaderConfig;
 use wgpu::{BindGroupLayout, Device, RenderPipeline, SurfaceConfiguration};
 
 pub fn create_pipeline(

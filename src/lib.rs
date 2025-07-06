@@ -27,7 +27,7 @@ pub async fn run(conf: &Config, conf_dir: &Path) {
     env_logger::init();
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new()
-        .with_title("KaCHoFuGeTsu")
+        .with_title("shekere")
         .with_inner_size(LogicalSize::new(conf.window.width, conf.window.height))
         .build(&event_loop)
         .unwrap();

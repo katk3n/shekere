@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
     Stream,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use ringbuf::{
+    HeapRb,
     traits::{Producer, Split},
     wrap::caching::Caching,
-    HeapRb,
 };
 
 pub const NUM_SAMPLES: usize = 2048;
