@@ -8,18 +8,7 @@ shekere is a Rust-based creative coding tool that combines WebGPU-based fragment
 
 ## Core Architecture
 
-The application follows a modular architecture centered around the State pattern:
-
-- **State (`src/state.rs`)**: Central state management handling WebGPU setup, uniforms, and render loop
-- **Config (`src/config.rs`)**: TOML-based configuration system for window, shaders, OSC, and audio spectrum
-- **Uniforms (`src/uniforms/`)**: Modular uniform system with separate modules for different data types:
-  - `window_uniform.rs`: Window resolution data
-  - `time_uniform.rs`: Time-based animation data
-  - `mouse_uniform.rs`: Mouse position tracking
-  - `osc_uniform.rs`: OSC (Open Sound Control) integration for Tidalcycles
-  - `spectrum_uniform.rs`: Real-time audio spectrum analysis via FFT
-- **Pipeline (`src/pipeline.rs`)**: WebGPU render pipeline creation and shader compilation
-- **BindGroupFactory (`src/bind_group_factory.rs`)**: Dynamic bind group creation for different uniform combinations
+For detailed architecture specifications, see [docs/design/architecture.md](docs/design/architecture.md).
 
 ## Development Commands
 
@@ -63,55 +52,25 @@ cargo clippy --all-targets
 
 ## Configuration System
 
-The application uses TOML configuration files with the following structure:
-
-- **Required**: `[window]` section with width/height
-- **Required**: `[[pipeline]]` array with shader configuration
-- **Optional**: `[osc]` for OSC integration with sound mapping
-- **Optional**: `[spectrum]` for audio spectrum analysis
+For detailed configuration specifications, see [docs/design/configuration.md](docs/design/configuration.md).
 
 Example configuration files are in the `examples/` directory.
 
 ## Shader Development
 
-Fragment shaders are written in WGSL (WebGPU Shading Language) and must:
-- Use entry point `fs_main`
-- Accept `VertexOutput` struct with `@builtin(position)`
-- Return `@location(0) vec4<f32>` color output
-- Access uniforms through predefined binding groups:
-  - Group 0: Window and Time uniforms (always available)
-  - Group 1: Device uniforms (mouse, etc.)
-  - Group 2: Sound uniforms (OSC, spectrum, MIDI - when configured)
-- Use helper functions for uniform data access (e.g., `SpectrumAmplitude(i)`, `OscGain(i)`)
-- All sound uniforms use vec4 packing for WebGPU alignment optimization
+For shader development information, see [docs/guide.md](docs/guide.md) and [docs/api-reference.md](docs/api-reference.md).
 
 ## Audio Integration
 
-The application supports two audio input methods:
-
-1. **OSC Integration**: Receives OSC messages (typically from Tidalcycles) on configurable port
-2. **Spectrum Analysis**: Real-time FFT analysis of system audio input with configurable frequency range
-
-Both create GPU-accessible uniform data for shader consumption.
+For detailed audio integration specifications, see:
+- [OSC Integration](docs/design/osc.md)
+- [MIDI Integration](docs/design/midi.md)
+- [Spectrum Analysis](docs/design/spectrum.md)
 
 ## Hot Reload System
 
-The application includes a hot reload system for live coding:
+For detailed hot reload system specifications, see [docs/design/hot-reload.md](docs/design/hot-reload.md).
 
-- **File Watching**: Uses `notify` crate to monitor WGSL file changes
-- **Error Safety**: WGSL compilation errors and pipeline creation errors are caught using `std::panic::catch_unwind()`
-- **Graceful Degradation**: On error, the existing render pipeline is maintained and the application continues running
-- **Auto Recovery**: After file modification, automatic reload is attempted
-- **Configuration**: Enable with `[hot_reload] enabled = true`
-
-## Key Implementation Details
-
-- Uses `winit` for window management and input handling
-- WebGPU backend selection via feature flags (PRIMARY backends on desktop, GL on WASM)
-- Async initialization pattern for WebGPU setup
-- Real-time uniform updates in the render loop
-- Modular bind group system allows dynamic uniform combinations
-- Configuration file path determines shader file resolution directory
 
 ## Testing Requirements
 
