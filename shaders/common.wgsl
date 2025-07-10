@@ -55,6 +55,7 @@ struct MidiUniform {
 
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
 }
 
 // === UNIFORM BINDINGS ===
@@ -70,6 +71,10 @@ struct VertexOutput {
 @group(2) @binding(0) var<uniform> Osc: OscUniform;
 @group(2) @binding(1) var<uniform> Spectrum: SpectrumUniform;
 @group(2) @binding(2) var<uniform> Midi: MidiUniform;
+
+// Group 3: Multi-pass textures (conditional - only available in multi-pass shaders)
+@group(3) @binding(0) var previous_pass: texture_2d<f32>;
+@group(3) @binding(1) var texture_sampler: sampler;
 
 // === UTILITY FUNCTIONS ===
 
@@ -241,4 +246,15 @@ fn MidiControl(cc_num: u32) -> f32 {
         case 3u: { return cc_vec.w; }
         default: { return 0.0; }
     }
+}
+
+// Multi-pass texture helper functions
+fn SamplePreviousPass(uv: vec2<f32>) -> vec4<f32> {
+    // Fix Y-axis flipping for persistent textures
+    let corrected_uv = vec2<f32>(uv.x, 1.0 - uv.y);
+    return textureSample(previous_pass, texture_sampler, corrected_uv);
+}
+
+fn SamplePreviousPassOffset(uv: vec2<f32>, offset: vec2<f32>) -> vec4<f32> {
+    return textureSample(previous_pass, texture_sampler, uv + offset);
 }

@@ -1,0 +1,10 @@
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Trail Effect"
+entry_point = "fs_main"
+file = "trail.wgsl"
+persistent = true

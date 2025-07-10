@@ -58,7 +58,11 @@ Example configuration files are in the `examples/` directory.
 
 ## Shader Development
 
-For shader development information, see [docs/guide.md](docs/guide.md) and [docs/api-reference.md](docs/api-reference.md).
+**MANDATORY**: When creating or modifying shaders,
+ see [docs/guide.md](docs/guide.md) and [docs/api-reference.md](docs/api-reference.md).
+
+**Always check `shaders/common.wgsl` first** and
+DO NOT redefine structures, uniforms, or functions that already exist in `common.wgsl`
 
 ## Audio Integration
 
@@ -71,6 +75,25 @@ For detailed audio integration specifications, see:
 
 For detailed hot reload system specifications, see [docs/design/hot-reload.md](docs/design/hot-reload.md).
 
+
+## Development Methodology
+
+**MANDATORY**: All development must follow Test-Driven Development (TDD) methodology as advocated by t-wada:
+
+1. **Red-Green-Refactor Cycle**:
+   - Write a failing test first (Red)
+   - Write the minimal code to make the test pass (Green)
+   - Refactor the code while keeping tests passing (Refactor)
+
+2. **Test-First Approach**:
+   - Never write production code without a failing test
+   - Write tests that describe the behavior you want to implement
+   - Use tests as design documentation and specifications
+
+3. **Small, Incremental Steps**:
+   - Make small, focused changes in each cycle
+   - Commit after each successful Red-Green-Refactor cycle
+   - Build functionality incrementally through TDD cycles
 
 ## Testing Requirements
 

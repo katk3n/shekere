@@ -22,6 +22,14 @@ impl ShaderPreprocessor {
         &self,
         file_path: &Path,
     ) -> Result<String, PreprocessorError> {
+        self.process_file_with_embedded_defs_and_multipass(file_path, false)
+    }
+
+    pub fn process_file_with_embedded_defs_and_multipass(
+        &self,
+        file_path: &Path,
+        enable_multipass: bool,
+    ) -> Result<String, PreprocessorError> {
         // Read user shader file
         let user_content =
             std::fs::read_to_string(file_path).map_err(|e| PreprocessorError::FileRead {
@@ -29,9 +37,50 @@ impl ShaderPreprocessor {
                 source: e,
             })?;
 
-        // Prepend embedded definitions to user shader
+        // Process common.wgsl with conditional multipass bindings
+        let processed_common = if enable_multipass {
+            EMBEDDED_SHADER_DEFS.to_string()
+        } else {
+            // Remove Group 3 multipass bindings and functions for first pass
+            let lines: Vec<&str> = EMBEDDED_SHADER_DEFS.lines().collect();
+            let mut filtered_lines = Vec::new();
+            let mut skip_function = false;
+
+            for line in lines {
+                // Skip Group 3 bindings
+                if line.contains("@group(3)")
+                    || line.contains("var previous_pass:")
+                    || line.contains("var texture_sampler:")
+                {
+                    continue;
+                }
+
+                // Skip SamplePreviousPass functions
+                if line.contains("fn SamplePreviousPass") {
+                    skip_function = true;
+                    continue;
+                }
+
+                // End of function
+                if skip_function && line.trim() == "}" {
+                    skip_function = false;
+                    continue;
+                }
+
+                // Skip lines inside function
+                if skip_function {
+                    continue;
+                }
+
+                filtered_lines.push(line);
+            }
+
+            filtered_lines.join("\n")
+        };
+
+        // Prepend processed embedded definitions to user shader
         let mut final_content = String::new();
-        final_content.push_str(EMBEDDED_SHADER_DEFS);
+        final_content.push_str(&processed_common);
         final_content.push_str("\n\n// === USER SHADER CODE ===\n\n");
         final_content.push_str(&user_content);
 
