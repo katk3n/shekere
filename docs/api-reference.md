@@ -7,6 +7,7 @@ This document provides a complete reference for all uniforms, structures, and he
 ```wgsl
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
+    tex_coords: vec2<f32>,
 }
 ```
 
@@ -26,6 +27,7 @@ Uniforms are organized into binding groups for efficient GPU access:
 - **Group 0**: Always available (Window, Time)
 - **Group 1**: Device uniforms (Mouse)
 - **Group 2**: Sound uniforms (OSC, Spectrum, MIDI - only bound when configured)
+- **Group 3**: Multi-pass textures (only available in multi-pass configurations)
 
 ## Uniform Structures
 
@@ -101,6 +103,33 @@ struct MidiUniform {
 - **Binding**: `@group(2) @binding(2)`
 - **Note**: Values are normalized from 0-127 to 0.0-1.0
 
+### Multi-Pass Textures (Group 3)
+
+#### Previous Pass/Frame Texture
+
+```wgsl
+@group(3) @binding(0) var previous_pass: texture_2d<f32>;
+@group(3) @binding(1) var texture_sampler: sampler;
+```
+
+Multi-pass textures are automatically created and bound when using multi-pass shader configurations. The system creates different types of textures based on your configuration:
+
+- **Multi-Pass Rendering**: `temp_0`, `temp_1`, etc. for intermediate render targets
+- **Ping-Pong Buffers**: `buffer_a` and `buffer_b` that alternate each frame
+- **Persistent Textures**: Single texture that preserves content between frames
+
+**Automatic Texture Management:**
+- First pass: No Group 3 binding (no previous pass exists)
+- Subsequent passes: Previous pass output bound to Group 3
+- Ping-pong mode: Previous frame state bound to Group 3
+- Persistent mode: Previous frame content bound to Group 3
+
+**Texture Properties:**
+- **Format**: Matches screen format (typically `Bgra8UnormSrgb`)
+- **Size**: Matches window dimensions
+- **Filter**: Linear sampling
+- **Usage**: Read-only in shaders (via `previous_pass` texture)
+
 ## Helper Functions
 
 ### Coordinate System
@@ -162,6 +191,61 @@ Converts color to sRGB space.
 // Convert linear color back to sRGB
 let linear_color = vec3(0.5, 0.3, 0.8);
 let srgb_color = ToSrgb(linear_color);
+```
+
+### Multi-Pass Helpers
+
+#### `SamplePreviousPass(uv: vec2<f32>) -> vec4<f32>`
+Samples from the previous pass or frame texture.
+
+- **Input**: UV coordinates (0.0-1.0)
+- **Output**: Color from previous pass/frame
+- **Availability**: Only in multi-pass configurations (not available in first pass)
+- **Use case**: Accessing the result from the previous rendering pass or previous frame
+
+```wgsl
+// Basic multi-pass sampling
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = in.tex_coords;
+    
+    // Sample from previous pass
+    let previous = SamplePreviousPass(uv);
+    
+    // Apply effect (e.g., blur, color correction)
+    let result = apply_effect(previous, uv);
+    
+    return result;
+}
+```
+
+#### `SamplePreviousPassOffset(uv: vec2<f32>, offset: vec2<f32>) -> vec4<f32>`
+Samples from the previous pass or frame texture with an offset.
+
+- **Input**: UV coordinates (0.0-1.0) and offset in UV space
+- **Output**: Color from previous pass/frame at offset position
+- **Availability**: Only in multi-pass configurations (not available in first pass)
+- **Use case**: Blur effects, neighborhood sampling, convolution filters
+
+```wgsl
+// Multi-sample blur effect
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = in.tex_coords;
+    let blur_size = 0.01;
+    
+    var result = vec4(0.0);
+    
+    // Sample multiple points for blur
+    for (var x = -2; x <= 2; x++) {
+        for (var y = -2; y <= 2; y++) {
+            let offset = vec2(f32(x), f32(y)) * blur_size;
+            result += SamplePreviousPassOffset(uv, offset);
+        }
+    }
+    
+    return result / 25.0;  // Average of 5x5 samples
+}
 ```
 
 ### Audio Spectrum Helpers
