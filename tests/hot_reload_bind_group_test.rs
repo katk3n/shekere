@@ -14,11 +14,17 @@ fn test_hot_reload_config_parsing_with_bind_groups() {
         enabled = true
         
         [osc]
-        address = "127.0.0.1"
         port = 8000
+        addr_pattern = "/test"
+        
+        [[osc.sound]]
+        name = "test"
+        id = 1
         
         [spectrum]
-        enabled = true
+        min_frequency = 27.0
+        max_frequency = 2000.0
+        sampling_rate = 44100
         
         [midi]
         enabled = true
@@ -122,11 +128,17 @@ fn test_hot_reload_with_all_optional_features() {
         enabled = true
         
         [osc]
-        address = "127.0.0.1"
         port = 8000
+        addr_pattern = "/test"
+        
+        [[osc.sound]]
+        name = "test"
+        id = 1
         
         [spectrum]
-        enabled = true
+        min_frequency = 27.0
+        max_frequency = 2000.0
+        sampling_rate = 44100
         
         [midi]
         enabled = true
