@@ -1,19 +1,19 @@
 mod audio_stream;
 mod bind_group_factory;
-mod config;
-mod hot_reload;
+pub mod config;
+pub mod hot_reload;
 mod osc;
-mod pipeline;
+pub mod pipeline;
 mod shader_preprocessor;
 mod state;
+pub mod texture_manager;
 mod timer;
 mod uniforms;
 mod vertex;
 
 pub use crate::config::Config;
 pub use crate::config::ShaderConfig;
-
-use state::State;
+pub use crate::state::State;
 use std::path::Path;
 use winit::{
     dpi::LogicalSize,
@@ -32,7 +32,9 @@ pub async fn run(conf: &Config, conf_dir: &Path) {
         .build(&event_loop)
         .unwrap();
 
-    let mut state = State::new(&window, &conf, conf_dir).await;
+    let mut state = State::new(&window, &conf, conf_dir)
+        .await
+        .expect("Failed to create state");
 
     let _ = event_loop.run(move |event, control_flow| match event {
         Event::WindowEvent {

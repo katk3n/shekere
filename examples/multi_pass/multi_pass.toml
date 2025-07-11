@@ -1,0 +1,19 @@
+[window]
+width = 800
+height = 800
+
+[hot_reload]
+enabled = true
+
+# Multi-pass rendering example: scene -> blur -> screen
+[[pipeline]]
+shader_type = "fragment"
+label = "Main Scene"
+entry_point = "fs_main"
+file = "scene.wgsl"
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Blur Effect"
+entry_point = "fs_main"
+file = "blur.wgsl"

@@ -4,9 +4,10 @@ height = 800
 
 [[pipeline]]
 shader_type = "fragment"
-label = "Circular Pattern Shader"
+label = "Trail Effect"
 entry_point = "fs_main"
-file = "fragment.wgsl"
+file = "trail.wgsl"
+persistent = true
 
 [hot_reload]
 enabled = true

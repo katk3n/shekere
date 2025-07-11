@@ -4,9 +4,10 @@ height = 800
 
 [[pipeline]]
 shader_type = "fragment"
-label = "Circular Pattern Shader"
+label = "Kaleidoscope Feedback"
 entry_point = "fs_main"
-file = "fragment.wgsl"
+file = "kaleidoscope.wgsl"
+ping_pong = true
 
 [hot_reload]
 enabled = true

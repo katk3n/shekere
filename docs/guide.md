@@ -84,6 +84,93 @@ enabled = true
 
 When enabled, the application automatically reloads the shader when the WGSL file is modified, allowing for real-time shader development without restarting the application.
 
+## Multi-Pass Shaders
+
+Multi-pass shaders enable advanced rendering techniques by executing multiple shader passes in sequence. Each pass can access the output of the previous pass, enabling post-effects, state preservation, and complex visual systems.
+
+### Multi-Pass Rendering
+
+Execute multiple shaders in sequence, with each shader processing the output of the previous one:
+
+```toml
+[window]
+width = 800
+height = 600
+
+# First pass: Generate scene
+[[pipeline]]
+shader_type = "fragment"
+label = "Main Scene"
+entry_point = "fs_main"
+file = "scene.wgsl"
+
+# Second pass: Apply blur effect
+[[pipeline]]
+shader_type = "fragment"
+label = "Blur Effect"
+entry_point = "fs_main"
+file = "blur.wgsl"
+
+# Third pass: Color grading (optional)
+[[pipeline]]
+shader_type = "fragment"
+label = "Color Grading"
+entry_point = "fs_main"
+file = "color_grade.wgsl"
+```
+
+**Automatic behavior:**
+- First pass renders to intermediate texture `temp_0`
+- Second pass reads from `temp_0`, renders to `temp_1`
+- Final pass always renders to screen
+- Each pass automatically receives previous pass output via Group 3 bindings
+
+### Ping-Pong Buffers
+
+Use double-buffering for stateful shaders like cellular automata or reaction-diffusion systems:
+
+```toml
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Game of Life"
+entry_point = "fs_main"
+file = "life.wgsl"
+ping_pong = true
+```
+
+**Automatic behavior:**
+- Creates two textures: `buffer_a` and `buffer_b`
+- Alternates reading/writing between buffers each frame
+- Current frame reads from one buffer, writes to the other
+- Enables stateful shader effects that evolve over time
+
+### Persistent Textures
+
+Preserve texture content between frames for accumulation effects:
+
+```toml
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Trail Effect"
+entry_point = "fs_main"
+file = "trail.wgsl"
+persistent = true
+```
+
+**Automatic behavior:**
+- Single texture preserves content between frames
+- Previous frame content available via Group 3 bindings
+- Enables trail effects, accumulation, and feedback systems
+- First frame starts with cleared texture
+
 ## Shader Development
 
 ### Basic Fragment Shader
@@ -109,54 +196,47 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 ### Example Usage
 
-#### Circular Pattern
-```wgsl
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = NormalizedCoords(in.position.xy);
-    
-    // Create concentric circles
-    let dist = length(uv);
-    let rings = sin(dist * 10.0 - Time.duration * 3.0) * 0.5 + 0.5;
-    
-    let color = vec3(rings);
-    
-    return vec4(ToLinearRgb(color), 1.0);
-}
-```
+For practical examples, see the `examples/` directory:
 
-#### Mouse Interaction
-```wgsl
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = NormalizedCoords(in.position.xy);
-    let m = MouseCoords();
-    
-    let dist = length(uv - m);
-    let brightness = 1.0 - smoothstep(0.0, 0.5, dist);
-    
-    return vec4(vec3(brightness), 1.0);
-}
-```
+- **[examples/basic/](../examples/basic/)** - Basic fragment shader with time-based animation
+- **[examples/circular/](../examples/circular/)** - Circular patterns and concentric rings
+- **[examples/mouse/](../examples/mouse/)** - Mouse interaction and cursor-based effects
+- **[examples/midi/](../examples/midi/)** - MIDI control integration
+- **[examples/osc/](../examples/osc/)** - OSC integration with TidalCycles
+- **[examples/spectrum/](../examples/spectrum/)** - Audio spectrum visualization
 
-#### MIDI Control
-```wgsl
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = NormalizedCoords(in.position.xy);
-    
-    // Use MIDI note C4 (60) for color intensity
-    let note_intensity = MidiNote(60u);
-    
-    // Use MIDI CC 1 (modulation wheel) for animation speed
-    let mod_wheel = MidiControl(1u);
-    let speed = 1.0 + mod_wheel * 5.0;
-    
-    let color = vec3(sin(Time.duration * speed) * note_intensity);
-    
-    return vec4(ToLinearRgb(color), 1.0);
-}
-```
+### Multi-Pass Shader Examples
+
+For practical multi-pass examples, see the `examples/` directory:
+
+- **[examples/multi_pass/](../examples/multi_pass/)** - Basic blur effect (scene → blur)
+- **[examples/persistent/](../examples/persistent/)** - Trail effects using persistent textures
+- **[examples/ping_pong/](../examples/ping_pong/)** - Ping-pong buffer examples (kaleidoscope feedback)
+
+#### Usage Patterns
+
+**When to use Multi-Pass Rendering:**
+- Post-processing effects (blur, bloom, tone mapping)
+- Complex lighting calculations
+- Multi-stage image filters
+- Composition of multiple render passes
+
+**When to use Ping-Pong Buffers:**
+- Cellular automata (Game of Life, Langton's Ant)
+- Fluid simulations
+- Reaction-diffusion systems
+- Any algorithm requiring current state based on previous state
+
+**When to use Persistent Textures:**
+- Trail and accumulation effects
+- Paint/drawing applications
+- Feedback systems
+- Long-term state preservation
+
+**Performance Considerations:**
+- Multi-pass rendering uses additional GPU memory for intermediate textures
+- Ping-pong buffers double the texture memory usage
+- Complex multi-pass chains may impact frame rate
 
 ## See Also
 

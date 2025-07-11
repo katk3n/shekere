@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct Config {
     pub window: WindowConfig,
     pub pipeline: Vec<ShaderConfig>,
@@ -15,41 +15,43 @@ pub struct HotReloadConfig {
     pub enabled: bool,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct WindowConfig {
     pub width: u32,
     pub height: u32,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct ShaderConfig {
     pub shader_type: String,
     pub label: String,
     pub entry_point: String,
     pub file: String,
+    pub ping_pong: Option<bool>,
+    pub persistent: Option<bool>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct OscSoundConfig {
     pub name: String,
     pub id: i32,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct OscConfig {
     pub port: u32,
     pub addr_pattern: String,
     pub sound: Vec<OscSoundConfig>,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct SpectrumConfig {
     pub min_frequency: f32,
     pub max_frequency: f32,
     pub sampling_rate: u32,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct MidiConfig {
     pub enabled: bool,
 }
@@ -74,6 +76,14 @@ impl Config {
             }
             if shader.file.is_empty() {
                 return Err(format!("Pipeline[{}]: file cannot be empty", i));
+            }
+
+            // Validate ping_pong and persistent flags
+            if shader.ping_pong.unwrap_or(false) && shader.persistent.unwrap_or(false) {
+                return Err(format!(
+                    "Pipeline[{}]: ping_pong and persistent cannot both be true",
+                    i
+                ));
             }
         }
 
@@ -192,6 +202,8 @@ sampling_rate = 44100
                 label: "test".to_string(),
                 entry_point: "fs_main".to_string(),
                 file: "test.wgsl".to_string(),
+                ping_pong: None,
+                persistent: None,
             }],
             osc: None,
             spectrum: None,
@@ -214,6 +226,8 @@ sampling_rate = 44100
                 label: "test".to_string(),
                 entry_point: "fs_main".to_string(),
                 file: "test.wgsl".to_string(),
+                ping_pong: None,
+                persistent: None,
             }],
             osc: None,
             spectrum: None,
@@ -253,6 +267,8 @@ sampling_rate = 44100
                 label: "test".to_string(),
                 entry_point: "fs_main".to_string(),
                 file: "test.wgsl".to_string(),
+                ping_pong: None,
+                persistent: None,
             }],
             osc: None,
             spectrum: Some(SpectrumConfig {
@@ -404,5 +420,264 @@ enabled = true
         assert!(config.hot_reload.is_some());
         assert_eq!(config.hot_reload.unwrap().enabled, true);
         assert_eq!(config.midi.unwrap().enabled, true);
+    }
+
+    #[test]
+    fn test_shader_config_with_ping_pong_should_parse_after_implementation() {
+        // TDD Red phase: This test should fail because ping_pong field doesn't exist yet
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Game of Life"
+entry_point = "fs_main"
+file = "life.wgsl"
+ping_pong = true
+"#;
+
+        let result = Config::from_toml(toml_str);
+        assert!(result.is_ok()); // Should parse successfully but ping_pong field is ignored
+        let config = result.unwrap();
+
+        // This should fail because ping_pong field doesn't exist yet
+        let shader_config = &config.pipeline[0];
+        // We can't access ping_pong field yet because it doesn't exist
+        assert_eq!(shader_config.shader_type, "fragment");
+        assert_eq!(shader_config.label, "Game of Life");
+    }
+
+    #[test]
+    fn test_shader_config_with_persistent_should_parse_after_implementation() {
+        // TDD Red phase: This test should fail because persistent field doesn't exist yet
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Trail Effect"
+entry_point = "fs_main"
+file = "trail.wgsl"
+persistent = true
+"#;
+
+        let result = Config::from_toml(toml_str);
+        assert!(result.is_ok()); // Should parse successfully but persistent field is ignored
+        let config = result.unwrap();
+
+        // This should fail because persistent field doesn't exist yet
+        let shader_config = &config.pipeline[0];
+        // We can't access persistent field yet because it doesn't exist
+        assert_eq!(shader_config.shader_type, "fragment");
+        assert_eq!(shader_config.label, "Trail Effect");
+    }
+
+    #[test]
+    fn test_multi_pass_shader_config_should_fail() {
+        // TDD Red phase: This test should fail because ping_pong field doesn't exist yet
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Main Render"
+entry_point = "fs_main"
+file = "main.wgsl"
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Blur Effect"
+entry_point = "fs_main"
+file = "blur.wgsl"
+"#;
+
+        let result = Config::from_toml(toml_str);
+        assert!(result.is_ok()); // Multi-pass without special flags should work
+        let config = result.unwrap();
+        assert_eq!(config.pipeline.len(), 2);
+    }
+
+    #[test]
+    fn test_shader_config_needs_ping_pong_field() {
+        // This test demonstrates the need for ping_pong field access
+        let config = ShaderConfig {
+            shader_type: "fragment".to_string(),
+            label: "Game of Life".to_string(),
+            entry_point: "fs_main".to_string(),
+            file: "life.wgsl".to_string(),
+            ping_pong: None,
+            persistent: None,
+        };
+
+        // Now we can access ping_pong field
+        assert_eq!(config.ping_pong.unwrap_or(false), false);
+        assert_eq!(config.shader_type, "fragment");
+    }
+
+    #[test]
+    fn test_shader_config_needs_persistent_field() {
+        // This test demonstrates the need for persistent field access
+        let config = ShaderConfig {
+            shader_type: "fragment".to_string(),
+            label: "Trail Effect".to_string(),
+            entry_point: "fs_main".to_string(),
+            file: "trail.wgsl".to_string(),
+            ping_pong: None,
+            persistent: None,
+        };
+
+        // Now we can access persistent field
+        assert_eq!(config.persistent.unwrap_or(false), false);
+        assert_eq!(config.shader_type, "fragment");
+    }
+
+    #[test]
+    fn test_shader_config_with_ping_pong_true() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Game of Life"
+entry_point = "fs_main"
+file = "life.wgsl"
+ping_pong = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.pipeline.len(), 1);
+        assert_eq!(config.pipeline[0].ping_pong, Some(true));
+        assert_eq!(config.pipeline[0].persistent, None);
+        assert_eq!(config.pipeline[0].label, "Game of Life");
+    }
+
+    #[test]
+    fn test_shader_config_with_persistent_true() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Trail Effect"
+entry_point = "fs_main"
+file = "trail.wgsl"
+persistent = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.pipeline.len(), 1);
+        assert_eq!(config.pipeline[0].persistent, Some(true));
+        assert_eq!(config.pipeline[0].ping_pong, None);
+        assert_eq!(config.pipeline[0].label, "Trail Effect");
+    }
+
+    #[test]
+    fn test_shader_config_with_both_ping_pong_and_persistent() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Complex Effect"
+entry_point = "fs_main"
+file = "complex.wgsl"
+ping_pong = true
+persistent = false
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.pipeline.len(), 1);
+        assert_eq!(config.pipeline[0].ping_pong, Some(true));
+        assert_eq!(config.pipeline[0].persistent, Some(false));
+        assert_eq!(config.pipeline[0].label, "Complex Effect");
+    }
+
+    #[test]
+    fn test_shader_config_multi_pass_with_mixed_flags() {
+        let toml_str = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Main Render"
+entry_point = "fs_main"
+file = "main.wgsl"
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Blur Effect"
+entry_point = "fs_main"
+file = "blur.wgsl"
+ping_pong = true
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Final Composite"
+entry_point = "fs_main"
+file = "composite.wgsl"
+persistent = true
+"#;
+
+        let config = Config::from_toml(toml_str).unwrap();
+        assert_eq!(config.pipeline.len(), 3);
+
+        // First pass - no special flags
+        assert_eq!(config.pipeline[0].ping_pong, None);
+        assert_eq!(config.pipeline[0].persistent, None);
+        assert_eq!(config.pipeline[0].label, "Main Render");
+
+        // Second pass - ping_pong enabled
+        assert_eq!(config.pipeline[1].ping_pong, Some(true));
+        assert_eq!(config.pipeline[1].persistent, None);
+        assert_eq!(config.pipeline[1].label, "Blur Effect");
+
+        // Third pass - persistent enabled
+        assert_eq!(config.pipeline[2].ping_pong, None);
+        assert_eq!(config.pipeline[2].persistent, Some(true));
+        assert_eq!(config.pipeline[2].label, "Final Composite");
+    }
+
+    #[test]
+    fn test_shader_config_validation_ping_pong_and_persistent_conflict() {
+        let config = Config {
+            window: WindowConfig {
+                width: 800,
+                height: 600,
+            },
+            pipeline: vec![ShaderConfig {
+                shader_type: "fragment".to_string(),
+                label: "test".to_string(),
+                entry_point: "fs_main".to_string(),
+                file: "test.wgsl".to_string(),
+                ping_pong: Some(true),
+                persistent: Some(true),
+            }],
+            osc: None,
+            spectrum: None,
+            midi: None,
+            hot_reload: None,
+        };
+
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("ping_pong and persistent cannot both be true")
+        );
     }
 }

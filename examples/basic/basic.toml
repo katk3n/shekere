@@ -2,6 +2,9 @@
 width = 800
 height = 800
 
+[hot_reload]
+enabled = true
+
 [[pipeline]]
 shader_type = "fragment"
 label = "Basic Animation Shader"
