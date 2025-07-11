@@ -7,6 +7,7 @@ use std::time::Duration;
 pub struct HotReloader {
     _watcher: RecommendedWatcher,
     shader_modified: Arc<Mutex<bool>>,
+    #[allow(dead_code)]
     watched_files: Vec<PathBuf>,
 }
 

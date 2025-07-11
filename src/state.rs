@@ -456,12 +456,6 @@ impl<'a> State<'a> {
         }
     }
 
-    fn try_create_new_pipeline(&self) -> Result<wgpu::RenderPipeline, String> {
-        // This method is no longer needed for multi-pass shaders
-        // But kept for backward compatibility
-        Err("Use try_create_new_multi_pass_pipeline instead".to_string())
-    }
-
     fn determine_texture_type(&self, pass_index: usize) -> TextureType {
         if let Some(shader_config) = self.config.pipeline.get(pass_index) {
             if shader_config.ping_pong.unwrap_or(false) {
@@ -473,6 +467,28 @@ impl<'a> State<'a> {
             }
         } else {
             TextureType::Intermediate
+        }
+    }
+
+    /// Helper method to create texture bind groups using BindGroupFactory
+    fn create_texture_bind_group(
+        &self,
+        texture_view: &wgpu::TextureView,
+        sampler: &wgpu::Sampler,
+        label: &str,
+    ) -> Option<wgpu::BindGroup> {
+        if let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout {
+            let mut factory = BindGroupFactory::new();
+            factory.add_multipass_texture(texture_view, sampler);
+
+            // Create bind group manually since we need to use the existing layout
+            Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout,
+                entries: &factory.entries,
+                label: Some(label),
+            }))
+        } else {
+            None
         }
     }
 
@@ -638,35 +654,17 @@ impl<'a> State<'a> {
                     };
                     let sampler = &self.texture_manager.sampler;
 
-                    if let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout {
-                        log::debug!(
-                            "Creating texture bind group for pass {} ({:?})",
-                            pass_index,
-                            current_texture_type
-                        );
-                        Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            layout,
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(
-                                        input_texture_view,
-                                    ),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::Sampler(sampler),
-                                },
-                            ],
-                            label: Some(&format!("Pass {} Texture Bind Group", pass_index)),
-                        }))
-                    } else {
-                        log::warn!(
-                            "No texture_bind_group_layout available for pass {}",
-                            pass_index
-                        );
-                        None
-                    }
+                    log::debug!(
+                        "Creating texture bind group for pass {} ({:?})",
+                        pass_index,
+                        current_texture_type
+                    );
+
+                    self.create_texture_bind_group(
+                        input_texture_view,
+                        sampler,
+                        &format!("Pass {} Texture Bind Group", pass_index),
+                    )
                 } else {
                     None
                 };
@@ -844,29 +842,15 @@ impl<'a> State<'a> {
                             _ => unreachable!(),
                         };
 
-                        let texture_bind_group =
-                            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                layout: self
-                                    .multi_pass_pipeline
-                                    .texture_bind_group_layout
-                                    .as_ref()
-                                    .unwrap(),
-                                entries: &[
-                                    wgpu::BindGroupEntry {
-                                        binding: 0,
-                                        resource: wgpu::BindingResource::TextureView(
-                                            texture_view_ref,
-                                        ),
-                                    },
-                                    wgpu::BindGroupEntry {
-                                        binding: 1,
-                                        resource: wgpu::BindingResource::Sampler(
-                                            &self.texture_manager.sampler,
-                                        ),
-                                    },
-                                ],
-                                label: Some(&format!("Copy {:?} Texture Bind Group", texture_type)),
-                            });
+                        let texture_bind_group = self
+                            .create_texture_bind_group(
+                                texture_view_ref,
+                                &self.texture_manager.sampler,
+                                &format!("Copy {:?} Texture Bind Group", texture_type),
+                            )
+                            .expect(
+                                "Should be able to create texture bind group for copy operation",
+                            );
                         copy_pass.set_bind_group(3, &texture_bind_group, &[]);
 
                         copy_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));

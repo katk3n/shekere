@@ -125,32 +125,13 @@ impl MultiPassPipeline {
             || shader_configs.len() > 1;
 
         if needs_texture_bindings {
-            // Create texture bind group layout for Group 3
-            texture_bind_group_layout = Some(device.create_bind_group_layout(
-                &wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        // Binding 0: Texture
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        // Binding 1: Sampler
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                    ],
-                    label: Some("texture_bind_group_layout"),
-                },
-            ));
+            // Create texture bind group layout for Group 3 using BindGroupFactory
+            texture_bind_group_layout = Some(
+                crate::bind_group_factory::BindGroupFactory::create_multipass_texture_layout(
+                    device,
+                    "texture_bind_group_layout",
+                ),
+            );
 
             // Create empty bind group layout for missing Group 2
             empty_bind_group_layout = Some(device.create_bind_group_layout(

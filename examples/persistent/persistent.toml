@@ -1,6 +1,6 @@
 [window]
 width = 800
-height = 600
+height = 800
 
 [[pipeline]]
 shader_type = "fragment"

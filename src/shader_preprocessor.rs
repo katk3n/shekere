@@ -18,6 +18,7 @@ impl ShaderPreprocessor {
         Self
     }
 
+    #[allow(dead_code)]
     pub fn process_file_with_embedded_defs(
         &self,
         file_path: &Path,

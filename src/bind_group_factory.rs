@@ -69,6 +69,38 @@ impl<'a> BindGroupFactory<'a> {
         });
     }
 
+    /// Helper method for the common multi-pass texture pattern (texture at binding 0, sampler at binding 1)
+    pub fn add_multipass_texture(&mut self, texture_view: &'a TextureView, sampler: &'a Sampler) {
+        self.add_texture_entry(0, 1, texture_view, sampler);
+    }
+
+    /// Creates a texture bind group layout using the standard multi-pass pattern
+    pub fn create_multipass_texture_layout(device: &Device, label: &str) -> BindGroupLayout {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                // Binding 0: Texture
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                // Binding 1: Sampler
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+            label: Some(label),
+        })
+    }
+
     pub fn create(
         &self,
         device: &Device,
@@ -220,5 +252,42 @@ mod tests {
         let (layout, bind_group) = factory.create(&device, "test");
         assert!(layout.is_some());
         assert!(bind_group.is_some());
+    }
+
+    #[test]
+    fn test_bind_group_factory_add_multipass_texture() {
+        // Test the helper method for multipass texture pattern
+        let (device, _queue) = create_test_device();
+        let mock_texture = MockTexture::new(&device);
+
+        let mut factory = BindGroupFactory::new();
+
+        // Add multipass texture using helper
+        let texture_view = mock_texture.texture.create_view(&Default::default());
+        factory.add_multipass_texture(&texture_view, &mock_texture.sampler);
+
+        // Should have 2 entries (texture at binding 0, sampler at binding 1)
+        assert_eq!(factory.entries.len(), 2);
+        assert_eq!(factory.layout_entries.len(), 2);
+
+        // Check texture binding is at 0
+        assert_eq!(factory.layout_entries[0].binding, 0);
+        assert_eq!(factory.entries[0].binding, 0);
+
+        // Check sampler binding is at 1
+        assert_eq!(factory.layout_entries[1].binding, 1);
+        assert_eq!(factory.entries[1].binding, 1);
+    }
+
+    #[test]
+    fn test_bind_group_factory_create_multipass_texture_layout() {
+        // Test creating the standard multipass texture layout
+        let (device, _queue) = create_test_device();
+
+        let layout = BindGroupFactory::create_multipass_texture_layout(&device, "test_layout");
+
+        // Should successfully create a layout (the fact that this doesn't panic is sufficient)
+        // Testing internal structure would require exposing private details
+        drop(layout); // Just ensure it's a valid layout object
     }
 }
