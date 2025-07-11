@@ -2,6 +2,9 @@
 width = 800
 height = 600
 
+[hot_reload]
+enabled = true
+
 # Multi-pass rendering example: scene -> blur -> screen
 [[pipeline]]
 shader_type = "fragment"

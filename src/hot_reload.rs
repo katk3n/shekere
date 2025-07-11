@@ -1,5 +1,5 @@
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -7,14 +7,13 @@ use std::time::Duration;
 pub struct HotReloader {
     _watcher: RecommendedWatcher,
     shader_modified: Arc<Mutex<bool>>,
+    watched_files: Vec<PathBuf>,
 }
 
-#[cfg(test)]
 pub struct MockHotReloader {
     shader_modified: Arc<Mutex<bool>>,
 }
 
-#[cfg(test)]
 impl MockHotReloader {
     pub fn new() -> Self {
         Self {
@@ -38,6 +37,10 @@ impl MockHotReloader {
 
 impl HotReloader {
     pub fn new<P: AsRef<Path>>(shader_path: P) -> notify::Result<Self> {
+        Self::new_multi_file(vec![shader_path.as_ref().to_path_buf()])
+    }
+
+    pub fn new_multi_file(shader_paths: Vec<PathBuf>) -> notify::Result<Self> {
         let shader_modified = Arc::new(Mutex::new(false));
         let shader_modified_clone = shader_modified.clone();
 
@@ -52,11 +55,15 @@ impl HotReloader {
             Config::default(),
         )?;
 
-        watcher.watch(shader_path.as_ref(), RecursiveMode::NonRecursive)?;
+        // Watch all provided shader files
+        for shader_path in &shader_paths {
+            watcher.watch(shader_path, RecursiveMode::NonRecursive)?;
+        }
 
         Ok(Self {
             _watcher: watcher,
             shader_modified,
+            watched_files: shader_paths,
         })
     }
 

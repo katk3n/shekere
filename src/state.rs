@@ -41,6 +41,7 @@ pub struct State<'a> {
     // hot reload
     hot_reloader: Option<HotReloader>,
     config: Config,
+    config_dir: std::path::PathBuf,
 
     // uniforms
     window_uniform: WindowUniform,
@@ -186,16 +187,22 @@ impl<'a> State<'a> {
             bind_group_layouts.push(&layout);
         }
 
-        // For hot reload, we'll use the first shader for now
-        let first_shader_file = &config.pipeline[0].file;
-        let shader_path = conf_dir.join(first_shader_file);
-
-        // Setup hot reload if enabled
+        // Setup hot reload if enabled - watch all shader files in the pipeline
         let hot_reloader = if let Some(hot_reload_config) = &config.hot_reload {
             if hot_reload_config.enabled {
-                match HotReloader::new(&shader_path) {
+                let shader_paths: Vec<std::path::PathBuf> = config
+                    .pipeline
+                    .iter()
+                    .map(|shader_config| conf_dir.join(&shader_config.file))
+                    .collect();
+
+                match HotReloader::new_multi_file(shader_paths.clone()) {
                     Ok(reloader) => {
-                        log::info!("Hot reload enabled for shader: {:?}", shader_path);
+                        log::info!(
+                            "Hot reload enabled for {} shader files: {:?}",
+                            shader_paths.len(),
+                            shader_paths
+                        );
                         Some(reloader)
                     }
                     Err(e) => {
@@ -265,6 +272,7 @@ impl<'a> State<'a> {
             sound_bind_group,
             hot_reloader,
             config: config.clone(),
+            config_dir: conf_dir.to_path_buf(),
         })
     }
 
@@ -337,14 +345,121 @@ impl<'a> State<'a> {
     }
 
     fn reload_shader(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        log::warn!("Hot reload not yet implemented for multi-pass shaders");
-        // TODO: Implement multi-pass hot reload support
-        Ok(())
+        log::info!("Attempting to reload multi-pass shaders...");
+
+        match self.try_create_new_multi_pass_pipeline(&self.config_dir) {
+            Ok(new_pipeline) => {
+                // Replace the old pipeline with the new one
+                self.multi_pass_pipeline = new_pipeline;
+
+                // Clear texture manager state to avoid potential issues with stale textures
+                self.texture_manager.clear_all_textures();
+
+                log::info!("Multi-pass shaders reloaded successfully");
+                Ok(())
+            }
+            Err(e) => {
+                log::error!("Failed to recreate multi-pass pipeline: {}", e);
+                // Keep the old pipeline working
+                Err(format!("Shader compilation failed: {}", e).into())
+            }
+        }
+    }
+
+    fn try_create_new_multi_pass_pipeline(
+        &self,
+        conf_dir: &std::path::Path,
+    ) -> Result<crate::pipeline::MultiPassPipeline, String> {
+        use std::panic::{self, AssertUnwindSafe};
+
+        // Use existing bind group layouts to ensure compatibility
+        // We need to recreate the bind group layouts using the same method as in new()
+
+        // Recreate uniform bind group layout using BindGroupFactory (same as original)
+        let mut uniform_bind_group_factory = crate::bind_group_factory::BindGroupFactory::new();
+        uniform_bind_group_factory.add_entry(
+            crate::uniforms::window_uniform::WindowUniform::BINDING_INDEX,
+            &self.window_uniform.buffer,
+        );
+        uniform_bind_group_factory.add_entry(
+            crate::uniforms::time_uniform::TimeUniform::BINDING_INDEX,
+            &self.time_uniform.buffer,
+        );
+        let (uniform_bind_group_layout, _) =
+            uniform_bind_group_factory.create(&self.device, "uniform");
+        let uniform_bind_group_layout = uniform_bind_group_layout.unwrap();
+
+        // Recreate device bind group layout using BindGroupFactory (same as original)
+        let mut device_bind_group_factory = crate::bind_group_factory::BindGroupFactory::new();
+        device_bind_group_factory.add_entry(
+            crate::uniforms::mouse_uniform::MouseUniform::BINDING_INDEX,
+            &self.mouse_uniform.buffer,
+        );
+        let (device_bind_group_layout, _) =
+            device_bind_group_factory.create(&self.device, "device");
+        let device_bind_group_layout = device_bind_group_layout.unwrap();
+
+        // Recreate sound bind group layout using BindGroupFactory (same as original)
+        let mut sound_bind_group_factory = crate::bind_group_factory::BindGroupFactory::new();
+        if let Some(ou) = &self.osc_uniform {
+            sound_bind_group_factory.add_entry(
+                crate::uniforms::osc_uniform::OscUniform::BINDING_INDEX,
+                &ou.buffer,
+            );
+        }
+        if let Some(su) = &self.spectrum_uniform {
+            sound_bind_group_factory.add_entry(
+                crate::uniforms::spectrum_uniform::SpectrumUniform::BINDING_INDEX,
+                &su.buffer,
+            );
+        }
+        if let Some(mu) = &self.midi_uniform {
+            sound_bind_group_factory.add_entry(
+                crate::uniforms::midi_uniform::MidiUniform::BINDING_INDEX,
+                &mu.buffer,
+            );
+        }
+        let (sound_bind_group_layout, _) = sound_bind_group_factory.create(&self.device, "sound");
+
+        // Build bind group layouts array (same as original)
+        let mut bind_group_layouts = vec![&uniform_bind_group_layout, &device_bind_group_layout];
+        if let Some(layout) = &sound_bind_group_layout {
+            bind_group_layouts.push(&layout);
+        }
+
+        // Safely attempt to create new MultiPassPipeline with error handling
+        // We use AssertUnwindSafe to bypass UnwindSafe requirements, as we're confident
+        // that shader compilation errors won't violate memory safety
+        log::info!("Attempting to create new MultiPassPipeline for hot reload...");
+
+        let pipeline_result = panic::catch_unwind(AssertUnwindSafe(|| {
+            crate::pipeline::MultiPassPipeline::new(
+                &self.device,
+                conf_dir,
+                &self.config.pipeline,
+                &self.surface_config,
+                &bind_group_layouts,
+            )
+        }));
+
+        match pipeline_result {
+            Ok(new_pipeline) => {
+                log::info!("Successfully created new MultiPassPipeline for hot reload");
+                Ok(new_pipeline)
+            }
+            Err(_) => {
+                log::error!(
+                    "Shader compilation failed during hot reload - keeping existing pipeline"
+                );
+                Err("Shader compilation failed during hot reload".to_string())
+            }
+        }
     }
 
     fn try_create_new_pipeline(&self) -> Result<wgpu::RenderPipeline, String> {
-        // TODO: Implement multi-pass hot reload support
-        Err("Hot reload not yet implemented for multi-pass shaders".to_string())
+        // This method is no longer needed for multi-pass shaders
+        // But kept for backward compatibility
+        Err("Use try_create_new_multi_pass_pipeline instead".to_string())
     }
 
     fn determine_texture_type(&self, pass_index: usize) -> TextureType {
@@ -381,13 +496,23 @@ impl<'a> State<'a> {
 
         let has_persistent_textures =
             (0..pipeline_count).any(|i| self.determine_texture_type(i) == TextureType::Persistent);
+        let has_ping_pong_textures =
+            (0..pipeline_count).any(|i| self.determine_texture_type(i) == TextureType::PingPong);
 
-        if (is_multipass && pipeline_count > 1) || has_persistent_textures {
+        // Enter multi-pass rendering mode if:
+        // 1. Multiple pipelines in sequence (traditional multi-pass)
+        // 2. Any persistent textures (single-pass but needs state preservation)
+        // 3. Any ping-pong textures (single-pass but needs double-buffering)
+        if (is_multipass && pipeline_count > 1) || has_persistent_textures || has_ping_pong_textures
+        {
             // Pre-create all textures based on shader configuration to avoid borrowing conflicts
             for i in 0..pipeline_count {
                 let texture_type = self.determine_texture_type(i);
-                // Skip texture creation for final pass unless it's persistent
-                if i == pipeline_count - 1 && texture_type != TextureType::Persistent {
+                // Skip texture creation for final pass unless it's persistent or ping-pong
+                if i == pipeline_count - 1
+                    && texture_type != TextureType::Persistent
+                    && texture_type != TextureType::PingPong
+                {
                     continue;
                 }
                 match texture_type {
@@ -412,8 +537,9 @@ impl<'a> State<'a> {
             // Multi-pass rendering for intermediate textures
             for pass_index in 0..pipeline_count {
                 let current_texture_type = self.determine_texture_type(pass_index);
-                let is_final_pass = pass_index == pipeline_count - 1 
-                    && current_texture_type != TextureType::Persistent;
+                let is_final_pass = pass_index == pipeline_count - 1
+                    && current_texture_type != TextureType::Persistent
+                    && current_texture_type != TextureType::PingPong;
 
                 // Get render target view for this pass
                 let render_target_view = if is_final_pass {
@@ -447,43 +573,77 @@ impl<'a> State<'a> {
                 );
                 let texture_bind_group = if pass_index > 0
                     || current_texture_type == TextureType::Persistent
+                    || current_texture_type == TextureType::PingPong
                 {
-                    let input_texture_view =
-                        if current_texture_type == TextureType::Persistent && pass_index == 0 {
-                            // For persistent texture on first pass, read from previous frame using double-buffering
-                            // Since we pre-created textures, we can use the existing texture without mutable borrow
-                            let textures = self
-                                .texture_manager
-                                .persistent_textures
-                                .get(&pass_index)
-                                .unwrap();
-                            let read_index = ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
-                            log::info!("Persistent texture input: frame={}, read_index={}", 
-                                      self.texture_manager.current_frame, read_index);
-                            &textures[read_index].1
-                        } else {
-                            // For multi-pass, read from previous pass
-                            let prev_pass_index = pass_index - 1;
-                            let prev_texture_type = self.determine_texture_type(prev_pass_index);
-                            match prev_texture_type {
-                                TextureType::Intermediate => self
+                    let input_texture_view = if (current_texture_type == TextureType::Persistent
+                        || current_texture_type == TextureType::PingPong)
+                        && pass_index == 0
+                    {
+                        // For persistent/ping-pong textures on first pass, read from previous frame using double-buffering
+                        match current_texture_type {
+                            TextureType::Persistent => {
+                                let textures = self
                                     .texture_manager
-                                    .get_intermediate_render_target(prev_pass_index)
-                                    .expect("Previous pass intermediate texture should exist"),
-                                TextureType::PingPong => self
-                                    .texture_manager
-                                    .get_ping_pong_render_target(prev_pass_index)
-                                    .expect("Previous pass ping-pong texture should exist"),
-                                TextureType::Persistent => self
-                                    .texture_manager
-                                    .get_persistent_render_target(prev_pass_index)
-                                    .expect("Previous pass persistent texture should exist"),
+                                    .persistent_textures
+                                    .get(&pass_index)
+                                    .unwrap();
+                                let read_index =
+                                    ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                                log::debug!(
+                                    "Persistent texture input: frame={}, read_index={}",
+                                    self.texture_manager.current_frame,
+                                    read_index
+                                );
+                                &textures[read_index].1
                             }
-                        };
+                            TextureType::PingPong => {
+                                // For ping-pong buffers, read from the PREVIOUS frame's texture
+                                // If current_frame is even (0, 2, 4...), we're writing to buffer 0, so read from buffer 1
+                                // If current_frame is odd (1, 3, 5...), we're writing to buffer 1, so read from buffer 0
+                                let textures = self
+                                    .texture_manager
+                                    .ping_pong_textures
+                                    .get(&pass_index)
+                                    .unwrap();
+                                let read_index =
+                                    ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                                log::debug!(
+                                    "Ping-pong texture input: frame={}, read_index={}, write_index={}",
+                                    self.texture_manager.current_frame,
+                                    read_index,
+                                    self.texture_manager.current_frame % 2
+                                );
+                                &textures[read_index].1
+                            }
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        // For multi-pass, read from previous pass
+                        let prev_pass_index = pass_index - 1;
+                        let prev_texture_type = self.determine_texture_type(prev_pass_index);
+                        match prev_texture_type {
+                            TextureType::Intermediate => self
+                                .texture_manager
+                                .get_intermediate_render_target(prev_pass_index)
+                                .expect("Previous pass intermediate texture should exist"),
+                            TextureType::PingPong => self
+                                .texture_manager
+                                .get_ping_pong_render_target(prev_pass_index)
+                                .expect("Previous pass ping-pong texture should exist"),
+                            TextureType::Persistent => self
+                                .texture_manager
+                                .get_persistent_render_target(prev_pass_index)
+                                .expect("Previous pass persistent texture should exist"),
+                        }
+                    };
                     let sampler = &self.texture_manager.sampler;
 
                     if let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout {
-                        log::info!("Creating texture bind group for pass {} (persistent)", pass_index);
+                        log::debug!(
+                            "Creating texture bind group for pass {} ({:?})",
+                            pass_index,
+                            current_texture_type
+                        );
                         Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                             layout,
                             entries: &[
@@ -524,10 +684,12 @@ impl<'a> State<'a> {
                                     let is_initialized = self
                                         .texture_manager
                                         .is_persistent_texture_initialized(pass_index);
-                                    log::info!("Persistent texture {} LoadOp: {} (initialized: {})", 
-                                              pass_index, 
-                                              if is_initialized { "Load" } else { "Clear" }, 
-                                              is_initialized);
+                                    log::info!(
+                                        "Persistent texture {} LoadOp: {} (initialized: {})",
+                                        pass_index,
+                                        if is_initialized { "Load" } else { "Clear" },
+                                        is_initialized
+                                    );
                                     if is_initialized {
                                         wgpu::LoadOp::Load
                                     } else {
@@ -552,7 +714,9 @@ impl<'a> State<'a> {
 
                         if let Some(sound_bind_group) = &self.sound_bind_group {
                             render_pass.set_bind_group(2, sound_bind_group, &[]);
-                        } else if pass_index > 0 || current_texture_type == TextureType::Persistent
+                        } else if pass_index > 0
+                            || current_texture_type == TextureType::Persistent
+                            || current_texture_type == TextureType::PingPong
                         {
                             // Create empty bind group for Group 2 if needed for multipass or persistent texture
                             if let Some(ref empty_layout) =
@@ -585,26 +749,44 @@ impl<'a> State<'a> {
                     }
                 }
 
-                // Mark persistent texture as initialized after first render
-                if current_texture_type == TextureType::Persistent {
-                    log::info!("Marking persistent texture {} as initialized", pass_index);
-                    self.texture_manager
-                        .mark_persistent_texture_initialized(pass_index);
+                // Mark texture as initialized after first render
+                match current_texture_type {
+                    TextureType::Persistent => {
+                        log::debug!("Marking persistent texture {} as initialized", pass_index);
+                        self.texture_manager
+                            .mark_persistent_texture_initialized(pass_index);
+                    }
+                    TextureType::PingPong => {
+                        log::debug!("Marking ping-pong texture {} as initialized", pass_index);
+                        self.texture_manager
+                            .mark_ping_pong_texture_initialized(pass_index);
+                    }
+                    _ => {}
                 }
             }
 
-            // Copy persistent textures to screen
+            // Copy persistent and ping-pong textures to screen
+            // Both persistent and ping-pong textures render to intermediate textures,
+            // so we need to copy their final output to the screen for display
             for pass_index in 0..pipeline_count {
                 let texture_type = self.determine_texture_type(pass_index);
-                if texture_type == TextureType::Persistent {
-                    // Copy persistent texture to screen using a simple copy pass
-                    let persistent_texture_view = self
-                        .texture_manager
-                        .get_persistent_render_target(pass_index)
-                        .expect("Persistent texture should exist");
+                if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong
+                {
+                    // Copy texture to screen using a simple copy pass
+                    let _texture_view = match texture_type {
+                        TextureType::Persistent => self
+                            .texture_manager
+                            .get_persistent_render_target(pass_index)
+                            .expect("Persistent texture should exist"),
+                        TextureType::PingPong => self
+                            .texture_manager
+                            .get_ping_pong_render_target(pass_index)
+                            .expect("Ping-pong texture should exist"),
+                        _ => unreachable!(),
+                    };
 
                     let mut copy_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Copy Persistent to Screen"),
+                        label: Some(&format!("Copy {:?} to Screen", texture_type)),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                             view: &final_view,
                             resolve_target: None,
@@ -627,37 +809,71 @@ impl<'a> State<'a> {
                         if let Some(sound_bind_group) = &self.sound_bind_group {
                             copy_pass.set_bind_group(2, sound_bind_group, &[]);
                         } else {
-                            if let Some(ref empty_layout) = self.multi_pass_pipeline.empty_bind_group_layout {
-                                let empty_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                    layout: empty_layout,
-                                    entries: &[],
-                                    label: Some("Empty Bind Group for Group 2"),
-                                });
+                            if let Some(ref empty_layout) =
+                                self.multi_pass_pipeline.empty_bind_group_layout
+                            {
+                                let empty_bind_group =
+                                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                        layout: empty_layout,
+                                        entries: &[],
+                                        label: Some("Empty Bind Group for Group 2"),
+                                    });
                                 copy_pass.set_bind_group(2, &empty_bind_group, &[]);
                             }
                         }
 
-                        // Bind the persistent texture for reading
-                        let textures = self.texture_manager.persistent_textures.get(&pass_index).unwrap();
+                        // Bind the texture for reading
                         let read_index = ((self.texture_manager.current_frame + 1) % 2) as usize;
-                        let texture_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            layout: self.multi_pass_pipeline.texture_bind_group_layout.as_ref().unwrap(),
-                            entries: &[
-                                wgpu::BindGroupEntry {
-                                    binding: 0,
-                                    resource: wgpu::BindingResource::TextureView(&textures[read_index].1),
-                                },
-                                wgpu::BindGroupEntry {
-                                    binding: 1,
-                                    resource: wgpu::BindingResource::Sampler(&self.texture_manager.sampler),
-                                },
-                            ],
-                            label: Some("Copy Persistent Texture Bind Group"),
-                        });
+                        let texture_view_ref = match texture_type {
+                            TextureType::Persistent => {
+                                let textures = self
+                                    .texture_manager
+                                    .persistent_textures
+                                    .get(&pass_index)
+                                    .unwrap();
+                                &textures[read_index].1
+                            }
+                            TextureType::PingPong => {
+                                let textures = self
+                                    .texture_manager
+                                    .ping_pong_textures
+                                    .get(&pass_index)
+                                    .unwrap();
+                                &textures[read_index].1
+                            }
+                            _ => unreachable!(),
+                        };
+
+                        let texture_bind_group =
+                            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                layout: self
+                                    .multi_pass_pipeline
+                                    .texture_bind_group_layout
+                                    .as_ref()
+                                    .unwrap(),
+                                entries: &[
+                                    wgpu::BindGroupEntry {
+                                        binding: 0,
+                                        resource: wgpu::BindingResource::TextureView(
+                                            texture_view_ref,
+                                        ),
+                                    },
+                                    wgpu::BindGroupEntry {
+                                        binding: 1,
+                                        resource: wgpu::BindingResource::Sampler(
+                                            &self.texture_manager.sampler,
+                                        ),
+                                    },
+                                ],
+                                label: Some(&format!("Copy {:?} Texture Bind Group", texture_type)),
+                            });
                         copy_pass.set_bind_group(3, &texture_bind_group, &[]);
 
                         copy_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                        copy_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                        copy_pass.set_index_buffer(
+                            self.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint16,
+                        );
                         copy_pass.draw_indexed(0..self.num_indices, 0, 0..1);
                     }
                 }

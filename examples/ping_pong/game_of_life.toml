@@ -4,10 +4,7 @@ height = 600
 
 [[pipeline]]
 shader_type = "fragment"
-label = "Trail Effect"
+label = "Game of Life"
 entry_point = "fs_main"
-file = "trail.wgsl"
-persistent = true
-
-[hot_reload]
-enabled = true
+file = "game_of_life.wgsl"
+ping_pong = true

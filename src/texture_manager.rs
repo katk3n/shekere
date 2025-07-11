@@ -16,7 +16,8 @@ pub struct TextureManager {
     height: u32,
     format: TextureFormat,
     intermediate_textures: HashMap<usize, (Texture, TextureView)>,
-    ping_pong_textures: HashMap<usize, [(Texture, TextureView); 2]>,
+    pub ping_pong_textures: HashMap<usize, [(Texture, TextureView); 2]>,
+    ping_pong_initialized: HashMap<usize, bool>,
     pub persistent_textures: HashMap<usize, [(Texture, TextureView); 2]>,
     persistent_initialized: HashMap<usize, bool>,
     pub sampler: Sampler,
@@ -50,6 +51,7 @@ impl TextureManager {
             format,
             intermediate_textures: HashMap::new(),
             ping_pong_textures: HashMap::new(),
+            ping_pong_initialized: HashMap::new(),
             persistent_textures: HashMap::new(),
             persistent_initialized: HashMap::new(),
             sampler,
@@ -68,6 +70,7 @@ impl TextureManager {
     pub fn clear_all_textures(&mut self) {
         self.intermediate_textures.clear();
         self.ping_pong_textures.clear();
+        self.ping_pong_initialized.clear();
         self.persistent_textures.clear();
         self.persistent_initialized.clear();
         // Reset frame counter to ensure consistent double-buffering
@@ -125,8 +128,10 @@ impl TextureManager {
                 self.create_texture(device, &format!("Ping Pong Texture B {}", pass_index));
             self.ping_pong_textures
                 .insert(pass_index, [(texture_a, view_a), (texture_b, view_b)]);
+            self.ping_pong_initialized.insert(pass_index, false);
         }
 
+        // Return current frame texture for writing (this method is used during texture creation phase)
         let textures = self.ping_pong_textures.get(&pass_index).unwrap();
         let current_index = (self.current_frame % 2) as usize;
         let (_, view) = &textures[current_index];
@@ -167,10 +172,28 @@ impl TextureManager {
         self.persistent_initialized.insert(pass_index, true);
     }
 
+    pub fn is_ping_pong_texture_initialized(&self, pass_index: usize) -> bool {
+        self.ping_pong_initialized
+            .get(&pass_index)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    pub fn mark_ping_pong_texture_initialized(&mut self, pass_index: usize) {
+        self.ping_pong_initialized.insert(pass_index, true);
+    }
+
+    /// Get the render target texture for ping-pong buffers
+    ///
+    /// Ping-pong buffers use two textures that alternate roles each frame:
+    /// - Frame N (even): Write to buffer 0, read from buffer 1
+    /// - Frame N+1 (odd): Write to buffer 1, read from buffer 0
+    ///
+    /// This method returns the texture to WRITE TO for the current frame.
     pub fn get_ping_pong_render_target(&self, pass_index: usize) -> Option<&TextureView> {
         self.ping_pong_textures.get(&pass_index).map(|textures| {
-            let next_index = ((self.current_frame + 1) % 2) as usize;
-            &textures[next_index].1
+            let write_index = (self.current_frame % 2) as usize; // Write to current frame buffer
+            &textures[write_index].1
         })
     }
 
@@ -185,8 +208,11 @@ impl TextureManager {
             // Return the write texture (current frame)
             // For double-buffering: read from previous frame, write to current frame
             let write_index = (self.current_frame % 2) as usize; // Write to current frame
-            log::info!("Persistent texture output: frame={}, write_index={}", 
-                      self.current_frame, write_index);
+            log::info!(
+                "Persistent texture output: frame={}, write_index={}",
+                self.current_frame,
+                write_index
+            );
             &textures[write_index].1
         })
     }

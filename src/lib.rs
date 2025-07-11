@@ -1,7 +1,7 @@
 mod audio_stream;
 mod bind_group_factory;
 pub mod config;
-mod hot_reload;
+pub mod hot_reload;
 mod osc;
 pub mod pipeline;
 mod shader_preprocessor;
