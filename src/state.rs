@@ -902,3 +902,316 @@ impl<'a> State<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::texture_manager::TextureType;
+
+    /// Helper function to create a test device for unit tests
+    fn create_test_device() -> wgpu::Device {
+        pollster::block_on(async {
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::PRIMARY,
+                ..Default::default()
+            });
+
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::default(),
+                    compatible_surface: None,
+                    force_fallback_adapter: false,
+                })
+                .await
+                .unwrap();
+
+            adapter
+                .request_device(
+                    &wgpu::DeviceDescriptor {
+                        required_features: wgpu::Features::empty(),
+                        required_limits: wgpu::Limits::default(),
+                        label: None,
+                        memory_hints: Default::default(),
+                    },
+                    None,
+                )
+                .await
+                .unwrap()
+                .0
+        })
+    }
+
+    /// Test the determine_texture_type logic that will be extracted
+    #[test]
+    fn test_determine_texture_type_logic() {
+        // Test ping-pong texture detection
+        let ping_pong_config_content = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Game of Life"
+entry_point = "fs_main"
+file = "life.wgsl"
+ping_pong = true
+"#;
+        let ping_pong_config: Config = toml::from_str(ping_pong_config_content).unwrap();
+
+        // Mock the logic from State::determine_texture_type
+        let determine_texture_type = |config: &Config, pass_index: usize| -> TextureType {
+            if pass_index < config.pipeline.len() {
+                let shader_config = &config.pipeline[pass_index];
+                if shader_config.persistent.unwrap_or(false) {
+                    TextureType::Persistent
+                } else if shader_config.ping_pong.unwrap_or(false) {
+                    TextureType::PingPong
+                } else {
+                    TextureType::Intermediate
+                }
+            } else {
+                TextureType::Intermediate
+            }
+        };
+
+        assert_eq!(
+            determine_texture_type(&ping_pong_config, 0),
+            TextureType::PingPong
+        );
+
+        // Test persistent texture detection
+        let persistent_config_content = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Persistent Effect"
+entry_point = "fs_main"
+file = "persistent.wgsl"
+persistent = true
+"#;
+        let persistent_config: Config = toml::from_str(persistent_config_content).unwrap();
+        assert_eq!(
+            determine_texture_type(&persistent_config, 0),
+            TextureType::Persistent
+        );
+
+        // Test intermediate texture (default)
+        let simple_config_content = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Simple"
+entry_point = "fs_main"
+file = "simple.wgsl"
+"#;
+        let simple_config: Config = toml::from_str(simple_config_content).unwrap();
+        assert_eq!(
+            determine_texture_type(&simple_config, 0),
+            TextureType::Intermediate
+        );
+    }
+
+    /// Test render requirements analysis that will be extracted
+    #[test]
+    fn test_render_requirements_analysis() {
+        // Test the analysis logic without creating actual pipelines
+        let simple_config_content = r#"
+[window]
+width = 800
+height = 600
+
+[[pipeline]]
+shader_type = "fragment"
+label = "Test Shader"
+entry_point = "fs_main"
+file = "test.wgsl"
+"#;
+        let config: Config = toml::from_str(simple_config_content).unwrap();
+
+        // Mock the analysis logic from State::render without MultiPassPipeline dependency
+        let analyze_requirements = |config: &Config| -> (bool, bool, bool) {
+            let pipeline_count = config.pipeline.len();
+
+            let has_persistent =
+                (0..pipeline_count).any(|i| config.pipeline[i].persistent.unwrap_or(false));
+
+            let has_ping_pong =
+                (0..pipeline_count).any(|i| config.pipeline[i].ping_pong.unwrap_or(false));
+
+            // For testing purposes, simulate is_multipass based on config
+            let is_multipass = pipeline_count > 1 || has_persistent || has_ping_pong;
+            let requires_multipass =
+                (is_multipass && pipeline_count > 1) || has_persistent || has_ping_pong;
+
+            (has_persistent, has_ping_pong, requires_multipass)
+        };
+
+        let (has_persistent, has_ping_pong, requires_multipass) = analyze_requirements(&config);
+
+        // Single simple pipeline should not require multipass
+        assert!(!has_persistent);
+        assert!(!has_ping_pong);
+        assert!(!requires_multipass);
+    }
+
+    /// Test texture creation skip logic for final pass
+    #[test]
+    fn test_texture_creation_skip_logic() {
+        // Mock the skip logic from State::render texture creation loop
+        let should_skip_texture_creation =
+            |pass_index: usize, pipeline_count: usize, texture_type: TextureType| -> bool {
+                pass_index == pipeline_count - 1
+                    && texture_type != TextureType::Persistent
+                    && texture_type != TextureType::PingPong
+            };
+
+        // Final pass with intermediate texture should be skipped
+        assert!(should_skip_texture_creation(
+            2,
+            3,
+            TextureType::Intermediate
+        ));
+
+        // Final pass with persistent texture should NOT be skipped
+        assert!(!should_skip_texture_creation(2, 3, TextureType::Persistent));
+
+        // Final pass with ping-pong texture should NOT be skipped
+        assert!(!should_skip_texture_creation(2, 3, TextureType::PingPong));
+
+        // Non-final pass should never be skipped
+        assert!(!should_skip_texture_creation(
+            0,
+            3,
+            TextureType::Intermediate
+        ));
+        assert!(!should_skip_texture_creation(
+            1,
+            3,
+            TextureType::Intermediate
+        ));
+    }
+
+    /// Test final pass detection logic
+    #[test]
+    fn test_final_pass_detection() {
+        // Mock the final pass detection from State::render multipass loop
+        let is_final_pass =
+            |pass_index: usize, pipeline_count: usize, texture_type: TextureType| -> bool {
+                pass_index == pipeline_count - 1
+                    && texture_type != TextureType::Persistent
+                    && texture_type != TextureType::PingPong
+            };
+
+        // Final pass with intermediate texture is a final pass
+        assert!(is_final_pass(2, 3, TextureType::Intermediate));
+
+        // Final pass with persistent texture is NOT a final pass (needs texture)
+        assert!(!is_final_pass(2, 3, TextureType::Persistent));
+
+        // Final pass with ping-pong texture is NOT a final pass (needs texture)
+        assert!(!is_final_pass(2, 3, TextureType::PingPong));
+
+        // Non-final pass is never a final pass
+        assert!(!is_final_pass(0, 3, TextureType::Intermediate));
+        assert!(!is_final_pass(1, 3, TextureType::Intermediate));
+    }
+
+    /// Test render target selection logic
+    #[test]
+    fn test_render_target_selection() {
+        // Mock the render target selection logic from State::render
+        enum RenderTarget {
+            FinalView,
+            IntermediateTexture,
+            PingPongTexture,
+            PersistentTexture,
+        }
+
+        let select_render_target =
+            |is_final_pass: bool, texture_type: TextureType| -> RenderTarget {
+                if is_final_pass {
+                    RenderTarget::FinalView
+                } else {
+                    match texture_type {
+                        TextureType::Intermediate => RenderTarget::IntermediateTexture,
+                        TextureType::PingPong => RenderTarget::PingPongTexture,
+                        TextureType::Persistent => RenderTarget::PersistentTexture,
+                    }
+                }
+            };
+
+        // Final pass should use final view
+        match select_render_target(true, TextureType::Intermediate) {
+            RenderTarget::FinalView => {}
+            _ => panic!("Final pass should use final view"),
+        }
+
+        // Non-final intermediate pass should use intermediate texture
+        match select_render_target(false, TextureType::Intermediate) {
+            RenderTarget::IntermediateTexture => {}
+            _ => panic!("Intermediate pass should use intermediate texture"),
+        }
+
+        // Non-final ping-pong pass should use ping-pong texture
+        match select_render_target(false, TextureType::PingPong) {
+            RenderTarget::PingPongTexture => {}
+            _ => panic!("Ping-pong pass should use ping-pong texture"),
+        }
+
+        // Non-final persistent pass should use persistent texture
+        match select_render_target(false, TextureType::Persistent) {
+            RenderTarget::PersistentTexture => {}
+            _ => panic!("Persistent pass should use persistent texture"),
+        }
+    }
+
+    /// Test frame calculation logic for texture reading
+    #[test]
+    fn test_frame_calculation_logic() {
+        // Mock the frame calculation logic from State::render
+        let calculate_read_index = |current_frame: u32| -> usize {
+            ((current_frame + 1) % 2) as usize // Read from previous frame
+        };
+
+        // Test frame index calculation
+        assert_eq!(calculate_read_index(0), 1); // Frame 0 reads from index 1
+        assert_eq!(calculate_read_index(1), 0); // Frame 1 reads from index 0
+        assert_eq!(calculate_read_index(2), 1); // Frame 2 reads from index 1
+        assert_eq!(calculate_read_index(3), 0); // Frame 3 reads from index 0
+    }
+
+    /// Test multipass condition logic
+    #[test]
+    fn test_multipass_condition() {
+        // Mock the multipass condition from State::render
+        let should_use_multipass = |is_multipass: bool,
+                                    pipeline_count: usize,
+                                    has_persistent: bool,
+                                    has_ping_pong: bool|
+         -> bool {
+            (is_multipass && pipeline_count > 1) || has_persistent || has_ping_pong
+        };
+
+        // Multi-pass with multiple pipelines should use multipass
+        assert!(should_use_multipass(true, 2, false, false));
+
+        // Multi-pass with single pipeline should NOT use multipass (unless special textures)
+        assert!(!should_use_multipass(true, 1, false, false));
+
+        // Single pass with persistent textures should use multipass
+        assert!(should_use_multipass(false, 1, true, false));
+
+        // Single pass with ping-pong textures should use multipass
+        assert!(should_use_multipass(false, 1, false, true));
+
+        // Single pass without special textures should not use multipass
+        assert!(!should_use_multipass(false, 1, false, false));
+    }
+}

@@ -13,7 +13,7 @@ mod vertex;
 
 pub use crate::config::Config;
 pub use crate::config::ShaderConfig;
-pub use crate::state::State;
+pub use crate::state::{State};
 use std::path::Path;
 use winit::{
     dpi::LogicalSize,
