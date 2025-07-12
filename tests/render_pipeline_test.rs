@@ -2,7 +2,7 @@ mod common;
 
 use common::*;
 use shekere::{
-    Config, 
+    Config,
     pipeline::MultiPassPipeline,
     texture_manager::{TextureManager, TextureType},
 };
@@ -180,8 +180,6 @@ impl RenderPipelineAnalyzer {
 
         Ok(())
     }
-
-
 }
 
 #[derive(Debug)]
@@ -385,4 +383,3 @@ fn test_render_decision_logic() {
     let persistent_req = persistent_analyzer.analyze_render_requirements();
     assert!(persistent_req.requires_multipass_mode);
 }
-

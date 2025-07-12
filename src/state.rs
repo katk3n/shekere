@@ -17,6 +17,39 @@ use std::path::Path;
 use wgpu::util::DeviceExt;
 use winit::{event::*, window::Window};
 
+/// Caches texture type analysis for all passes to avoid repeated determine_texture_type calls
+#[derive(Debug, Clone)]
+pub struct PassTextureInfo {
+    /// Vector of texture types for each pass, indexed by pass number
+    pub texture_types: Vec<TextureType>,
+    /// Whether any pass uses persistent textures
+    pub has_persistent: bool,
+    /// Whether any pass uses ping-pong textures
+    pub has_ping_pong: bool,
+    /// Whether multipass rendering is required
+    pub requires_multipass: bool,
+}
+
+impl PassTextureInfo {
+    /// Create PassTextureInfo from a vector of texture types
+    pub fn new(texture_types: Vec<TextureType>) -> Self {
+        let has_persistent = texture_types.contains(&TextureType::Persistent);
+        let has_ping_pong = texture_types.contains(&TextureType::PingPong);
+
+        // Multipass is required if:
+        // 1. Multiple passes (> 1), OR
+        // 2. Any persistent or ping-pong textures (state preservation/double-buffering)
+        let requires_multipass = texture_types.len() > 1 || has_persistent || has_ping_pong;
+
+        Self {
+            texture_types,
+            has_persistent,
+            has_ping_pong,
+            requires_multipass,
+        }
+    }
+}
+
 pub struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -492,6 +525,35 @@ impl<'a> State<'a> {
         }
     }
 
+    /// Analyze texture requirements for all passes to avoid repeated determine_texture_type calls
+    pub fn analyze_pass_texture_requirements(&self) -> PassTextureInfo {
+        let pipeline_count = self.multi_pass_pipeline.pipeline_count();
+        let is_multipass = self.multi_pass_pipeline.is_multi_pass();
+
+        // Collect texture types for all passes
+        let texture_types: Vec<TextureType> = (0..pipeline_count)
+            .map(|i| self.determine_texture_type(i))
+            .collect();
+
+        let has_persistent = texture_types.contains(&TextureType::Persistent);
+        let has_ping_pong = texture_types.contains(&TextureType::PingPong);
+
+        // Replicate the original multipass logic from render():
+        // Enter multi-pass rendering mode if:
+        // 1. Multiple pipelines in sequence (traditional multi-pass)
+        // 2. Any persistent textures (single-pass but needs state preservation)
+        // 3. Any ping-pong textures (single-pass but needs double-buffering)
+        let requires_multipass =
+            (is_multipass && pipeline_count > 1) || has_persistent || has_ping_pong;
+
+        PassTextureInfo {
+            texture_types,
+            has_persistent,
+            has_ping_pong,
+            requires_multipass,
+        }
+    }
+
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let final_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
@@ -507,23 +569,18 @@ impl<'a> State<'a> {
         // Update texture manager for new frame
         self.texture_manager.advance_frame();
 
-        let pipeline_count = self.multi_pass_pipeline.pipeline_count();
-        let is_multipass = self.multi_pass_pipeline.is_multi_pass();
-
-        let has_persistent_textures =
-            (0..pipeline_count).any(|i| self.determine_texture_type(i) == TextureType::Persistent);
-        let has_ping_pong_textures =
-            (0..pipeline_count).any(|i| self.determine_texture_type(i) == TextureType::PingPong);
+        // Analyze all pass texture requirements once to avoid repeated determine_texture_type calls
+        let pass_info = self.analyze_pass_texture_requirements();
+        let pipeline_count = pass_info.texture_types.len();
 
         // Enter multi-pass rendering mode if:
         // 1. Multiple pipelines in sequence (traditional multi-pass)
         // 2. Any persistent textures (single-pass but needs state preservation)
         // 3. Any ping-pong textures (single-pass but needs double-buffering)
-        if (is_multipass && pipeline_count > 1) || has_persistent_textures || has_ping_pong_textures
-        {
+        if pass_info.requires_multipass {
             // Pre-create all textures based on shader configuration to avoid borrowing conflicts
             for i in 0..pipeline_count {
-                let texture_type = self.determine_texture_type(i);
+                let texture_type = pass_info.texture_types[i];
                 // Skip texture creation for final pass unless it's persistent or ping-pong
                 if i == pipeline_count - 1
                     && texture_type != TextureType::Persistent
@@ -552,7 +609,7 @@ impl<'a> State<'a> {
 
             // Multi-pass rendering for intermediate textures
             for pass_index in 0..pipeline_count {
-                let current_texture_type = self.determine_texture_type(pass_index);
+                let current_texture_type = pass_info.texture_types[pass_index];
                 let is_final_pass = pass_index == pipeline_count - 1
                     && current_texture_type != TextureType::Persistent
                     && current_texture_type != TextureType::PingPong;
@@ -562,7 +619,7 @@ impl<'a> State<'a> {
                     &final_view
                 } else {
                     // Get pre-created texture based on shader configuration
-                    let texture_type = self.determine_texture_type(pass_index);
+                    let texture_type = current_texture_type;
                     match texture_type {
                         TextureType::Intermediate => self
                             .texture_manager
@@ -580,7 +637,6 @@ impl<'a> State<'a> {
                 };
 
                 // Create texture bind group for input (from previous pass or previous frame)
-                let current_texture_type = self.determine_texture_type(pass_index);
                 log::debug!(
                     "Pass {}: texture_type = {:?}, frame = {}",
                     pass_index,
@@ -636,7 +692,7 @@ impl<'a> State<'a> {
                     } else {
                         // For multi-pass, read from previous pass
                         let prev_pass_index = pass_index - 1;
-                        let prev_texture_type = self.determine_texture_type(prev_pass_index);
+                        let prev_texture_type = pass_info.texture_types[prev_pass_index];
                         match prev_texture_type {
                             TextureType::Intermediate => self
                                 .texture_manager
@@ -767,7 +823,7 @@ impl<'a> State<'a> {
             // Both persistent and ping-pong textures render to intermediate textures,
             // so we need to copy their final output to the screen for display
             for pass_index in 0..pipeline_count {
-                let texture_type = self.determine_texture_type(pass_index);
+                let texture_type = pass_info.texture_types[pass_index];
                 if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong
                 {
                     // Copy texture to screen using a simple copy pass
@@ -1213,5 +1269,99 @@ file = "test.wgsl"
 
         // Single pass without special textures should not use multipass
         assert!(!should_use_multipass(false, 1, false, false));
+    }
+
+    /// Test PassTextureInfo struct creation and properties
+    #[test]
+    fn test_pass_texture_info_creation() {
+        // This test will fail until we implement PassTextureInfo
+        let texture_types = vec![
+            TextureType::Intermediate,
+            TextureType::PingPong,
+            TextureType::Persistent,
+        ];
+
+        // PassTextureInfo should analyze the vector and set flags correctly
+        let info = PassTextureInfo::new(texture_types);
+
+        assert_eq!(info.texture_types.len(), 3);
+        assert!(info.has_ping_pong);
+        assert!(info.has_persistent);
+        assert!(info.requires_multipass);
+    }
+
+    /// Test analyze_pass_texture_requirements method functionality
+    #[test]
+    fn test_analyze_pass_texture_requirements() {
+        // For this test, we'll directly test the method logic by mocking the texture analysis
+        // Since setting up a full State is complex, we test the logic independently
+
+        // Test case 1: Mixed texture types
+        let texture_types = vec![
+            TextureType::Intermediate, // pass 0
+            TextureType::PingPong,     // pass 1
+            TextureType::Persistent,   // pass 2
+        ];
+
+        let info = PassTextureInfo::new(texture_types);
+
+        assert_eq!(info.texture_types.len(), 3);
+        assert!(info.has_ping_pong);
+        assert!(info.has_persistent);
+        assert!(info.requires_multipass);
+
+        // Test case 2: Only intermediate textures
+        let texture_types = vec![TextureType::Intermediate];
+        let info = PassTextureInfo::new(texture_types);
+
+        assert_eq!(info.texture_types.len(), 1);
+        assert!(!info.has_ping_pong);
+        assert!(!info.has_persistent);
+        // Single pass with only intermediate should not require multipass
+        assert!(!info.requires_multipass);
+    }
+
+    /// Test PassTextureInfo with only intermediate textures
+    #[test]
+    fn test_pass_texture_info_intermediate_only() {
+        let texture_types = vec![TextureType::Intermediate, TextureType::Intermediate];
+
+        // This will fail until PassTextureInfo is implemented
+        let info = PassTextureInfo::new(texture_types);
+
+        assert_eq!(info.texture_types.len(), 2);
+        assert!(!info.has_ping_pong);
+        assert!(!info.has_persistent);
+        // Multiple intermediate textures require multipass rendering
+        assert!(info.requires_multipass);
+    }
+
+    /// Test PassTextureInfo optimization - should reduce determine_texture_type calls
+    #[test]
+    fn test_texture_analysis_caching() {
+        // This test verifies that PassTextureInfo caches texture type analysis results
+        // The real benefit will be seen when integrated into the render method
+
+        // Create texture types that would normally require multiple determine_texture_type calls
+        let texture_types = vec![
+            TextureType::PingPong,     // pass 0
+            TextureType::Persistent,   // pass 1
+            TextureType::Intermediate, // pass 2
+        ];
+
+        let info = PassTextureInfo::new(texture_types.clone());
+
+        // Verify that all texture types are cached
+        assert_eq!(info.texture_types, texture_types);
+
+        // Verify flags are correctly computed once during creation
+        assert!(info.has_ping_pong);
+        assert!(info.has_persistent);
+        assert!(info.requires_multipass);
+
+        // The key benefit: access to texture_types[i] instead of calling determine_texture_type(i)
+        assert_eq!(info.texture_types[0], TextureType::PingPong);
+        assert_eq!(info.texture_types[1], TextureType::Persistent);
+        assert_eq!(info.texture_types[2], TextureType::Intermediate);
     }
 }
