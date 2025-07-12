@@ -634,6 +634,285 @@ impl<'a> State<'a> {
         }
     }
 
+    /// Multi-pass rendering for intermediate textures with texture chaining
+    /// Handles persistent and ping-pong textures with proper double-buffering
+    fn render_multipass(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        final_view: &wgpu::TextureView,
+        pass_info: &PassTextureInfo,
+    ) -> Result<(), wgpu::SurfaceError> {
+        let pipeline_count = pass_info.texture_types.len();
+        
+        self.create_textures_for_passes(&pass_info)
+            .map_err(|_e| wgpu::SurfaceError::Lost)?;
+
+        // Multi-pass rendering for intermediate textures
+        for pass_index in 0..pipeline_count {
+            let current_texture_type = pass_info.texture_types[pass_index];
+            let is_final_pass = pass_index == pipeline_count - 1
+                && current_texture_type != TextureType::Persistent
+                && current_texture_type != TextureType::PingPong;
+
+            // Get render target view for this pass
+            let render_target_view = if is_final_pass {
+                final_view
+            } else {
+                // Get pre-created texture based on shader configuration
+                let texture_type = current_texture_type;
+                match texture_type {
+                    TextureType::Intermediate => self
+                        .texture_manager
+                        .get_intermediate_render_target(pass_index)
+                        .expect("Intermediate texture should exist"),
+                    TextureType::PingPong => self
+                        .texture_manager
+                        .get_ping_pong_render_target(pass_index)
+                        .expect("Ping-pong texture should exist"),
+                    TextureType::Persistent => self
+                        .texture_manager
+                        .get_persistent_render_target(pass_index)
+                        .expect("Persistent texture should exist"),
+                }
+            };
+
+            // Create texture bind group for input (from previous pass or previous frame)
+            log::debug!(
+                "Pass {}: texture_type = {:?}, frame = {}",
+                pass_index,
+                current_texture_type,
+                self.texture_manager.current_frame
+            );
+            let texture_bind_group = if pass_index > 0
+                || current_texture_type == TextureType::Persistent
+                || current_texture_type == TextureType::PingPong
+            {
+                let input_texture_view = if (current_texture_type == TextureType::Persistent
+                    || current_texture_type == TextureType::PingPong)
+                    && pass_index == 0
+                {
+                    // For persistent/ping-pong textures on first pass, read from previous frame using double-buffering
+                    match current_texture_type {
+                        TextureType::Persistent => {
+                            let textures = self
+                                .texture_manager
+                                .persistent_textures
+                                .get(&pass_index)
+                                .unwrap();
+                            let read_index =
+                                ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                            log::debug!(
+                                "Persistent texture input: frame={}, read_index={}",
+                                self.texture_manager.current_frame,
+                                read_index
+                            );
+                            &textures[read_index].1
+                        }
+                        TextureType::PingPong => {
+                            // For ping-pong buffers, read from the PREVIOUS frame's texture
+                            // If current_frame is even (0, 2, 4...), we're writing to buffer 0, so read from buffer 1
+                            // If current_frame is odd (1, 3, 5...), we're writing to buffer 1, so read from buffer 0
+                            let textures = self
+                                .texture_manager
+                                .ping_pong_textures
+                                .get(&pass_index)
+                                .unwrap();
+                            let read_index =
+                                ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                            log::debug!(
+                                "Ping-pong texture input: frame={}, read_index={}, write_index={}",
+                                self.texture_manager.current_frame,
+                                read_index,
+                                self.texture_manager.current_frame % 2
+                            );
+                            &textures[read_index].1
+                        }
+                        _ => unreachable!(),
+                    }
+                } else {
+                    // For multi-pass, read from previous pass
+                    let prev_pass_index = pass_index - 1;
+                    let prev_texture_type = pass_info.texture_types[prev_pass_index];
+                    match prev_texture_type {
+                        TextureType::Intermediate => self
+                            .texture_manager
+                            .get_intermediate_render_target(prev_pass_index)
+                            .expect("Previous pass intermediate texture should exist"),
+                        TextureType::PingPong => self
+                            .texture_manager
+                            .get_ping_pong_render_target(prev_pass_index)
+                            .expect("Previous pass ping-pong texture should exist"),
+                        TextureType::Persistent => self
+                            .texture_manager
+                            .get_persistent_render_target(prev_pass_index)
+                            .expect("Previous pass persistent texture should exist"),
+                    }
+                };
+                let sampler = &self.texture_manager.sampler;
+
+                log::debug!(
+                    "Creating texture bind group for pass {} ({:?})",
+                    pass_index,
+                    current_texture_type
+                );
+
+                self.create_texture_bind_group(
+                    input_texture_view,
+                    sampler,
+                    &format!("Pass {} Texture Bind Group", pass_index),
+                )
+            } else {
+                None
+            };
+
+            // Execute render pass
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!("Render Pass {}", pass_index)),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: render_target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: if current_texture_type == TextureType::Persistent {
+                                // For persistent textures, clear on first frame, load thereafter
+                                let is_initialized = self
+                                    .texture_manager
+                                    .is_persistent_texture_initialized(pass_index);
+                                log::info!(
+                                    "Persistent texture {} LoadOp: {} (initialized: {})",
+                                    pass_index,
+                                    if is_initialized { "Load" } else { "Clear" },
+                                    is_initialized
+                                );
+                                if is_initialized {
+                                    wgpu::LoadOp::Load
+                                } else {
+                                    // Clear with black for first frame so we have something to read from
+                                    wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                                }
+                            } else {
+                                wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                            },
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+
+                // Use common setup for Groups 0-2, vertex/index buffers, and draw call
+                self.setup_render_pass_common(
+                    &mut render_pass,
+                    pass_index,
+                    current_texture_type,
+                );
+
+                // Set texture bind group for multi-pass input (Group 3) - handled individually
+                if let Some(ref bind_group) = texture_bind_group {
+                    log::debug!("Setting texture bind group for pass {}", pass_index);
+                    render_pass.set_bind_group(3, bind_group, &[]);
+                } else {
+                    log::debug!("No texture bind group for pass {}", pass_index);
+                }
+
+                // Execute draw call after all bind groups are set
+                render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
+
+            // Mark texture as initialized after first render
+            match current_texture_type {
+                TextureType::Persistent => {
+                    log::debug!("Marking persistent texture {} as initialized", pass_index);
+                    self.texture_manager
+                        .mark_persistent_texture_initialized(pass_index);
+                }
+                TextureType::PingPong => {
+                    log::debug!("Marking ping-pong texture {} as initialized", pass_index);
+                    self.texture_manager
+                        .mark_ping_pong_texture_initialized(pass_index);
+                }
+                _ => {}
+            }
+        }
+
+        // Copy persistent and ping-pong textures to screen
+        // Both persistent and ping-pong textures render to intermediate textures,
+        // so we need to copy their final output to the screen for display
+        for pass_index in 0..pipeline_count {
+            let texture_type = pass_info.texture_types[pass_index];
+            if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong
+            {
+                // Copy texture to screen using a simple copy pass
+                let _texture_view = match texture_type {
+                    TextureType::Persistent => self
+                        .texture_manager
+                        .get_persistent_render_target(pass_index)
+                        .expect("Persistent texture should exist"),
+                    TextureType::PingPong => self
+                        .texture_manager
+                        .get_ping_pong_render_target(pass_index)
+                        .expect("Ping-pong texture should exist"),
+                    _ => unreachable!(),
+                };
+
+                let mut copy_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&format!("Copy {:?} to Screen", texture_type)),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: final_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+
+                // Use common setup for Groups 0-2, vertex/index buffers, and draw call
+                self.setup_render_pass_common(&mut copy_pass, pass_index, texture_type);
+
+                // Bind the texture for reading (Group 3) - handled individually
+                let read_index = ((self.texture_manager.current_frame + 1) % 2) as usize;
+                let texture_view_ref = match texture_type {
+                    TextureType::Persistent => {
+                        let textures = self
+                            .texture_manager
+                            .persistent_textures
+                            .get(&pass_index)
+                            .unwrap();
+                        &textures[read_index].1
+                    }
+                    TextureType::PingPong => {
+                        let textures = self
+                            .texture_manager
+                            .ping_pong_textures
+                            .get(&pass_index)
+                            .unwrap();
+                        &textures[read_index].1
+                    }
+                    _ => unreachable!(),
+                };
+
+                let texture_bind_group = self
+                    .create_texture_bind_group(
+                        texture_view_ref,
+                        &self.texture_manager.sampler,
+                        &format!("Copy {:?} Texture Bind Group", texture_type),
+                    )
+                    .expect("Should be able to create texture bind group for copy operation");
+                copy_pass.set_bind_group(3, &texture_bind_group, &[]);
+
+                // Execute draw call after all bind groups are set
+                copy_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
+        }
+        
+        Ok(())
+    }
+
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let final_view = output.texture.create_view(&wgpu::TextureViewDescriptor {
@@ -665,271 +944,7 @@ impl<'a> State<'a> {
             pipeline_count
         );
         if pass_info.requires_multipass {
-            self.create_textures_for_passes(&pass_info)
-                .map_err(|_e| wgpu::SurfaceError::Lost)?;
-
-            // Multi-pass rendering for intermediate textures
-            for pass_index in 0..pipeline_count {
-                let current_texture_type = pass_info.texture_types[pass_index];
-                let is_final_pass = pass_index == pipeline_count - 1
-                    && current_texture_type != TextureType::Persistent
-                    && current_texture_type != TextureType::PingPong;
-
-                // Get render target view for this pass
-                let render_target_view = if is_final_pass {
-                    &final_view
-                } else {
-                    // Get pre-created texture based on shader configuration
-                    let texture_type = current_texture_type;
-                    match texture_type {
-                        TextureType::Intermediate => self
-                            .texture_manager
-                            .get_intermediate_render_target(pass_index)
-                            .expect("Intermediate texture should exist"),
-                        TextureType::PingPong => self
-                            .texture_manager
-                            .get_ping_pong_render_target(pass_index)
-                            .expect("Ping-pong texture should exist"),
-                        TextureType::Persistent => self
-                            .texture_manager
-                            .get_persistent_render_target(pass_index)
-                            .expect("Persistent texture should exist"),
-                    }
-                };
-
-                // Create texture bind group for input (from previous pass or previous frame)
-                log::debug!(
-                    "Pass {}: texture_type = {:?}, frame = {}",
-                    pass_index,
-                    current_texture_type,
-                    self.texture_manager.current_frame
-                );
-                let texture_bind_group = if pass_index > 0
-                    || current_texture_type == TextureType::Persistent
-                    || current_texture_type == TextureType::PingPong
-                {
-                    let input_texture_view = if (current_texture_type == TextureType::Persistent
-                        || current_texture_type == TextureType::PingPong)
-                        && pass_index == 0
-                    {
-                        // For persistent/ping-pong textures on first pass, read from previous frame using double-buffering
-                        match current_texture_type {
-                            TextureType::Persistent => {
-                                let textures = self
-                                    .texture_manager
-                                    .persistent_textures
-                                    .get(&pass_index)
-                                    .unwrap();
-                                let read_index =
-                                    ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
-                                log::debug!(
-                                    "Persistent texture input: frame={}, read_index={}",
-                                    self.texture_manager.current_frame,
-                                    read_index
-                                );
-                                &textures[read_index].1
-                            }
-                            TextureType::PingPong => {
-                                // For ping-pong buffers, read from the PREVIOUS frame's texture
-                                // If current_frame is even (0, 2, 4...), we're writing to buffer 0, so read from buffer 1
-                                // If current_frame is odd (1, 3, 5...), we're writing to buffer 1, so read from buffer 0
-                                let textures = self
-                                    .texture_manager
-                                    .ping_pong_textures
-                                    .get(&pass_index)
-                                    .unwrap();
-                                let read_index =
-                                    ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
-                                log::debug!(
-                                    "Ping-pong texture input: frame={}, read_index={}, write_index={}",
-                                    self.texture_manager.current_frame,
-                                    read_index,
-                                    self.texture_manager.current_frame % 2
-                                );
-                                &textures[read_index].1
-                            }
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        // For multi-pass, read from previous pass
-                        let prev_pass_index = pass_index - 1;
-                        let prev_texture_type = pass_info.texture_types[prev_pass_index];
-                        match prev_texture_type {
-                            TextureType::Intermediate => self
-                                .texture_manager
-                                .get_intermediate_render_target(prev_pass_index)
-                                .expect("Previous pass intermediate texture should exist"),
-                            TextureType::PingPong => self
-                                .texture_manager
-                                .get_ping_pong_render_target(prev_pass_index)
-                                .expect("Previous pass ping-pong texture should exist"),
-                            TextureType::Persistent => self
-                                .texture_manager
-                                .get_persistent_render_target(prev_pass_index)
-                                .expect("Previous pass persistent texture should exist"),
-                        }
-                    };
-                    let sampler = &self.texture_manager.sampler;
-
-                    log::debug!(
-                        "Creating texture bind group for pass {} ({:?})",
-                        pass_index,
-                        current_texture_type
-                    );
-
-                    self.create_texture_bind_group(
-                        input_texture_view,
-                        sampler,
-                        &format!("Pass {} Texture Bind Group", pass_index),
-                    )
-                } else {
-                    None
-                };
-
-                // Execute render pass
-                {
-                    let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some(&format!("Render Pass {}", pass_index)),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: render_target_view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: if current_texture_type == TextureType::Persistent {
-                                    // For persistent textures, clear on first frame, load thereafter
-                                    let is_initialized = self
-                                        .texture_manager
-                                        .is_persistent_texture_initialized(pass_index);
-                                    log::info!(
-                                        "Persistent texture {} LoadOp: {} (initialized: {})",
-                                        pass_index,
-                                        if is_initialized { "Load" } else { "Clear" },
-                                        is_initialized
-                                    );
-                                    if is_initialized {
-                                        wgpu::LoadOp::Load
-                                    } else {
-                                        // Clear with black for first frame so we have something to read from
-                                        wgpu::LoadOp::Clear(wgpu::Color::BLACK)
-                                    }
-                                } else {
-                                    wgpu::LoadOp::Clear(wgpu::Color::BLACK)
-                                },
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        occlusion_query_set: None,
-                        timestamp_writes: None,
-                    });
-
-                    // Use common setup for Groups 0-2, vertex/index buffers, and draw call
-                    self.setup_render_pass_common(
-                        &mut render_pass,
-                        pass_index,
-                        current_texture_type,
-                    );
-
-                    // Set texture bind group for multi-pass input (Group 3) - handled individually
-                    if let Some(ref bind_group) = texture_bind_group {
-                        log::debug!("Setting texture bind group for pass {}", pass_index);
-                        render_pass.set_bind_group(3, bind_group, &[]);
-                    } else {
-                        log::debug!("No texture bind group for pass {}", pass_index);
-                    }
-
-                    // Execute draw call after all bind groups are set
-                    render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-                }
-
-                // Mark texture as initialized after first render
-                match current_texture_type {
-                    TextureType::Persistent => {
-                        log::debug!("Marking persistent texture {} as initialized", pass_index);
-                        self.texture_manager
-                            .mark_persistent_texture_initialized(pass_index);
-                    }
-                    TextureType::PingPong => {
-                        log::debug!("Marking ping-pong texture {} as initialized", pass_index);
-                        self.texture_manager
-                            .mark_ping_pong_texture_initialized(pass_index);
-                    }
-                    _ => {}
-                }
-            }
-
-            // Copy persistent and ping-pong textures to screen
-            // Both persistent and ping-pong textures render to intermediate textures,
-            // so we need to copy their final output to the screen for display
-            for pass_index in 0..pipeline_count {
-                let texture_type = pass_info.texture_types[pass_index];
-                if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong
-                {
-                    // Copy texture to screen using a simple copy pass
-                    let _texture_view = match texture_type {
-                        TextureType::Persistent => self
-                            .texture_manager
-                            .get_persistent_render_target(pass_index)
-                            .expect("Persistent texture should exist"),
-                        TextureType::PingPong => self
-                            .texture_manager
-                            .get_ping_pong_render_target(pass_index)
-                            .expect("Ping-pong texture should exist"),
-                        _ => unreachable!(),
-                    };
-
-                    let mut copy_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some(&format!("Copy {:?} to Screen", texture_type)),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &final_view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        occlusion_query_set: None,
-                        timestamp_writes: None,
-                    });
-
-                    // Use common setup for Groups 0-2, vertex/index buffers, and draw call
-                    self.setup_render_pass_common(&mut copy_pass, pass_index, texture_type);
-
-                    // Bind the texture for reading (Group 3) - handled individually
-                    let read_index = ((self.texture_manager.current_frame + 1) % 2) as usize;
-                    let texture_view_ref = match texture_type {
-                        TextureType::Persistent => {
-                            let textures = self
-                                .texture_manager
-                                .persistent_textures
-                                .get(&pass_index)
-                                .unwrap();
-                            &textures[read_index].1
-                        }
-                        TextureType::PingPong => {
-                            let textures = self
-                                .texture_manager
-                                .ping_pong_textures
-                                .get(&pass_index)
-                                .unwrap();
-                            &textures[read_index].1
-                        }
-                        _ => unreachable!(),
-                    };
-
-                    let texture_bind_group = self
-                        .create_texture_bind_group(
-                            texture_view_ref,
-                            &self.texture_manager.sampler,
-                            &format!("Copy {:?} Texture Bind Group", texture_type),
-                        )
-                        .expect("Should be able to create texture bind group for copy operation");
-                    copy_pass.set_bind_group(3, &texture_bind_group, &[]);
-
-                    // Execute draw call after all bind groups are set
-                    copy_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-                }
-            }
+            self.render_multipass(&mut encoder, &final_view, &pass_info)?;
         } else {
             // Single-pass rendering (backward compatibility)
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
