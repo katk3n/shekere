@@ -1,3 +1,4 @@
+use crate::render_constants::frame_buffer;
 use std::collections::HashMap;
 use wgpu::{
     Device, Sampler, SamplerDescriptor, Texture, TextureDescriptor, TextureFormat, TextureUsages,
@@ -151,7 +152,7 @@ impl TextureManager {
 
         // Return current frame texture for writing (this method is used during texture creation phase)
         let textures = self.ping_pong_textures.get(&pass_index).unwrap();
-        let current_index = (self.current_frame % 2) as usize;
+        let current_index = frame_buffer::current_buffer_index(self.current_frame);
         let (_, view) = &textures[current_index];
         (view, &self.sampler)
     }
@@ -175,7 +176,7 @@ impl TextureManager {
         // Return the read texture (previous frame)
         // Use proper double-buffering: read from previous frame, write to current frame
         let textures = self.persistent_textures.get(&pass_index).unwrap();
-        let read_index = ((self.current_frame + 1) % 2) as usize; // Read from previous frame
+        let read_index = frame_buffer::previous_buffer_index(self.current_frame); // Read from previous frame
         let (_, view) = &textures[read_index];
         (view, &self.sampler)
     }
@@ -235,7 +236,7 @@ impl TextureManager {
     /// This method returns the texture to WRITE TO for the current frame.
     pub fn get_ping_pong_render_target(&self, pass_index: usize) -> Option<&TextureView> {
         self.ping_pong_textures.get(&pass_index).map(|textures| {
-            let write_index = (self.current_frame % 2) as usize; // Write to current frame buffer
+            let write_index = frame_buffer::current_buffer_index(self.current_frame); // Write to current frame buffer
             &textures[write_index].1
         })
     }
@@ -250,7 +251,7 @@ impl TextureManager {
         self.persistent_textures.get(&pass_index).map(|textures| {
             // Return the write texture (current frame)
             // For double-buffering: read from previous frame, write to current frame
-            let write_index = (self.current_frame % 2) as usize; // Write to current frame
+            let write_index = frame_buffer::current_buffer_index(self.current_frame); // Write to current frame
             log::info!(
                 "Persistent texture output: frame={}, write_index={}",
                 self.current_frame,

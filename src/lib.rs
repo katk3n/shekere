@@ -4,6 +4,7 @@ pub mod config;
 pub mod hot_reload;
 mod osc;
 pub mod pipeline;
+pub mod render_constants;
 mod shader_preprocessor;
 mod state;
 pub mod texture_manager;

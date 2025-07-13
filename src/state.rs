@@ -2,6 +2,7 @@ use crate::Config;
 use crate::bind_group_factory::BindGroupFactory;
 use crate::hot_reload::HotReloader;
 use crate::pipeline::MultiPassPipeline;
+use crate::render_constants::{bind_group, frame_buffer, render_pass};
 // use crate::shader_preprocessor::ShaderPreprocessor; // TODO: Needed for hot reload
 use crate::texture_manager::{TextureManager, TextureType};
 use crate::timer::Timer;
@@ -56,7 +57,7 @@ impl PassTextureInfo {
 pub struct MultiPassContext {
     pub pipeline_count: usize,
     pub has_texture_bindings: bool,
-    pub current_frame: usize,
+    pub current_frame: u64,
     pub pass_info: PassTextureInfo,
 }
 
@@ -65,7 +66,7 @@ impl MultiPassContext {
     pub fn new(
         pass_info: &PassTextureInfo,
         has_texture_bindings: bool,
-        current_frame: usize,
+        current_frame: u64,
     ) -> Self {
         Self {
             pipeline_count: pass_info.texture_types.len(),
@@ -111,9 +112,9 @@ impl MultiPassContext {
     }
 
     /// Get the read frame index for double-buffered textures
-    /// Caches the calculation to avoid repeated (frame + 1) % 2 computations
+    /// Caches the calculation to avoid repeated frame buffer computations
     pub fn get_read_frame_index(&self) -> usize {
-        (self.current_frame + 1) % 2
+        frame_buffer::previous_buffer_index(self.current_frame)
     }
 
     /// Helper method to identify stateful texture types (persistent/ping-pong)
@@ -703,14 +704,14 @@ impl<'a> State<'a> {
         render_pass.set_pipeline(pipeline);
 
         // Group 0: uniform bind group (always present)
-        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        render_pass.set_bind_group(bind_group::UNIFORM, &self.uniform_bind_group, &[]);
 
         // Group 1: device bind group (always present)
-        render_pass.set_bind_group(1, &self.device_bind_group, &[]);
+        render_pass.set_bind_group(bind_group::DEVICE, &self.device_bind_group, &[]);
 
         // Group 2: sound bind group OR empty bind group (conditional)
         if let Some(sound_bind_group) = &self.sound_bind_group {
-            render_pass.set_bind_group(2, sound_bind_group, &[]);
+            render_pass.set_bind_group(bind_group::SOUND, sound_bind_group, &[]);
         } else if self.needs_empty_bind_group(pass_index, current_texture_type) {
             // Create empty bind group for Group 2 if needed for multipass or persistent texture
             if let Some(ref empty_layout) = self.multi_pass_pipeline.empty_bind_group_layout {
@@ -719,7 +720,7 @@ impl<'a> State<'a> {
                     entries: &[],
                     label: Some("Empty Group 2 Bind Group"),
                 });
-                render_pass.set_bind_group(2, &empty_bind_group, &[]);
+                render_pass.set_bind_group(bind_group::SOUND, &empty_bind_group, &[]);
             }
         }
 
@@ -805,7 +806,9 @@ impl<'a> State<'a> {
                                 "Ping-pong texture input: frame={}, read_index={}, write_index={}",
                                 self.texture_manager.current_frame,
                                 read_index,
-                                self.texture_manager.current_frame % 2
+                                frame_buffer::current_buffer_index(
+                                    self.texture_manager.current_frame
+                                )
                             );
                             &textures[read_index].1
                         }
@@ -870,10 +873,10 @@ impl<'a> State<'a> {
                                     wgpu::LoadOp::Load
                                 } else {
                                     // Clear with black for first frame so we have something to read from
-                                    wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                                    wgpu::LoadOp::Clear(render_pass::DEFAULT_CLEAR_COLOR)
                                 }
                             } else {
-                                wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                                wgpu::LoadOp::Clear(render_pass::DEFAULT_CLEAR_COLOR)
                             },
                             store: wgpu::StoreOp::Store,
                         },
@@ -889,7 +892,7 @@ impl<'a> State<'a> {
                 // Set texture bind group for multi-pass input (Group 3) - handled individually
                 if let Some(ref bind_group) = texture_bind_group {
                     log::debug!("Setting texture bind group for pass {}", pass_index);
-                    render_pass.set_bind_group(3, bind_group, &[]);
+                    render_pass.set_bind_group(bind_group::TEXTURE, bind_group, &[]);
                 } else {
                     log::debug!("No texture bind group for pass {}", pass_index);
                 }
@@ -939,7 +942,7 @@ impl<'a> State<'a> {
                         view: final_view,
                         resolve_target: None,
                         ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            load: wgpu::LoadOp::Clear(render_pass::DEFAULT_CLEAR_COLOR),
                             store: wgpu::StoreOp::Store,
                         },
                     })],
@@ -980,7 +983,7 @@ impl<'a> State<'a> {
                         &format!("Copy {:?} Texture Bind Group", texture_type),
                     )
                     .expect("Should be able to create texture bind group for copy operation");
-                copy_pass.set_bind_group(3, &texture_bind_group, &[]);
+                copy_pass.set_bind_group(bind_group::TEXTURE, &texture_bind_group, &[]);
 
                 // Execute draw call after all bind groups are set
                 copy_pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -1004,7 +1007,7 @@ impl<'a> State<'a> {
                 view: final_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    load: wgpu::LoadOp::Clear(render_pass::DEFAULT_CLEAR_COLOR),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -1061,7 +1064,7 @@ impl<'a> State<'a> {
         let context = MultiPassContext::new(
             &pass_info,
             has_texture_bindings,
-            self.texture_manager.current_frame as usize,
+            self.texture_manager.current_frame,
         );
 
         // Enter multi-pass rendering mode if:
@@ -1329,7 +1332,7 @@ file = "test.wgsl"
     fn test_frame_calculation_logic() {
         // Mock the frame calculation logic from State::render
         let calculate_read_index = |current_frame: u32| -> usize {
-            ((current_frame + 1) % 2) as usize // Read from previous frame
+            frame_buffer::previous_buffer_index(current_frame as u64) // Read from previous frame
         };
 
         // Test frame index calculation
@@ -1675,7 +1678,7 @@ file = "test.wgsl"
             // Simulate render pass descriptor creation
             let label = "Single Render Pass";
             let uses_final_view = final_view == "final_view";
-            let clears_black = true; // LoadOp::Clear(wgpu::Color::BLACK)
+            let clears_black = true; // LoadOp::Clear(render_pass::DEFAULT_CLEAR_COLOR)
 
             (label.to_string(), uses_final_view, clears_black)
         };
