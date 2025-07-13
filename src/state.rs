@@ -643,7 +643,7 @@ impl<'a> State<'a> {
         pass_info: &PassTextureInfo,
     ) -> Result<(), wgpu::SurfaceError> {
         let pipeline_count = pass_info.texture_types.len();
-        
+
         self.create_textures_for_passes(&pass_info)
             .map_err(|_e| wgpu::SurfaceError::Lost)?;
 
@@ -802,11 +802,7 @@ impl<'a> State<'a> {
                 });
 
                 // Use common setup for Groups 0-2, vertex/index buffers, and draw call
-                self.setup_render_pass_common(
-                    &mut render_pass,
-                    pass_index,
-                    current_texture_type,
-                );
+                self.setup_render_pass_common(&mut render_pass, pass_index, current_texture_type);
 
                 // Set texture bind group for multi-pass input (Group 3) - handled individually
                 if let Some(ref bind_group) = texture_bind_group {
@@ -841,8 +837,7 @@ impl<'a> State<'a> {
         // so we need to copy their final output to the screen for display
         for pass_index in 0..pipeline_count {
             let texture_type = pass_info.texture_types[pass_index];
-            if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong
-            {
+            if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong {
                 // Copy texture to screen using a simple copy pass
                 let _texture_view = match texture_type {
                     TextureType::Persistent => self
@@ -909,7 +904,7 @@ impl<'a> State<'a> {
                 copy_pass.draw_indexed(0..self.num_indices, 0, 0..1);
             }
         }
-        
+
         Ok(())
     }
 
@@ -983,38 +978,6 @@ mod tests {
     use super::*;
     use crate::texture_manager::TextureType;
 
-    /// Helper function to create a test device for unit tests
-    fn create_test_device() -> wgpu::Device {
-        pollster::block_on(async {
-            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::PRIMARY,
-                ..Default::default()
-            });
-
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::default(),
-                    compatible_surface: None,
-                    force_fallback_adapter: false,
-                })
-                .await
-                .unwrap();
-
-            adapter
-                .request_device(
-                    &wgpu::DeviceDescriptor {
-                        required_features: wgpu::Features::empty(),
-                        required_limits: wgpu::Limits::default(),
-                        label: None,
-                        memory_hints: Default::default(),
-                    },
-                    None,
-                )
-                .await
-                .unwrap()
-                .0
-        })
-    }
 
     /// Test the determine_texture_type logic that will be extracted
     #[test]
@@ -1545,9 +1508,5 @@ file = "test.wgsl"
         );
 
         // Test passed: method exists and compiles with correct signature
-        assert!(
-            true,
-            "Method setup_render_pass_common successfully implemented"
-        );
     }
 }
