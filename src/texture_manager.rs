@@ -1,3 +1,4 @@
+use crate::render_constants::frame_buffer;
 use std::collections::HashMap;
 use wgpu::{
     Device, Sampler, SamplerDescriptor, Texture, TextureDescriptor, TextureFormat, TextureUsages,
@@ -101,7 +102,24 @@ impl TextureManager {
         (texture, view)
     }
 
-    pub fn get_or_create_intermediate_texture(
+    /// Unified texture creation interface using strategy pattern
+    pub fn get_or_create_texture(
+        &mut self,
+        device: &Device,
+        texture_type: TextureType,
+        pass_index: usize,
+    ) -> (&TextureView, &Sampler) {
+        match texture_type {
+            TextureType::Intermediate => {
+                self.create_intermediate_texture_strategy(device, pass_index)
+            }
+            TextureType::PingPong => self.create_ping_pong_texture_strategy(device, pass_index),
+            TextureType::Persistent => self.create_persistent_texture_strategy(device, pass_index),
+        }
+    }
+
+    /// Strategy implementation for intermediate texture creation
+    fn create_intermediate_texture_strategy(
         &mut self,
         device: &Device,
         pass_index: usize,
@@ -116,7 +134,8 @@ impl TextureManager {
         (view, &self.sampler)
     }
 
-    pub fn get_or_create_ping_pong_texture(
+    /// Strategy implementation for ping-pong texture creation
+    fn create_ping_pong_texture_strategy(
         &mut self,
         device: &Device,
         pass_index: usize,
@@ -133,12 +152,13 @@ impl TextureManager {
 
         // Return current frame texture for writing (this method is used during texture creation phase)
         let textures = self.ping_pong_textures.get(&pass_index).unwrap();
-        let current_index = (self.current_frame % 2) as usize;
+        let current_index = frame_buffer::current_buffer_index(self.current_frame);
         let (_, view) = &textures[current_index];
         (view, &self.sampler)
     }
 
-    pub fn get_or_create_persistent_texture(
+    /// Strategy implementation for persistent texture creation
+    fn create_persistent_texture_strategy(
         &mut self,
         device: &Device,
         pass_index: usize,
@@ -156,9 +176,33 @@ impl TextureManager {
         // Return the read texture (previous frame)
         // Use proper double-buffering: read from previous frame, write to current frame
         let textures = self.persistent_textures.get(&pass_index).unwrap();
-        let read_index = ((self.current_frame + 1) % 2) as usize; // Read from previous frame
+        let read_index = frame_buffer::previous_buffer_index(self.current_frame); // Read from previous frame
         let (_, view) = &textures[read_index];
         (view, &self.sampler)
+    }
+
+    pub fn get_or_create_intermediate_texture(
+        &mut self,
+        device: &Device,
+        pass_index: usize,
+    ) -> (&TextureView, &Sampler) {
+        self.get_or_create_texture(device, TextureType::Intermediate, pass_index)
+    }
+
+    pub fn get_or_create_ping_pong_texture(
+        &mut self,
+        device: &Device,
+        pass_index: usize,
+    ) -> (&TextureView, &Sampler) {
+        self.get_or_create_texture(device, TextureType::PingPong, pass_index)
+    }
+
+    pub fn get_or_create_persistent_texture(
+        &mut self,
+        device: &Device,
+        pass_index: usize,
+    ) -> (&TextureView, &Sampler) {
+        self.get_or_create_texture(device, TextureType::Persistent, pass_index)
     }
 
     pub fn is_persistent_texture_initialized(&self, pass_index: usize) -> bool {
@@ -192,7 +236,7 @@ impl TextureManager {
     /// This method returns the texture to WRITE TO for the current frame.
     pub fn get_ping_pong_render_target(&self, pass_index: usize) -> Option<&TextureView> {
         self.ping_pong_textures.get(&pass_index).map(|textures| {
-            let write_index = (self.current_frame % 2) as usize; // Write to current frame buffer
+            let write_index = frame_buffer::current_buffer_index(self.current_frame); // Write to current frame buffer
             &textures[write_index].1
         })
     }
@@ -207,7 +251,7 @@ impl TextureManager {
         self.persistent_textures.get(&pass_index).map(|textures| {
             // Return the write texture (current frame)
             // For double-buffering: read from previous frame, write to current frame
-            let write_index = (self.current_frame % 2) as usize; // Write to current frame
+            let write_index = frame_buffer::current_buffer_index(self.current_frame); // Write to current frame
             log::info!(
                 "Persistent texture output: frame={}, write_index={}",
                 self.current_frame,
@@ -378,5 +422,130 @@ mod tests {
         let render_target2 = manager.get_ping_pong_render_target(0);
         assert!(render_target2.is_some());
         assert_ne!(render_target_ptr, render_target2.unwrap() as *const _);
+    }
+
+    #[test]
+    fn test_unified_texture_interface() {
+        let device = create_test_device();
+        let mut manager = TextureManager::new(&device, 800, 600);
+
+        // Test intermediate texture via unified interface
+        let sampler1_ptr = {
+            let (view1, sampler1) =
+                manager.get_or_create_texture(&device, TextureType::Intermediate, 0);
+            assert!(view1 as *const _ != std::ptr::null());
+            assert!(sampler1 as *const _ != std::ptr::null());
+            sampler1 as *const _
+        };
+
+        // Test ping-pong texture via unified interface
+        let sampler2_ptr = {
+            let (view2, sampler2) =
+                manager.get_or_create_texture(&device, TextureType::PingPong, 0);
+            assert!(view2 as *const _ != std::ptr::null());
+            assert!(sampler2 as *const _ != std::ptr::null());
+            sampler2 as *const _
+        };
+
+        // Test persistent texture via unified interface
+        let sampler3_ptr = {
+            let (view3, sampler3) =
+                manager.get_or_create_texture(&device, TextureType::Persistent, 0);
+            assert!(view3 as *const _ != std::ptr::null());
+            assert!(sampler3 as *const _ != std::ptr::null());
+            sampler3 as *const _
+        };
+
+        // Verify all use the same sampler
+        assert_eq!(sampler1_ptr, sampler2_ptr);
+        assert_eq!(sampler2_ptr, sampler3_ptr);
+    }
+
+    #[test]
+    fn test_unified_interface_backward_compatibility() {
+        let device = create_test_device();
+        let mut manager = TextureManager::new(&device, 800, 600);
+
+        // Test that unified interface returns same results as original methods
+
+        // Intermediate texture comparison
+        let (view_unified_ptr, sampler_unified_ptr) = {
+            let (view_unified, sampler_unified) =
+                manager.get_or_create_texture(&device, TextureType::Intermediate, 1);
+            (view_unified as *const _, sampler_unified as *const _)
+        };
+        let (view_original_ptr, sampler_original_ptr) = {
+            let (view_original, sampler_original) =
+                manager.get_or_create_intermediate_texture(&device, 1);
+            (view_original as *const _, sampler_original as *const _)
+        };
+        assert_eq!(view_unified_ptr, view_original_ptr);
+        assert_eq!(sampler_unified_ptr, sampler_original_ptr);
+
+        // Ping-pong texture comparison
+        let (view_unified2_ptr, sampler_unified2_ptr) = {
+            let (view_unified2, sampler_unified2) =
+                manager.get_or_create_texture(&device, TextureType::PingPong, 1);
+            (view_unified2 as *const _, sampler_unified2 as *const _)
+        };
+        let (view_original2_ptr, sampler_original2_ptr) = {
+            let (view_original2, sampler_original2) =
+                manager.get_or_create_ping_pong_texture(&device, 1);
+            (view_original2 as *const _, sampler_original2 as *const _)
+        };
+        assert_eq!(view_unified2_ptr, view_original2_ptr);
+        assert_eq!(sampler_unified2_ptr, sampler_original2_ptr);
+
+        // Persistent texture comparison
+        let (view_unified3_ptr, sampler_unified3_ptr) = {
+            let (view_unified3, sampler_unified3) =
+                manager.get_or_create_texture(&device, TextureType::Persistent, 1);
+            (view_unified3 as *const _, sampler_unified3 as *const _)
+        };
+        let (view_original3_ptr, sampler_original3_ptr) = {
+            let (view_original3, sampler_original3) =
+                manager.get_or_create_persistent_texture(&device, 1);
+            (view_original3 as *const _, sampler_original3 as *const _)
+        };
+        assert_eq!(view_unified3_ptr, view_original3_ptr);
+        assert_eq!(sampler_unified3_ptr, sampler_original3_ptr);
+    }
+
+    #[test]
+    fn test_unified_interface_frame_behavior() {
+        let device = create_test_device();
+        let mut manager = TextureManager::new(&device, 800, 600);
+
+        // Create ping-pong textures using unified interface
+        let (view1, _) = manager.get_or_create_texture(&device, TextureType::PingPong, 0);
+        let view1_ptr = view1 as *const _;
+
+        // Advance frame and verify texture changes
+        manager.advance_frame();
+        let (view2, _) = manager.get_or_create_texture(&device, TextureType::PingPong, 0);
+        let view2_ptr = view2 as *const _;
+        assert_ne!(view1_ptr, view2_ptr);
+
+        // Test persistent texture frame behavior
+        let (persistent_view1, _) =
+            manager.get_or_create_texture(&device, TextureType::Persistent, 0);
+        let persistent_view1_ptr = persistent_view1 as *const _;
+
+        manager.advance_frame();
+        let (persistent_view2, _) =
+            manager.get_or_create_texture(&device, TextureType::Persistent, 0);
+        let persistent_view2_ptr = persistent_view2 as *const _;
+        assert_ne!(persistent_view1_ptr, persistent_view2_ptr);
+
+        // Intermediate textures should not change between frames
+        let (intermediate_view1, _) =
+            manager.get_or_create_texture(&device, TextureType::Intermediate, 0);
+        let intermediate_view1_ptr = intermediate_view1 as *const _;
+
+        manager.advance_frame();
+        let (intermediate_view2, _) =
+            manager.get_or_create_texture(&device, TextureType::Intermediate, 0);
+        let intermediate_view2_ptr = intermediate_view2 as *const _;
+        assert_eq!(intermediate_view1_ptr, intermediate_view2_ptr);
     }
 }

@@ -106,7 +106,7 @@ impl<'a> BindGroupFactory<'a> {
         device: &Device,
         label_prefix: &str,
     ) -> (Option<BindGroupLayout>, Option<BindGroup>) {
-        if self.entries.len() == 0 {
+        if self.entries.is_empty() {
             return (None, None);
         }
 

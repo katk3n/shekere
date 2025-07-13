@@ -74,9 +74,9 @@ impl SpectrumUniform {
         }
 
         let mut samples: [f32; NUM_SAMPLES] = [0.0; NUM_SAMPLES];
-        for i in 0..NUM_SAMPLES {
+        for sample_slot in samples.iter_mut() {
             let sample = self.consumer.try_pop().unwrap();
-            samples[i] = sample;
+            *sample_slot = sample;
         }
 
         let hann_window = hann_window(&samples);
