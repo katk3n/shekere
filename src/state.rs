@@ -251,24 +251,22 @@ impl<'a> State<'a> {
         };
 
         // Uniforms
-        let window_uniform = WindowUniform::new(&device, &window);
+        let window_uniform = WindowUniform::new(&device, window);
         let time_uniform = TimeUniform::new(&device);
         let mouse_uniform = MouseUniform::new(&device);
         let osc_uniform = if let Some(osc_config) = &config.osc {
-            Some(OscUniform::new(&device, &osc_config).await)
+            Some(OscUniform::new(&device, osc_config).await)
         } else {
             None
         };
-        let spectrum_uniform = if let Some(audio_config) = &config.spectrum {
-            Some(SpectrumUniform::new(&device, &audio_config))
-        } else {
-            None
-        };
-        let midi_uniform = if let Some(midi_config) = &config.midi {
-            Some(MidiUniform::new(&device, &midi_config))
-        } else {
-            None
-        };
+        let spectrum_uniform = config
+            .spectrum
+            .as_ref()
+            .map(|audio_config| SpectrumUniform::new(&device, audio_config));
+        let midi_uniform = config
+            .midi
+            .as_ref()
+            .map(|midi_config| MidiUniform::new(&device, midi_config));
 
         // Create bind group for uniforms (window resolution, time)
         let mut uniform_bind_group_factory = BindGroupFactory::new();
@@ -307,7 +305,7 @@ impl<'a> State<'a> {
 
         let mut bind_group_layouts = vec![&uniform_bind_group_layout, &device_bind_group_layout];
         if let Some(layout) = &sound_bind_group_layout {
-            bind_group_layouts.push(&layout);
+            bind_group_layouts.push(layout);
         }
 
         // Setup hot reload if enabled - watch all shader files in the pipeline
@@ -400,7 +398,7 @@ impl<'a> State<'a> {
     }
 
     pub fn window(&self) -> &Window {
-        &self.window
+        self.window
     }
 
     pub fn size(&self) -> &winit::dpi::PhysicalSize<u32> {
@@ -413,7 +411,7 @@ impl<'a> State<'a> {
             self.surface_config.width = new_size.width;
             self.surface_config.height = new_size.height;
             self.surface.configure(&self.device, &self.surface_config);
-            self.window_uniform.update(&self.window);
+            self.window_uniform.update(self.window);
             // Clear textures on resize
             self.texture_manager.clear_all_textures();
         }
@@ -547,7 +545,7 @@ impl<'a> State<'a> {
         // Build bind group layouts array (same as original)
         let mut bind_group_layouts = vec![&uniform_bind_group_layout, &device_bind_group_layout];
         if let Some(layout) = &sound_bind_group_layout {
-            bind_group_layouts.push(&layout);
+            bind_group_layouts.push(layout);
         }
 
         // Safely attempt to create new MultiPassPipeline with error handling
@@ -609,9 +607,10 @@ impl<'a> State<'a> {
         label: &str,
     ) -> Option<wgpu::BindGroup> {
         // Guard clause: early return if no texture bind group layout available
-        let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout else {
-            return None;
-        };
+        let layout = self
+            .multi_pass_pipeline
+            .texture_bind_group_layout
+            .as_ref()?;
 
         let mut factory = BindGroupFactory::new();
         factory.add_multipass_texture(texture_view, sampler);

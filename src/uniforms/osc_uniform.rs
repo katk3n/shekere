@@ -58,8 +58,8 @@ impl<'a> OscUniform<'a> {
         let mut gain = 0.0;
         let mut sound = 0;
         for (i, v) in msg.args.iter().enumerate() {
-            match v {
-                OscType::String(val) => match val.as_str() {
+            if let OscType::String(val) = v {
+                match val.as_str() {
                     "orbit" => {
                         let orbit = &msg.args[i + 1];
                         if let OscType::Int(orbit) = orbit {
@@ -93,8 +93,7 @@ impl<'a> OscUniform<'a> {
                         }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
         let vec4_index = id / 4;

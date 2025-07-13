@@ -33,7 +33,7 @@ pub async fn run(conf: &Config, conf_dir: &Path) {
         .build(&event_loop)
         .unwrap();
 
-    let mut state = State::new(&window, &conf, conf_dir)
+    let mut state = State::new(&window, conf, conf_dir)
         .await
         .expect("Failed to create state");
 

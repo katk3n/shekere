@@ -15,6 +15,12 @@ pub struct MockHotReloader {
     shader_modified: Arc<Mutex<bool>>,
 }
 
+impl Default for MockHotReloader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockHotReloader {
     pub fn new() -> Self {
         Self {

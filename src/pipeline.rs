@@ -56,7 +56,7 @@ pub fn create_pipeline_with_multipass(
         push_constant_ranges: &[],
     });
 
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
@@ -95,9 +95,7 @@ pub fn create_pipeline_with_multipass(
         },
         multiview: None,
         cache: None,
-    });
-
-    render_pipeline
+    })
 }
 
 pub struct MultiPassPipeline {

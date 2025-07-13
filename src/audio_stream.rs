@@ -37,10 +37,7 @@ pub fn setup_audio_stream() -> (Stream, Caching<Arc<HeapRb<f32>>, false, true>) 
             &config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
                 for d in data {
-                    match prod.try_push(*d) {
-                        Ok(()) => {}
-                        Err(_) => {}
-                    }
+                    if let Ok(()) = prod.try_push(*d) {}
                 }
             },
             move |_err| {},
@@ -49,5 +46,5 @@ pub fn setup_audio_stream() -> (Stream, Caching<Arc<HeapRb<f32>>, false, true>) 
         .unwrap();
 
     stream.play().unwrap();
-    return (stream, cons);
+    (stream, cons)
 }
