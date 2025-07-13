@@ -50,6 +50,95 @@ impl PassTextureInfo {
     }
 }
 
+/// Context for multipass rendering that centralizes conditional logic
+/// and provides optimized decision-making for render passes
+#[derive(Debug, Clone)]
+pub struct MultiPassContext {
+    pub pipeline_count: usize,
+    pub has_texture_bindings: bool,
+    pub current_frame: usize,
+    pub pass_info: PassTextureInfo,
+}
+
+impl MultiPassContext {
+    /// Create a new MultiPassContext from PassTextureInfo and additional context
+    pub fn new(
+        pass_info: &PassTextureInfo,
+        has_texture_bindings: bool,
+        current_frame: usize,
+    ) -> Self {
+        Self {
+            pipeline_count: pass_info.texture_types.len(),
+            has_texture_bindings,
+            current_frame,
+            pass_info: pass_info.clone(),
+        }
+    }
+
+    /// Determine if multipass rendering is required
+    pub fn requires_multipass_rendering(&self) -> bool {
+        self.pass_info.requires_multipass
+    }
+
+    /// Determine if a pass needs texture binding (Group 3)
+    /// This centralizes the complex conditional logic from render_multipass
+    pub fn needs_texture_binding(&self, pass_index: usize) -> bool {
+        if !self.has_texture_bindings {
+            return false;
+        }
+
+        // Pass index > 0 always needs binding (reading from previous pass)
+        if pass_index > 0 {
+            return true;
+        }
+
+        // Pass index == 0 needs binding if it's a stateful texture type
+        if let Some(texture_type) = self.pass_info.texture_types.get(pass_index) {
+            self.is_stateful_texture(*texture_type)
+        } else {
+            false
+        }
+    }
+
+    /// Determine if a pass needs previous frame input (for persistent/ping-pong textures)
+    pub fn needs_previous_frame_input(&self, pass_index: usize) -> bool {
+        if let Some(texture_type) = self.pass_info.texture_types.get(pass_index) {
+            // Only first pass of persistent/ping-pong textures read from previous frame
+            pass_index == 0 && self.is_stateful_texture(*texture_type)
+        } else {
+            false
+        }
+    }
+
+    /// Get the read frame index for double-buffered textures
+    /// Caches the calculation to avoid repeated (frame + 1) % 2 computations
+    pub fn get_read_frame_index(&self) -> usize {
+        (self.current_frame + 1) % 2
+    }
+
+    /// Helper method to identify stateful texture types (persistent/ping-pong)
+    pub fn is_stateful_texture(&self, texture_type: TextureType) -> bool {
+        matches!(
+            texture_type,
+            TextureType::Persistent | TextureType::PingPong
+        )
+    }
+
+    /// Get the texture type for a specific pass
+    pub fn get_texture_type(&self, pass_index: usize) -> Option<TextureType> {
+        self.pass_info.texture_types.get(pass_index).copied()
+    }
+
+    /// Determine if this is the final pass that renders to screen
+    pub fn is_final_screen_pass(&self, pass_index: usize) -> bool {
+        if let Some(texture_type) = self.get_texture_type(pass_index) {
+            pass_index == self.pipeline_count - 1 && !self.is_stateful_texture(texture_type)
+        } else {
+            false
+        }
+    }
+}
+
 pub struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -503,6 +592,14 @@ impl<'a> State<'a> {
         }
     }
 
+    /// Helper method to determine if empty bind group is needed for Group 2
+    /// This centralizes the conditional logic from setup_render_pass_common
+    fn needs_empty_bind_group(&self, pass_index: usize, current_texture_type: TextureType) -> bool {
+        pass_index > 0
+            || current_texture_type == TextureType::Persistent
+            || current_texture_type == TextureType::PingPong
+    }
+
     /// Helper method to create texture bind groups using BindGroupFactory
     fn create_texture_bind_group(
         &self,
@@ -510,19 +607,20 @@ impl<'a> State<'a> {
         sampler: &wgpu::Sampler,
         label: &str,
     ) -> Option<wgpu::BindGroup> {
-        if let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout {
-            let mut factory = BindGroupFactory::new();
-            factory.add_multipass_texture(texture_view, sampler);
+        // Guard clause: early return if no texture bind group layout available
+        let Some(ref layout) = self.multi_pass_pipeline.texture_bind_group_layout else {
+            return None;
+        };
 
-            // Create bind group manually since we need to use the existing layout
-            Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout,
-                entries: &factory.entries,
-                label: Some(label),
-            }))
-        } else {
-            None
-        }
+        let mut factory = BindGroupFactory::new();
+        factory.add_multipass_texture(texture_view, sampler);
+
+        // Create bind group manually since we need to use the existing layout
+        Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout,
+            entries: &factory.entries,
+            label: Some(label),
+        }))
     }
 
     /// Analyze texture requirements for all passes to avoid repeated determine_texture_type calls
@@ -596,42 +694,41 @@ impl<'a> State<'a> {
         pass_index: usize,
         current_texture_type: TextureType,
     ) {
+        // Guard clause: early return if no pipeline available
+        let Some(pipeline) = self.multi_pass_pipeline.get_pipeline(pass_index) else {
+            return;
+        };
+
         // Set the pipeline for this pass
-        if let Some(pipeline) = self.multi_pass_pipeline.get_pipeline(pass_index) {
-            render_pass.set_pipeline(pipeline);
+        render_pass.set_pipeline(pipeline);
 
-            // Group 0: uniform bind group (always present)
-            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+        // Group 0: uniform bind group (always present)
+        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
-            // Group 1: device bind group (always present)
-            render_pass.set_bind_group(1, &self.device_bind_group, &[]);
+        // Group 1: device bind group (always present)
+        render_pass.set_bind_group(1, &self.device_bind_group, &[]);
 
-            // Group 2: sound bind group OR empty bind group (conditional)
-            if let Some(sound_bind_group) = &self.sound_bind_group {
-                render_pass.set_bind_group(2, sound_bind_group, &[]);
-            } else if pass_index > 0
-                || current_texture_type == TextureType::Persistent
-                || current_texture_type == TextureType::PingPong
-            {
-                // Create empty bind group for Group 2 if needed for multipass or persistent texture
-                if let Some(ref empty_layout) = self.multi_pass_pipeline.empty_bind_group_layout {
-                    let empty_bind_group =
-                        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            layout: empty_layout,
-                            entries: &[],
-                            label: Some("Empty Group 2 Bind Group"),
-                        });
-                    render_pass.set_bind_group(2, &empty_bind_group, &[]);
-                }
+        // Group 2: sound bind group OR empty bind group (conditional)
+        if let Some(sound_bind_group) = &self.sound_bind_group {
+            render_pass.set_bind_group(2, sound_bind_group, &[]);
+        } else if self.needs_empty_bind_group(pass_index, current_texture_type) {
+            // Create empty bind group for Group 2 if needed for multipass or persistent texture
+            if let Some(ref empty_layout) = self.multi_pass_pipeline.empty_bind_group_layout {
+                let empty_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: empty_layout,
+                    entries: &[],
+                    label: Some("Empty Group 2 Bind Group"),
+                });
+                render_pass.set_bind_group(2, &empty_bind_group, &[]);
             }
-
-            // Setup vertex and index buffers
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-            // Note: draw call is NOT executed here - it's called by the caller
-            // after setting any additional bind groups (like Group 3 for textures)
         }
+
+        // Setup vertex and index buffers
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+
+        // Note: draw call is NOT executed here - it's called by the caller
+        // after setting any additional bind groups (like Group 3 for textures)
     }
 
     /// Multi-pass rendering for intermediate textures with texture chaining
@@ -640,16 +737,12 @@ impl<'a> State<'a> {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         final_view: &wgpu::TextureView,
-        pass_info: &PassTextureInfo,
+        context: &MultiPassContext,
     ) -> Result<(), wgpu::SurfaceError> {
-        let pipeline_count = pass_info.texture_types.len();
-
         // Multi-pass rendering for intermediate textures
-        for pass_index in 0..pipeline_count {
-            let current_texture_type = pass_info.texture_types[pass_index];
-            let is_final_pass = pass_index == pipeline_count - 1
-                && current_texture_type != TextureType::Persistent
-                && current_texture_type != TextureType::PingPong;
+        for pass_index in 0..context.pipeline_count {
+            let current_texture_type = context.pass_info.texture_types[pass_index];
+            let is_final_pass = context.is_final_screen_pass(pass_index);
 
             // Get render target view for this pass
             let render_target_view = if is_final_pass {
@@ -680,14 +773,8 @@ impl<'a> State<'a> {
                 current_texture_type,
                 self.texture_manager.current_frame
             );
-            let texture_bind_group = if pass_index > 0
-                || current_texture_type == TextureType::Persistent
-                || current_texture_type == TextureType::PingPong
-            {
-                let input_texture_view = if (current_texture_type == TextureType::Persistent
-                    || current_texture_type == TextureType::PingPong)
-                    && pass_index == 0
-                {
+            let texture_bind_group = if context.needs_texture_binding(pass_index) {
+                let input_texture_view = if context.needs_previous_frame_input(pass_index) {
                     // For persistent/ping-pong textures on first pass, read from previous frame using double-buffering
                     match current_texture_type {
                         TextureType::Persistent => {
@@ -696,8 +783,7 @@ impl<'a> State<'a> {
                                 .persistent_textures
                                 .get(&pass_index)
                                 .unwrap();
-                            let read_index =
-                                ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                            let read_index = context.get_read_frame_index(); // Read from previous frame
                             log::debug!(
                                 "Persistent texture input: frame={}, read_index={}",
                                 self.texture_manager.current_frame,
@@ -714,8 +800,7 @@ impl<'a> State<'a> {
                                 .ping_pong_textures
                                 .get(&pass_index)
                                 .unwrap();
-                            let read_index =
-                                ((self.texture_manager.current_frame + 1) % 2) as usize; // Read from previous frame
+                            let read_index = context.get_read_frame_index(); // Read from previous frame
                             log::debug!(
                                 "Ping-pong texture input: frame={}, read_index={}, write_index={}",
                                 self.texture_manager.current_frame,
@@ -729,7 +814,7 @@ impl<'a> State<'a> {
                 } else {
                     // For multi-pass, read from previous pass
                     let prev_pass_index = pass_index - 1;
-                    let prev_texture_type = pass_info.texture_types[prev_pass_index];
+                    let prev_texture_type = context.pass_info.texture_types[prev_pass_index];
                     match prev_texture_type {
                         TextureType::Intermediate => self
                             .texture_manager
@@ -832,9 +917,9 @@ impl<'a> State<'a> {
         // Copy persistent and ping-pong textures to screen
         // Both persistent and ping-pong textures render to intermediate textures,
         // so we need to copy their final output to the screen for display
-        for pass_index in 0..pipeline_count {
-            let texture_type = pass_info.texture_types[pass_index];
-            if texture_type == TextureType::Persistent || texture_type == TextureType::PingPong {
+        for pass_index in 0..context.pipeline_count {
+            let texture_type = context.pass_info.texture_types[pass_index];
+            if context.is_stateful_texture(texture_type) {
                 // Copy texture to screen using a simple copy pass
                 let _texture_view = match texture_type {
                     TextureType::Persistent => self
@@ -867,7 +952,7 @@ impl<'a> State<'a> {
                 self.setup_render_pass_common(&mut copy_pass, pass_index, texture_type);
 
                 // Bind the texture for reading (Group 3) - handled individually
-                let read_index = ((self.texture_manager.current_frame + 1) % 2) as usize;
+                let read_index = context.get_read_frame_index();
                 let texture_view_ref = match texture_type {
                     TextureType::Persistent => {
                         let textures = self
@@ -971,19 +1056,27 @@ impl<'a> State<'a> {
             .map_err(|_e| wgpu::SurfaceError::Lost)?;
 
         // 4. Rendering Phase
+        // Create MultiPassContext to centralize conditional logic
+        let has_texture_bindings = self.multi_pass_pipeline.texture_bind_group_layout.is_some();
+        let context = MultiPassContext::new(
+            &pass_info,
+            has_texture_bindings,
+            self.texture_manager.current_frame as usize,
+        );
+
         // Enter multi-pass rendering mode if:
         // - Multiple pipelines in sequence (traditional multi-pass)
         // - Any persistent textures (single-pass but needs state preservation)
         // - Any ping-pong textures (single-pass but needs double-buffering)
         log::debug!(
             "Render decision: requires_multipass={}, has_ping_pong={}, has_persistent={}, pipeline_count={}",
-            pass_info.requires_multipass,
+            context.requires_multipass_rendering(),
             pass_info.has_ping_pong,
             pass_info.has_persistent,
-            pass_info.texture_types.len()
+            context.pipeline_count
         );
-        if pass_info.requires_multipass {
-            self.render_multipass(&mut encoder, &final_view, &pass_info)?;
+        if context.requires_multipass_rendering() {
+            self.render_multipass(&mut encoder, &final_view, &context)?;
         } else {
             self.render_single_pass(&mut encoder, &final_view)?;
         }
@@ -1826,5 +1919,77 @@ file = "test.wgsl"
         let result = mock_texture_creation_with_error();
         assert!(result.is_err());
         // This should be converted to SurfaceError::Lost in the actual implementation
+    }
+
+    #[test]
+    fn test_multipass_context_creation() {
+        // Test MultiPassContext creation from PassTextureInfo
+        let texture_types = vec![TextureType::Intermediate, TextureType::PingPong];
+        let pass_info = PassTextureInfo::new(texture_types);
+
+        let context = MultiPassContext::new(&pass_info, true, 42);
+
+        assert_eq!(context.pipeline_count, 2);
+        assert!(context.requires_multipass_rendering());
+        assert!(context.has_texture_bindings);
+        assert_eq!(context.current_frame, 42);
+    }
+
+    #[test]
+    fn test_multipass_context_needs_texture_binding() {
+        // Test needs_texture_binding logic
+        let texture_types = vec![TextureType::Persistent];
+        let pass_info = PassTextureInfo::new(texture_types);
+        let context = MultiPassContext::new(&pass_info, true, 0);
+
+        // Pass 0 with persistent texture should need binding
+        assert!(context.needs_texture_binding(0));
+
+        // Pass 1 should also need binding (subsequent pass)
+        assert!(context.needs_texture_binding(1));
+    }
+
+    #[test]
+    fn test_multipass_context_needs_previous_frame_input() {
+        // Test needs_previous_frame_input for persistent/ping-pong textures
+        let texture_types = vec![TextureType::PingPong, TextureType::Intermediate];
+        let pass_info = PassTextureInfo::new(texture_types);
+        let context = MultiPassContext::new(&pass_info, true, 5);
+
+        // Pass 0 with ping-pong should need previous frame input
+        assert!(context.needs_previous_frame_input(0));
+
+        // Pass 1 with intermediate should not need previous frame input
+        assert!(!context.needs_previous_frame_input(1));
+    }
+
+    #[test]
+    fn test_multipass_context_get_read_frame_index() {
+        // Test frame index calculation for double-buffering
+        let texture_types = vec![TextureType::Persistent];
+        let pass_info = PassTextureInfo::new(texture_types);
+        let context = MultiPassContext::new(&pass_info, true, 7);
+
+        // Should return (current_frame + 1) % 2
+        assert_eq!(context.get_read_frame_index(), 0); // (7 + 1) % 2 = 0
+
+        let context2 = MultiPassContext::new(&pass_info, true, 6);
+        assert_eq!(context2.get_read_frame_index(), 1); // (6 + 1) % 2 = 1
+    }
+
+    #[test]
+    fn test_multipass_context_is_stateful_texture() {
+        // Test helper method for identifying stateful textures
+        let texture_types = vec![
+            TextureType::Intermediate,
+            TextureType::Persistent,
+            TextureType::PingPong,
+        ];
+        let pass_info = PassTextureInfo::new(texture_types);
+        let context = MultiPassContext::new(&pass_info, true, 0);
+
+        assert!(!context.is_stateful_texture(TextureType::Intermediate));
+        assert!(context.is_stateful_texture(TextureType::Persistent));
+        assert!(context.is_stateful_texture(TextureType::PingPong));
     }
 }
