@@ -51,6 +51,9 @@ struct MidiUniform {
     // control change values (0-127 normalized to 0.0-1.0)
     // Packed into vec4s for alignment: 128 values in 32 vec4s
     controls: array<vec4<f32>, 32>,
+    // note on attack detection (0-127 normalized to 0.0-1.0)
+    // Packed into vec4s for alignment: 128 values in 32 vec4s
+    note_on: array<vec4<f32>, 32>,
 }
 
 struct VertexOutput {
@@ -244,6 +247,24 @@ fn MidiControl(cc_num: u32) -> f32 {
         case 1u: { return cc_vec.y; }
         case 2u: { return cc_vec.z; }
         case 3u: { return cc_vec.w; }
+        default: { return 0.0; }
+    }
+}
+
+fn MidiNoteOn(note_num: u32) -> f32 {
+    let vec4_index = note_num / 4u;
+    let element_index = note_num % 4u;
+    
+    if vec4_index >= 32u {
+        return 0.0;
+    }
+    
+    let note_vec = Midi.note_on[vec4_index];
+    switch element_index {
+        case 0u: { return note_vec.x; }
+        case 1u: { return note_vec.y; }
+        case 2u: { return note_vec.z; }
+        case 3u: { return note_vec.w; }
         default: { return 0.0; }
     }
 }
