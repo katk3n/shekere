@@ -460,8 +460,10 @@ impl<'a> State<'a> {
 
         // Update MidiUniform
         if let Some(midi_uniform) = self.midi_uniform.as_mut() {
-            midi_uniform.update();
+            // First write current data (including note_on attacks) to GPU
             midi_uniform.write_buffer(&self.queue);
+            // Then clear note_on for next frame (after GPU has received the data)
+            midi_uniform.update();
         }
     }
 

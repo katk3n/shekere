@@ -1,5 +1,17 @@
 // Common definitions (including MidiUniform, bindings, and MIDI helpers) are automatically included
 
+// MIDI Note On Attack Detection Demo
+// This example demonstrates the difference between:
+// - MidiNote(note): Returns velocity while note is held (sustained state)
+// - MidiNoteOn(note): Returns velocity only for the frame when note attack occurs
+//
+// Visual effects:
+// - Background Flash: Entire screen flashes white on ANY MIDI note attack (Notes 0-127)
+// - Attack Flash: Intense burst when note is first struck (MidiNoteOn)
+// - Sustained Glow: Gentle glow while note is held (MidiNote)
+// - Attack effects are instantaneous (single frame)
+// - Sustained effects continue until note release
+
 fn hue_to_rgb(hue: f32) -> vec3<f32> {
     let kr = (5.0 + hue * 6.0) % 6.0;
     let kg = (3.0 + hue * 6.0) % 6.0;
@@ -38,7 +50,14 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
     
     if dx <= pad_size * 0.5 && dy <= pad_size * 0.5 {
         let note_number = 36u + pad_index; // Notes 36-51 (16 pads)
-        let velocity = MidiNote(note_number);
+        
+        // MIDI Note On Attack Detection
+        // MidiNoteOn() returns velocity only for the exact frame when note attack occurs
+        let note_attack = MidiNoteOn(note_number);
+        
+        // MIDI Sustained Note Detection
+        // MidiNote() returns velocity while note is being held (sustained state)
+        let note_sustained = MidiNote(note_number);
         
         // Base pad color varies by position
         let base_hue = f32(pad_index) / 16.0;
@@ -48,15 +67,26 @@ fn draw_drum_pad(uv: vec2<f32>, pad_index: u32) -> vec3<f32> {
         let border_factor = 1.0 - max(dx / (pad_size * 0.5), dy / (pad_size * 0.5));
         let border_intensity = smoothstep(0.7, 1.0, border_factor);
         
-        if velocity > 0.0 {
-            // Active pad: very bright color based on velocity with enhanced visibility
-            let active_color = hue_to_rgb(base_hue) * velocity * 2.0;
-            let flash_effect = vec3(velocity * 0.5); // White flash effect
-            return base_color + active_color + flash_effect + vec3(border_intensity * 0.6);
-        } else {
-            // Inactive pad: brighter base color with more visible border
-            return base_color + vec3(border_intensity * 0.2);
+        var result_color = base_color + vec3(border_intensity * 0.2);
+        
+        // Attack effect: Bright flash on note strike (only for attack frame)
+        if note_attack > 0.0 {
+            // Intense white flash proportional to attack velocity
+            let attack_flash = vec3(note_attack * 3.0); // Very bright flash
+            // Add colored burst effect
+            let attack_burst = hue_to_rgb(base_hue) * note_attack * 2.5;
+            result_color += attack_flash + attack_burst;
         }
+        
+        // Sustained effect: Gentle glow while note is held
+        if note_sustained > 0.0 {
+            // Sustained glow based on velocity (less intense than attack)
+            let sustained_glow = hue_to_rgb(base_hue) * note_sustained * 1.5;
+            let sustained_brightness = vec3(note_sustained * 0.3); // Gentle white glow
+            result_color += sustained_glow + sustained_brightness;
+        }
+        
+        return result_color;
     }
     
     return vec3(0.0);
@@ -72,8 +102,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let dist = length(uv);
     let angle = atan2(uv.y, uv.x);
     
-    // Start with darker background but allow CC effects to modify it
-    var col = vec3(0.05);
+    // Check for any MIDI Note On attacks across all 128 MIDI notes
+    var max_attack = 0.0;
+    for (var i = 0u; i < 128u; i++) {
+        let attack = MidiNoteOn(i);
+        max_attack = max(max_attack, attack);
+    }
+    
+    // Background flash effect: White background on any note attack
+    var base_background = 0.05;
+    if max_attack > 0.0 {
+        // Flash the entire background white based on strongest attack
+        base_background = max_attack * 0.8; // Scale to prevent over-brightness
+    }
+    
+    // Start with background that responds to attacks
+    var col = vec3(base_background);
     
     // Background effects controlled by CCs (applied everywhere)
     
@@ -135,6 +179,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // CC 7 (Volume) - Controls overall brightness (applied last)
     let volume = MidiControl(7u);
     col *= (0.6 + volume * 0.8);
+    
     
     return vec4(ToLinearRgb(col), 1.0);
 }

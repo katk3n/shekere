@@ -13,6 +13,9 @@ pub struct MidiUniformData {
     // control change values (0-127 normalized to 0.0-1.0)
     // Using vec4<f32> for alignment (16-byte alignment)
     cc: [[f32; 4]; 32], // 128 cc values packed into 32 vec4s
+    // note on attack detection (0-127 normalized to 0.0-1.0)
+    // Using vec4<f32> for alignment (16-byte alignment)
+    note_on: [[f32; 4]; 32], // 128 note on values packed into 32 vec4s
 }
 
 pub struct MidiUniform {
@@ -28,6 +31,7 @@ impl MidiUniform {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -103,7 +107,10 @@ impl MidiUniform {
                     if note < 128 {
                         let vec4_index = note / 4;
                         let element_index = note % 4;
+                        // Set sustained note
                         data_guard.notes[vec4_index][element_index] = velocity;
+                        // Set attack detection
+                        data_guard.note_on[vec4_index][element_index] = velocity;
                     }
                 }
             }
@@ -137,8 +144,9 @@ impl MidiUniform {
     }
 
     pub fn update(&mut self) {
-        // MIDI updates happen in the callback, so nothing to do here
-        // The data is already updated by the MIDI input callback
+        // Clear note_on array at frame start
+        let mut data = self.data.lock().unwrap();
+        data.note_on = [[0.0; 4]; 32];
     }
 
     pub fn write_buffer(&self, queue: &wgpu::Queue) {
@@ -156,11 +164,17 @@ mod tests {
         let data = MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         };
 
         // Test that all values are initialized to 0.0
         assert!(data.notes.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
         assert!(data.cc.iter().all(|vec4| vec4.iter().all(|&x| x == 0.0)));
+        assert!(
+            data.note_on
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
     }
 
     #[test]
@@ -168,6 +182,7 @@ mod tests {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         // Simulate Note On message: Channel 1, Note 60 (Middle C), Velocity 100
@@ -177,17 +192,26 @@ mod tests {
         let data_guard = data.lock().unwrap();
         let vec4_index = 60 / 4; // 15
         let element_index = 60 % 4; // 0
+        let expected_velocity = 100.0 / 127.0;
+
+        // Test that both notes and note_on arrays are set
         assert!(
-            (data_guard.notes[vec4_index][element_index] - (100.0 / 127.0)).abs() < f32::EPSILON
+            (data_guard.notes[vec4_index][element_index] - expected_velocity).abs() < f32::EPSILON
+        );
+        assert!(
+            (data_guard.note_on[vec4_index][element_index] - expected_velocity).abs()
+                < f32::EPSILON
         );
 
         // Check neighboring values are still 0
         let vec4_index_59 = 59 / 4; // 14
         let element_index_59 = 59 % 4; // 3
         assert_eq!(data_guard.notes[vec4_index_59][element_index_59], 0.0);
+        assert_eq!(data_guard.note_on[vec4_index_59][element_index_59], 0.0);
 
         let element_index_61 = 61 % 4; // 1
         assert_eq!(data_guard.notes[vec4_index][element_index_61], 0.0);
+        assert_eq!(data_guard.note_on[vec4_index][element_index_61], 0.0);
     }
 
     #[test]
@@ -195,6 +219,7 @@ mod tests {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         // First set a note on
@@ -208,7 +233,11 @@ mod tests {
         let data_guard = data.lock().unwrap();
         let vec4_index = 60 / 4;
         let element_index = 60 % 4;
+        // Note off should clear notes array but preserve note_on
         assert_eq!(data_guard.notes[vec4_index][element_index], 0.0);
+        assert!(
+            (data_guard.note_on[vec4_index][element_index] - (100.0 / 127.0)).abs() < f32::EPSILON
+        );
     }
 
     #[test]
@@ -216,6 +245,7 @@ mod tests {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         // Simulate Control Change message: Channel 1, Controller 7 (Volume), Value 64
@@ -241,6 +271,7 @@ mod tests {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         // Test short message
@@ -267,6 +298,7 @@ mod tests {
         let data = Arc::new(Mutex::new(MidiUniformData {
             notes: [[0.0; 4]; 32],
             cc: [[0.0; 4]; 32],
+            note_on: [[0.0; 4]; 32],
         }));
 
         // Test note number >= 128 (should be ignored)
@@ -280,5 +312,296 @@ mod tests {
                 .iter()
                 .all(|vec4| vec4.iter().all(|&x| x == 0.0))
         );
+        assert!(
+            data_guard
+                .note_on
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
+    }
+
+    #[test]
+    fn test_note_on_frame_clearing() {
+        use crate::config::MidiConfig;
+
+        // Create a device for testing (using wgpu test utilities)
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::default(),
+            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
+
+        let (device, _queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ))
+        .unwrap();
+
+        let config = MidiConfig { enabled: false };
+        let mut midi_uniform = MidiUniform::new(&device, &config);
+
+        // Set note_on value directly
+        {
+            let mut data = midi_uniform.data.lock().unwrap();
+            data.note_on[15][0] = 0.5; // Set middle C attack
+        }
+
+        // Call update (should clear note_on)
+        midi_uniform.update();
+
+        // Verify note_on was cleared
+        let data = midi_uniform.data.lock().unwrap();
+        assert_eq!(data.note_on[15][0], 0.0);
+        assert!(
+            data.note_on
+                .iter()
+                .all(|vec4| vec4.iter().all(|&x| x == 0.0))
+        );
+    }
+
+    #[test]
+    fn test_end_to_end_note_on_detection() {
+        use crate::config::MidiConfig;
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::default(),
+            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
+
+        let (device, _queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ))
+        .unwrap();
+
+        let config = MidiConfig { enabled: false };
+        let mut midi_uniform = MidiUniform::new(&device, &config);
+
+        // Simulate Note On message processing
+        let note_on_message = [0x90, 60, 100]; // Channel 1, Middle C, Velocity 100
+        MidiUniform::handle_midi_message(&midi_uniform.data, &note_on_message);
+
+        // First frame: attack should be detected
+        {
+            let data = midi_uniform.data.lock().unwrap();
+            let vec4_index = 60 / 4; // 15
+            let element_index = 60 % 4; // 0
+            let expected_velocity = 100.0 / 127.0;
+
+            // Both notes and note_on should be set
+            assert!(
+                (data.notes[vec4_index][element_index] - expected_velocity).abs() < f32::EPSILON,
+                "Notes array should contain velocity"
+            );
+            assert!(
+                (data.note_on[vec4_index][element_index] - expected_velocity).abs() < f32::EPSILON,
+                "Note_on array should contain attack velocity"
+            );
+        }
+
+        // Simulate frame update (clears note_on)
+        midi_uniform.update();
+
+        // Second frame: attack should be cleared, sustained note remains
+        {
+            let data = midi_uniform.data.lock().unwrap();
+            let vec4_index = 60 / 4;
+            let element_index = 60 % 4;
+            let expected_velocity = 100.0 / 127.0;
+
+            // Notes should still be set (sustained)
+            assert!(
+                (data.notes[vec4_index][element_index] - expected_velocity).abs() < f32::EPSILON,
+                "Notes array should still contain velocity after frame update"
+            );
+            // Note_on should be cleared
+            assert_eq!(
+                data.note_on[vec4_index][element_index], 0.0,
+                "Note_on array should be cleared after frame update"
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_note_on_events() {
+        use crate::config::MidiConfig;
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::default(),
+            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
+
+        let (device, _queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ))
+        .unwrap();
+
+        let config = MidiConfig { enabled: false };
+        let mut midi_uniform = MidiUniform::new(&device, &config);
+
+        // Send multiple Note On messages
+        let notes = [
+            (60, 100), // Middle C, velocity 100
+            (64, 80),  // E, velocity 80
+            (67, 120), // G, velocity 120
+        ];
+
+        for (note, velocity) in notes.iter() {
+            let message = [0x90, *note, *velocity];
+            MidiUniform::handle_midi_message(&midi_uniform.data, &message);
+        }
+
+        // Verify all notes are detected
+        {
+            let data = midi_uniform.data.lock().unwrap();
+            for (note, velocity) in notes.iter() {
+                let vec4_index = *note as usize / 4;
+                let element_index = *note as usize % 4;
+                let expected_velocity = *velocity as f32 / 127.0;
+
+                assert!(
+                    (data.notes[vec4_index][element_index] - expected_velocity).abs()
+                        < f32::EPSILON,
+                    "Note {} should have velocity {}",
+                    note,
+                    expected_velocity
+                );
+                assert!(
+                    (data.note_on[vec4_index][element_index] - expected_velocity).abs()
+                        < f32::EPSILON,
+                    "Note {} should have attack velocity {}",
+                    note,
+                    expected_velocity
+                );
+            }
+        }
+
+        // Clear attacks
+        midi_uniform.update();
+
+        // Verify attacks cleared but sustained notes remain
+        {
+            let data = midi_uniform.data.lock().unwrap();
+            for (note, velocity) in notes.iter() {
+                let vec4_index = *note as usize / 4;
+                let element_index = *note as usize % 4;
+                let expected_velocity = *velocity as f32 / 127.0;
+
+                assert!(
+                    (data.notes[vec4_index][element_index] - expected_velocity).abs()
+                        < f32::EPSILON,
+                    "Sustained note {} should remain after frame update",
+                    note
+                );
+                assert_eq!(
+                    data.note_on[vec4_index][element_index], 0.0,
+                    "Attack for note {} should be cleared after frame update",
+                    note
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_chord_detection() {
+        use crate::config::MidiConfig;
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            dx12_shader_compiler: Default::default(),
+            flags: wgpu::InstanceFlags::default(),
+            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+        });
+
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
+
+        let (device, _queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ))
+        .unwrap();
+
+        let config = MidiConfig { enabled: false };
+        let midi_uniform = MidiUniform::new(&device, &config);
+
+        // Send a C major chord simultaneously (C-E-G)
+        let chord_notes = [60, 64, 67]; // C, E, G
+        let velocity = 100;
+
+        // Send all notes in same frame
+        for note in chord_notes.iter() {
+            let message = [0x90, *note, velocity];
+            MidiUniform::handle_midi_message(&midi_uniform.data, &message);
+        }
+
+        // Verify all chord notes detected simultaneously
+        {
+            let data = midi_uniform.data.lock().unwrap();
+            let expected_velocity = velocity as f32 / 127.0;
+
+            for note in chord_notes.iter() {
+                let vec4_index = *note as usize / 4;
+                let element_index = *note as usize % 4;
+
+                assert!(
+                    (data.note_on[vec4_index][element_index] - expected_velocity).abs()
+                        < f32::EPSILON,
+                    "Chord note {} should be detected with attack",
+                    note
+                );
+            }
+        }
     }
 }
