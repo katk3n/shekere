@@ -345,71 +345,84 @@ let color = vec3(brightness);
 
 ### MIDI Helpers
 
-#### `MidiNote(note_num: u32) -> f32`
-Gets MIDI note velocity for a specific note number.
+**Note**: All MIDI functions now require a `history` parameter to access historical data.
 
-- **Input**: MIDI note number (0-127)
+#### `MidiNote(note_num: u32, history: u32) -> f32`
+Gets MIDI note velocity for a specific note number at a specific point in history.
+
+- **Input**:
+  - `note_num`: MIDI note number (0-127)
+  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
 - **Output**: Note velocity (0.0-1.0)
 - **Range**: 0.0 = note off, 1.0 = maximum velocity
-- **Invalid input**: Returns 0.0 for note numbers > 127
+- **Invalid input**: Returns 0.0 for note numbers > 127 or history > 511
 
 ```wgsl
-// Use MIDI note C4 (60) for color intensity
-let note_intensity = MidiNote(60u);
-let color = vec3(sin(Time.duration) * note_intensity);
+// Current MIDI note C4 (60) for color intensity
+let current_intensity = MidiNote(60u, 0u);
+let color = vec3(sin(Time.duration) * current_intensity);
+
+// Create fade trail using historical data
+let fade1 = MidiNote(60u, 10u) * 0.8;  // 10 frames ago
+let fade2 = MidiNote(60u, 20u) * 0.6;  // 20 frames ago
+let combined = max(current_intensity, max(fade1, fade2));
 ```
 
-#### `MidiControl(cc_num: u32) -> f32`
-Gets MIDI control change value for a specific CC number.
+#### `MidiControl(cc_num: u32, history: u32) -> f32`
+Gets MIDI control change value for a specific CC number at a specific point in history.
 
-- **Input**: MIDI CC number (0-127)
+- **Input**:
+  - `cc_num`: MIDI CC number (0-127)
+  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
 - **Output**: Control change value (0.0-1.0)
 - **Range**: 0.0 = minimum, 1.0 = maximum
-- **Invalid input**: Returns 0.0 for CC numbers > 127
+- **Invalid input**: Returns 0.0 for CC numbers > 127 or history > 511
 
 ```wgsl
-// Use MIDI CC 1 (modulation wheel) for animation speed
-let mod_wheel = MidiControl(1u);
-let speed = 1.0 + mod_wheel * 5.0;
-let color = vec3(sin(Time.duration * speed));
+// Current MIDI CC 1 (modulation wheel) for animation speed
+let current_mod = MidiControl(1u, 0u);
+let speed = 1.0 + current_mod * 5.0;
+
+// Smooth parameter changes using historical averaging
+var smooth_mod = 0.0;
+for (var i = 0u; i < 10u; i++) {
+    smooth_mod += MidiControl(1u, i);
+}
+smooth_mod /= 10.0;  // Average over last 10 frames
 ```
 
-#### `MidiNoteOn(note_num: u32) -> f32`
-Gets MIDI Note On attack detection for a specific note number.
+#### `MidiNoteOn(note_num: u32, history: u32) -> f32`
+Gets MIDI Note On attack detection for a specific note number at a specific point in history.
 
-- **Input**: MIDI note number (0-127)
+- **Input**:
+  - `note_num`: MIDI note number (0-127)
+  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
 - **Output**: Note attack velocity (0.0-1.0)
 - **Range**: 0.0 = no attack, 1.0 = maximum attack velocity
 - **Duration**: Only non-zero for the exact frame when Note On occurs
-- **Invalid input**: Returns 0.0 for note numbers > 127
-
-**Note**: This function returns velocity only for the frame when a Note On message is received. For sustained note detection, use `MidiNote()` instead.
+- **Invalid input**: Returns 0.0 for note numbers > 127 or history > 511
 
 ```wgsl
-// Trigger visual explosion on drum hit
-let kick_attack = MidiNoteOn(36u);  // MIDI note 36 (kick drum)
+// Trigger visual explosion on current drum hit
+let kick_attack = MidiNoteOn(36u, 0u);  // MIDI note 36 (kick drum)
 if kick_attack > 0.0 {
     // Create flash effect proportional to attack velocity
     let flash_intensity = kick_attack * 2.0;
     color += vec3(flash_intensity);
 }
-```
 
-```wgsl
-// Compare attack vs sustained detection
-let note_sustained = MidiNote(60u);    // Middle C held state
-let note_attack = MidiNoteOn(60u);     // Middle C attack moment
-
-// Effect that responds only to new note attacks
-if note_attack > 0.0 {
-    // Trigger visual element (particle burst, color change, etc.)
-    trigger_effect(note_attack);
+// Create echo effects using historical attacks
+let echo1 = MidiNoteOn(36u, 30u) * 0.5;  // Echo at 0.5s ago (30 frames at 60fps)
+let echo2 = MidiNoteOn(36u, 60u) * 0.25; // Echo at 1.0s ago (60 frames at 60fps)
+if echo1 > 0.0 || echo2 > 0.0 {
+    color += vec3(echo1 + echo2);
 }
 
-// Effect that responds to sustained notes
-if note_sustained > 0.0 {
-    // Continuous effect while note is held
-    continuous_effect(note_sustained);
+// Analyze rhythmic patterns
+var total_attacks = 0.0;
+for (var i = 0u; i < 120u; i++) {  // Last 2 seconds at 60fps
+    total_attacks += MidiNoteOn(36u, i);
 }
+let rhythm_intensity = total_attacks / 120.0;
 ```
 

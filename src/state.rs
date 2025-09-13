@@ -298,7 +298,7 @@ impl<'a> State<'a> {
             sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
         }
         if let Some(mu) = &midi_uniform {
-            sound_bind_group_factory.add_entry(MidiUniform::BINDING_INDEX, &mu.buffer);
+            sound_bind_group_factory.add_storage_entry(MidiUniform::BINDING_INDEX, &mu.buffer);
         }
         let (sound_bind_group_layout, sound_bind_group) =
             sound_bind_group_factory.create(&device, "sound");
@@ -537,7 +537,7 @@ impl<'a> State<'a> {
             );
         }
         if let Some(mu) = &self.midi_uniform {
-            sound_bind_group_factory.add_entry(
+            sound_bind_group_factory.add_storage_entry(
                 crate::uniforms::midi_uniform::MidiUniform::BINDING_INDEX,
                 &mu.buffer,
             );

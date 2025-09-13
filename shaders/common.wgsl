@@ -73,7 +73,7 @@ struct VertexOutput {
 // Group 2: Sound uniforms (conditional - only bind what you use)
 @group(2) @binding(0) var<uniform> Osc: OscUniform;
 @group(2) @binding(1) var<uniform> Spectrum: SpectrumUniform;
-@group(2) @binding(2) var<uniform> Midi: MidiUniform;
+@group(2) @binding(2) var<storage, read> Midi: MidiUniform;
 
 // Group 3: Multi-pass textures (conditional - only available in multi-pass shaders)
 @group(3) @binding(0) var previous_pass: texture_2d<f32>;

@@ -110,3 +110,107 @@ if attack_strength > 0.0 {
 ### Difference from Standard Note Detection
 - **MidiNote()**: Returns velocity while note is being held (sustained state)
 - **MidiNoteOn()**: Returns velocity only for the frame when note attack occurs (instantaneous detection)
+
+## MIDI History
+
+### Overview
+The MIDI History feature provides access to historical MIDI data from previous frames, enabling fade-out effects and temporal visual patterns without requiring multi-pass shaders.
+
+### Purpose
+- **Temporal Effects**: Create fade-out, echo, and trail effects using historical MIDI data
+- **Simplified Implementation**: Avoid complex multi-pass shader setups for temporal effects
+- **Enhanced Creative Control**: Access to 512 frames of MIDI history for rich visual programming
+
+### Technical Architecture
+
+#### Storage Buffer Migration
+To accommodate the increased data volume (768KB for 512 frames of history), the MIDI system migrates from Uniform Buffers to Storage Buffers:
+- **Data Capacity**: Storage buffers support large structured data arrays (768KB vs ~64KB limit for uniforms)
+- **Performance**: Efficient access to large historical datasets
+- **WebGPU Compatibility**: Full cross-platform support
+
+#### Data Structure Design
+
+**CPU Side (Rust)**: Ring buffer for memory efficiency
+```rust
+struct MidiHistoryData {
+    // Ring buffer: 512 frames × 128 values × 3 arrays
+    notes_history: [[f32; 128]; 512],
+    controls_history: [[f32; 128]; 512],
+    note_on_history: [[f32; 128]; 512],
+    current_index: usize,  // Current frame position in ring buffer
+}
+```
+
+**GPU Side (WGSL)**: Linear array for simple access
+```wgsl
+struct MidiHistory {
+    // Linear arrays: 512 frames × 32 vec4s (128 values) × 3 arrays = 768KB
+    notes_history: array<array<vec4<f32>, 32>, 512>,
+    controls_history: array<array<vec4<f32>, 32>, 512>,
+    note_on_history: array<array<vec4<f32>, 32>, 512>,
+}
+```
+
+#### Ring Buffer Management
+- **CPU Efficiency**: Ring buffer minimizes memory allocation overhead
+- **GPU Simplicity**: Linear array transfer for straightforward shader access
+- **Frame Updates**: Each render frame advances ring buffer and transfers current state to GPU
+
+### Shader API
+
+#### Updated Helper Functions
+All MIDI functions now require a history parameter for consistency:
+
+```wgsl
+// New unified API (breaking change)
+fn MidiNote(note_num: u32, history: u32) -> f32     // history = 0 for current frame
+fn MidiControl(cc_num: u32, history: u32) -> f32    // history = 1-511 for past frames
+fn MidiNoteOn(note_num: u32, history: u32) -> f32   // bounds-checked access
+```
+
+#### History Parameter
+- **Range**: 0-511 (0 = current frame, 511 = oldest available frame)
+- **Bounds Checking**: Invalid history values return 0.0
+- **Frame Alignment**: History aligned with render frames (not absolute time)
+
+### Use Cases
+
+#### Fade-out Effects
+```wgsl
+// Create velocity fade trail
+let current = MidiNote(60u, 0u);           // Current Middle C
+let fade1 = MidiNote(60u, 10u) * 0.8;     // 10 frames ago, 80% intensity
+let fade2 = MidiNote(60u, 20u) * 0.6;     // 20 frames ago, 60% intensity
+let combined = max(current, max(fade1, fade2));
+```
+
+#### Echo Effects
+```wgsl
+// Rhythmic echo patterns (assuming 60fps)
+let attack = MidiNoteOn(60u, 0u);         // Current attack
+let echo1 = MidiNoteOn(60u, 30u) * 0.5;  // Echo at 0.5s
+let echo2 = MidiNoteOn(60u, 60u) * 0.25; // Echo at 1.0s
+```
+
+#### Temporal Analysis
+```wgsl
+// Analyze activity over time
+var total_activity = 0.0;
+for (var i = 0u; i < 60u; i++) {         // Last second at 60fps
+    total_activity += MidiNote(60u, i);
+}
+let average_activity = total_activity / 60.0;
+```
+
+### Performance Characteristics
+
+#### Memory Usage
+- **Total Size**: 768KB storage buffer (well within WebGPU limits)
+- **Frame Update**: Ring buffer provides O(1) frame advancement
+- **GPU Access**: Direct array indexing for historical data
+
+#### Transfer Optimization
+- **Full Transfer**: Complete history transferred each frame (768KB)
+- **Future Optimization**: Differential updates could reduce transfer size
+- **GPU Caching**: Historical data cached in GPU memory between frames

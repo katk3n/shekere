@@ -37,7 +37,7 @@ impl MidiUniform {
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("MIDI Buffer"),
             contents: bytemuck::cast_slice(&[*data.lock().unwrap()]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
         let connection = if config.enabled {
