@@ -44,7 +44,7 @@ struct OscUniform {
     gains: array<vec4<f32>, 4>,
 }
 
-struct MidiUniformData {
+struct MidiShaderData {
     // note velocities (0-127 normalized to 0.0-1.0)
     // Packed into vec4s for alignment: 128 values in 32 vec4s
     notes: array<vec4<f32>, 32>,
@@ -59,7 +59,7 @@ struct MidiUniformData {
 struct MidiHistory {
     // 512 frames of MIDI history data (768KB total)
     // Index 0 = current frame, Index 511 = oldest frame
-    history_data: array<MidiUniformData, 512>,
+    history_data: array<MidiShaderData, 512>,
 }
 
 struct VertexOutput {

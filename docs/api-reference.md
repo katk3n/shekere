@@ -94,14 +94,14 @@ struct SpectrumUniform {
 
 #### MidiHistory - `Midi`
 ```wgsl
-struct MidiUniformData {
+struct MidiShaderData {
     notes: array<vec4<f32>, 32>,      // Note velocities (packed)
     controls: array<vec4<f32>, 32>,   // Control change values (packed)
     note_on: array<vec4<f32>, 32>,    // Note On attack detection (packed)
 }
 
 struct MidiHistory {
-    history_data: array<MidiUniformData, 512>,  // 512 frames of MIDI history
+    history_data: array<MidiShaderData, 512>,  // 512 frames of MIDI history
 }
 ```
 - **Usage**: Use helper functions `MidiNote()`, `MidiControl()`, `MidiNoteOn()` for current frame, or `MidiNoteHistory()`, `MidiControlHistory()`, `MidiNoteOnHistory()` for historical data

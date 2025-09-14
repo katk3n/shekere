@@ -29,10 +29,10 @@ impl MidiFrameData {
     }
 }
 
-// GPU-compatible format (original MidiUniformData for compatibility)
+// Shader-compatible format for individual frame data
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct MidiUniformData {
+pub struct MidiShaderData {
     // note velocities (0-127 normalized to 0.0-1.0)
     // Using vec4<f32> for alignment (16-byte alignment)
     notes: [[f32; 4]; 32], // 128 notes packed into 32 vec4s
@@ -52,7 +52,7 @@ pub(crate) struct MidiHistoryData {
     frame_history: Vec<MidiFrameData>,
 }
 
-pub struct MidiUniform {
+pub struct MidiInputManager {
     pub history_data: Arc<Mutex<MidiHistoryData>>,
     pub buffer: wgpu::Buffer,
     _connection: Option<MidiInputConnection<()>>,
@@ -80,30 +80,30 @@ impl MidiHistoryData {
         }
     }
 
-    // Convert ring buffer data to GPU-compatible linear array format
-    fn prepare_gpu_data(&self) -> Vec<MidiUniformData> {
-        let mut gpu_data = Vec::with_capacity(512);
+    // Convert ring buffer data to shader-compatible linear array format
+    fn prepare_shader_data(&self) -> Vec<MidiShaderData> {
+        let mut shader_data = Vec::with_capacity(512);
 
         // Add current frame first (index 0 = history 0)
-        gpu_data.push(Self::frame_to_gpu_data(&self.current_frame));
+        shader_data.push(Self::frame_to_shader_data(&self.current_frame));
 
         // Add frame history (newest to oldest)
         for frame in self.frame_history.iter().rev() {
-            gpu_data.push(Self::frame_to_gpu_data(frame));
-            if gpu_data.len() >= 512 {
+            shader_data.push(Self::frame_to_shader_data(frame));
+            if shader_data.len() >= 512 {
                 break;
             }
         }
 
         // Pad to exactly 512 frames if needed
-        while gpu_data.len() < 512 {
-            gpu_data.push(Self::frame_to_gpu_data(&MidiFrameData::new()));
+        while shader_data.len() < 512 {
+            shader_data.push(Self::frame_to_shader_data(&MidiFrameData::new()));
         }
 
-        gpu_data
+        shader_data
     }
 
-    fn frame_to_gpu_data(frame: &MidiFrameData) -> MidiUniformData {
+    fn frame_to_shader_data(frame: &MidiFrameData) -> MidiShaderData {
         let mut notes = [[0.0f32; 4]; 32];
         let mut cc = [[0.0f32; 4]; 32];
         let mut note_on = [[0.0f32; 4]; 32];
@@ -117,26 +117,26 @@ impl MidiHistoryData {
             note_on[vec4_index][element_index] = frame.note_on[i];
         }
 
-        MidiUniformData { notes, cc, note_on }
+        MidiShaderData { notes, cc, note_on }
     }
 }
 
-impl MidiUniform {
+impl MidiInputManager {
     pub const BINDING_INDEX: u32 = 2;
 
     pub fn new(device: &wgpu::Device, config: &MidiConfig) -> Self {
         let history_data = Arc::new(Mutex::new(MidiHistoryData::new()));
 
         // Calculate buffer size for 512 frames (768KB total)
-        let single_frame_size = std::mem::size_of::<MidiUniformData>();
+        let single_frame_size = std::mem::size_of::<MidiShaderData>();
         let _total_size = single_frame_size * 512; // 768KB total
 
-        // Create initial GPU data
-        let initial_gpu_data = history_data.lock().unwrap().prepare_gpu_data();
+        // Create initial shader data
+        let initial_shader_data = history_data.lock().unwrap().prepare_shader_data();
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("MIDI History Buffer"),
-            contents: bytemuck::cast_slice(&initial_gpu_data),
+            contents: bytemuck::cast_slice(&initial_shader_data),
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -252,8 +252,8 @@ impl MidiUniform {
 
     pub fn write_buffer(&self, queue: &wgpu::Queue) {
         let history_guard = self.history_data.lock().unwrap();
-        let gpu_data = history_guard.prepare_gpu_data();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&gpu_data));
+        let shader_data = history_guard.prepare_shader_data();
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&shader_data));
     }
 }
 
@@ -338,33 +338,33 @@ mod tests {
     }
 
     #[test]
-    fn test_frame_to_gpu_data_conversion() {
+    fn test_frame_to_shader_data_conversion() {
         let mut frame = MidiFrameData::new();
         frame.notes[60] = 0.8; // Middle C
         frame.controls[7] = 0.5; // Volume CC
         frame.note_on[64] = 0.9; // E attack
 
-        let gpu_data = MidiHistoryData::frame_to_gpu_data(&frame);
+        let shader_data = MidiHistoryData::frame_to_shader_data(&frame);
 
         // Check that values are correctly packed into vec4 format
         let note_vec4_index = 60 / 4; // 15
         let note_element_index = 60 % 4; // 0
-        assert_eq!(gpu_data.notes[note_vec4_index][note_element_index], 0.8);
+        assert_eq!(shader_data.notes[note_vec4_index][note_element_index], 0.8);
 
         let cc_vec4_index = 7 / 4; // 1
         let cc_element_index = 7 % 4; // 3
-        assert_eq!(gpu_data.cc[cc_vec4_index][cc_element_index], 0.5);
+        assert_eq!(shader_data.cc[cc_vec4_index][cc_element_index], 0.5);
 
         let note_on_vec4_index = 64 / 4; // 16
         let note_on_element_index = 64 % 4; // 0
         assert_eq!(
-            gpu_data.note_on[note_on_vec4_index][note_on_element_index],
+            shader_data.note_on[note_on_vec4_index][note_on_element_index],
             0.9
         );
     }
 
     #[test]
-    fn test_prepare_gpu_data() {
+    fn test_prepare_shader_data() {
         let mut history = MidiHistoryData::new();
 
         // Set current frame values
@@ -378,13 +378,13 @@ mod tests {
             history.frame_history.push(frame);
         }
 
-        let gpu_data = history.prepare_gpu_data();
+        let shader_data = history.prepare_shader_data();
 
         // Should have exactly 512 frames
-        assert_eq!(gpu_data.len(), 512);
+        assert_eq!(shader_data.len(), 512);
 
         // First frame (index 0) should be current frame
-        let first_frame = &gpu_data[0];
+        let first_frame = &shader_data[0];
         let note_vec4_index = 60 / 4;
         let note_element_index = 60 % 4;
         assert_eq!(first_frame.notes[note_vec4_index][note_element_index], 1.0);
@@ -394,18 +394,18 @@ mod tests {
         assert_eq!(first_frame.cc[cc_vec4_index][cc_element_index], 0.8);
 
         // Following frames should be from history (newest first)
-        let second_frame = &gpu_data[1];
+        let second_frame = &shader_data[1];
         assert_eq!(second_frame.notes[note_vec4_index][note_element_index], 0.2); // Last pushed frame (index 2)
 
-        let third_frame = &gpu_data[2];
+        let third_frame = &shader_data[2];
         assert_eq!(third_frame.notes[note_vec4_index][note_element_index], 0.1); // Second frame (index 1)
 
-        let fourth_frame = &gpu_data[3];
+        let fourth_frame = &shader_data[3];
         assert_eq!(fourth_frame.notes[note_vec4_index][note_element_index], 0.0); // First frame (index 0)
 
         // Remaining frames should be zeros
         for i in 4..512 {
-            let frame = &gpu_data[i];
+            let frame = &shader_data[i];
             assert!(
                 frame
                     .notes
@@ -421,7 +421,7 @@ mod tests {
 
         // Simulate Note On message: Channel 1, Note 60 (Middle C), Velocity 100
         let message = [0x90, 60, 100];
-        MidiUniform::handle_midi_message(&history_data, &message);
+        MidiInputManager::handle_midi_message(&history_data, &message);
 
         let history_guard = history_data.lock().unwrap();
         let expected_velocity = 100.0 / 127.0;
@@ -443,11 +443,11 @@ mod tests {
 
         // First set a note on
         let note_on = [0x90, 60, 100];
-        MidiUniform::handle_midi_message(&history_data, &note_on);
+        MidiInputManager::handle_midi_message(&history_data, &note_on);
 
         // Then turn it off
         let note_off = [0x80, 60, 0];
-        MidiUniform::handle_midi_message(&history_data, &note_off);
+        MidiInputManager::handle_midi_message(&history_data, &note_off);
 
         let history_guard = history_data.lock().unwrap();
         // Note off should clear notes array but preserve note_on
@@ -461,7 +461,7 @@ mod tests {
 
         // Simulate Control Change message: Channel 1, Controller 7 (Volume), Value 64
         let message = [0xB0, 7, 64];
-        MidiUniform::handle_midi_message(&history_data, &message);
+        MidiInputManager::handle_midi_message(&history_data, &message);
 
         let history_guard = history_data.lock().unwrap();
         assert!((history_guard.current_frame.controls[7] - (64.0 / 127.0)).abs() < f32::EPSILON);
@@ -477,7 +477,7 @@ mod tests {
 
         // Test short message
         let message = [0x90];
-        MidiUniform::handle_midi_message(&history_data, &message);
+        MidiInputManager::handle_midi_message(&history_data, &message);
 
         let history_guard = history_data.lock().unwrap();
         assert!(history_guard.current_frame.notes.iter().all(|&x| x == 0.0));
@@ -496,7 +496,7 @@ mod tests {
 
         // Test note number >= 128 (should be ignored)
         let message = [0x90, 128, 100];
-        MidiUniform::handle_midi_message(&history_data, &message);
+        MidiInputManager::handle_midi_message(&history_data, &message);
 
         let history_guard = history_data.lock().unwrap();
         assert!(history_guard.current_frame.notes.iter().all(|&x| x == 0.0));
@@ -540,19 +540,19 @@ mod tests {
         .unwrap();
 
         let config = MidiConfig { enabled: false };
-        let mut midi_uniform = MidiUniform::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(&device, &config);
 
         // Set note_on value directly
         {
-            let mut history_guard = midi_uniform.history_data.lock().unwrap();
+            let mut history_guard = midi_input_manager.history_data.lock().unwrap();
             history_guard.current_frame.note_on[60] = 0.5; // Set middle C attack
         }
 
         // Call update (should clear note_on and push to history)
-        midi_uniform.update();
+        midi_input_manager.update();
 
         // Verify note_on was cleared and frame was pushed to history
-        let history_guard = midi_uniform.history_data.lock().unwrap();
+        let history_guard = midi_input_manager.history_data.lock().unwrap();
         assert_eq!(history_guard.current_frame.note_on[60], 0.0);
         assert!(
             history_guard
@@ -596,15 +596,15 @@ mod tests {
         .unwrap();
 
         let config = MidiConfig { enabled: false };
-        let mut midi_uniform = MidiUniform::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(&device, &config);
 
         // Simulate Note On message processing
         let note_on_message = [0x90, 60, 100]; // Channel 1, Middle C, Velocity 100
-        MidiUniform::handle_midi_message(&midi_uniform.history_data, &note_on_message);
+        MidiInputManager::handle_midi_message(&midi_input_manager.history_data, &note_on_message);
 
         // First frame: attack should be detected
         {
-            let history_guard = midi_uniform.history_data.lock().unwrap();
+            let history_guard = midi_input_manager.history_data.lock().unwrap();
             let expected_velocity = 100.0 / 127.0;
 
             // Both notes and note_on should be set
@@ -619,11 +619,11 @@ mod tests {
         }
 
         // Simulate frame update (clears note_on and pushes to history)
-        midi_uniform.update();
+        midi_input_manager.update();
 
         // Second frame: attack should be cleared, sustained note remains
         {
-            let history_guard = midi_uniform.history_data.lock().unwrap();
+            let history_guard = midi_input_manager.history_data.lock().unwrap();
             let expected_velocity = 100.0 / 127.0;
 
             // Notes should still be set (sustained)
@@ -672,7 +672,7 @@ mod tests {
         .unwrap();
 
         let config = MidiConfig { enabled: false };
-        let mut midi_uniform = MidiUniform::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(&device, &config);
 
         // Send multiple Note On messages
         let notes = [
@@ -683,12 +683,12 @@ mod tests {
 
         for (note, velocity) in notes.iter() {
             let message = [0x90, *note, *velocity];
-            MidiUniform::handle_midi_message(&midi_uniform.history_data, &message);
+            MidiInputManager::handle_midi_message(&midi_input_manager.history_data, &message);
         }
 
         // Verify all notes are detected
         {
-            let history_guard = midi_uniform.history_data.lock().unwrap();
+            let history_guard = midi_input_manager.history_data.lock().unwrap();
             for (note, velocity) in notes.iter() {
                 let expected_velocity = *velocity as f32 / 127.0;
 
@@ -710,11 +710,11 @@ mod tests {
         }
 
         // Clear attacks and push to history
-        midi_uniform.update();
+        midi_input_manager.update();
 
         // Verify attacks cleared but sustained notes remain
         {
-            let history_guard = midi_uniform.history_data.lock().unwrap();
+            let history_guard = midi_input_manager.history_data.lock().unwrap();
             for (note, velocity) in notes.iter() {
                 let expected_velocity = *velocity as f32 / 127.0;
 
@@ -766,7 +766,7 @@ mod tests {
         .unwrap();
 
         let config = MidiConfig { enabled: false };
-        let midi_uniform = MidiUniform::new(&device, &config);
+        let midi_input_manager = MidiInputManager::new(&device, &config);
 
         // Send a C major chord simultaneously (C-E-G)
         let chord_notes = [60, 64, 67]; // C, E, G
@@ -775,12 +775,12 @@ mod tests {
         // Send all notes in same frame
         for note in chord_notes.iter() {
             let message = [0x90, *note, velocity];
-            MidiUniform::handle_midi_message(&midi_uniform.history_data, &message);
+            MidiInputManager::handle_midi_message(&midi_input_manager.history_data, &message);
         }
 
         // Verify all chord notes detected simultaneously
         {
-            let history_guard = midi_uniform.history_data.lock().unwrap();
+            let history_guard = midi_input_manager.history_data.lock().unwrap();
             let expected_velocity = velocity as f32 / 127.0;
 
             for note in chord_notes.iter() {
