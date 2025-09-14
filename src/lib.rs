@@ -2,6 +2,7 @@ mod audio_stream;
 mod bind_group_factory;
 pub mod config;
 pub mod hot_reload;
+mod inputs;
 mod osc;
 pub mod pipeline;
 pub mod render_constants;

@@ -33,6 +33,23 @@ impl<'a> BindGroupFactory<'a> {
         })
     }
 
+    pub fn add_storage_entry(&mut self, binding_index: u32, buffer: &'a Buffer) {
+        self.layout_entries.push(wgpu::BindGroupLayoutEntry {
+            binding: binding_index,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        });
+        self.entries.push(wgpu::BindGroupEntry {
+            binding: binding_index,
+            resource: buffer.as_entire_binding(),
+        })
+    }
+
     pub fn add_texture_entry(
         &mut self,
         texture_binding: u32,

@@ -4,9 +4,9 @@ use crate::hot_reload::HotReloader;
 use crate::pipeline::MultiPassPipeline;
 use crate::render_constants::{bind_group, frame_buffer, render_pass};
 // use crate::shader_preprocessor::ShaderPreprocessor; // TODO: Needed for hot reload
+use crate::inputs::midi::MidiInputManager;
 use crate::texture_manager::{TextureManager, TextureType};
 use crate::timer::Timer;
-use crate::uniforms::midi_uniform::MidiUniform;
 use crate::uniforms::mouse_uniform::MouseUniform;
 use crate::uniforms::osc_uniform::OscUniform;
 use crate::uniforms::spectrum_uniform::SpectrumUniform;
@@ -172,7 +172,7 @@ pub struct State<'a> {
     mouse_uniform: MouseUniform,
     osc_uniform: Option<OscUniform<'a>>,
     spectrum_uniform: Option<SpectrumUniform>,
-    midi_uniform: Option<MidiUniform>,
+    midi_input_manager: Option<MidiInputManager>,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
     sound_bind_group: Option<wgpu::BindGroup>,
@@ -263,10 +263,10 @@ impl<'a> State<'a> {
             .spectrum
             .as_ref()
             .map(|audio_config| SpectrumUniform::new(&device, audio_config));
-        let midi_uniform = config
+        let midi_input_manager = config
             .midi
             .as_ref()
-            .map(|midi_config| MidiUniform::new(&device, midi_config));
+            .map(|midi_config| MidiInputManager::new(&device, midi_config));
 
         // Create bind group for uniforms (window resolution, time)
         let mut uniform_bind_group_factory = BindGroupFactory::new();
@@ -297,8 +297,8 @@ impl<'a> State<'a> {
         if let Some(su) = &spectrum_uniform {
             sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
         }
-        if let Some(mu) = &midi_uniform {
-            sound_bind_group_factory.add_entry(MidiUniform::BINDING_INDEX, &mu.buffer);
+        if let Some(mu) = &midi_input_manager {
+            sound_bind_group_factory.add_storage_entry(MidiInputManager::BINDING_INDEX, &mu.buffer);
         }
         let (sound_bind_group_layout, sound_bind_group) =
             sound_bind_group_factory.create(&device, "sound");
@@ -389,7 +389,7 @@ impl<'a> State<'a> {
             device_bind_group,
             osc_uniform,
             spectrum_uniform,
-            midi_uniform,
+            midi_input_manager,
             sound_bind_group,
             hot_reloader,
             config: config.clone(),
@@ -458,12 +458,12 @@ impl<'a> State<'a> {
             spectrum_uniform.write_buffer(&self.queue);
         }
 
-        // Update MidiUniform
-        if let Some(midi_uniform) = self.midi_uniform.as_mut() {
+        // Update MidiInputManager
+        if let Some(midi_input_manager) = self.midi_input_manager.as_mut() {
             // First write current data (including note_on attacks) to GPU
-            midi_uniform.write_buffer(&self.queue);
+            midi_input_manager.write_buffer(&self.queue);
             // Then clear note_on for next frame (after GPU has received the data)
-            midi_uniform.update();
+            midi_input_manager.update();
         }
     }
 
@@ -536,9 +536,9 @@ impl<'a> State<'a> {
                 &su.buffer,
             );
         }
-        if let Some(mu) = &self.midi_uniform {
-            sound_bind_group_factory.add_entry(
-                crate::uniforms::midi_uniform::MidiUniform::BINDING_INDEX,
+        if let Some(mu) = &self.midi_input_manager {
+            sound_bind_group_factory.add_storage_entry(
+                crate::inputs::midi::MidiInputManager::BINDING_INDEX,
                 &mu.buffer,
             );
         }
