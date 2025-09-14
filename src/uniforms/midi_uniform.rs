@@ -1,12 +1,7 @@
 use midir::{MidiInput, MidiInputConnection};
-use ringbuf::{
-    HeapRb,
-    traits::{RingBuffer},
-};
 #[cfg(test)]
-use ringbuf::{
-    traits::Observer,
-};
+use ringbuf::traits::Observer;
+use ringbuf::{HeapRb, traits::RingBuffer};
 use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
