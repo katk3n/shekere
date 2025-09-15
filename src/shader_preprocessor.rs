@@ -170,11 +170,9 @@ mod tests {
         // Check that all expected embedded definitions are present
         assert!(result.contains("struct WindowUniform"));
         assert!(result.contains("struct TimeUniform"));
-        assert!(result.contains("struct MouseUniform"));
         assert!(result.contains("struct VertexOutput"));
         assert!(result.contains("@group(0) @binding(0) var<uniform> Window"));
         assert!(result.contains("@group(0) @binding(1) var<uniform> Time"));
-        assert!(result.contains("@group(1) @binding(0) var<uniform> Mouse"));
         assert!(result.contains("fn ToLinearRgb"));
         assert!(result.contains("fn NormalizedCoords"));
     }

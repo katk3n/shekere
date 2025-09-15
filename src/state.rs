@@ -5,10 +5,10 @@ use crate::pipeline::MultiPassPipeline;
 use crate::render_constants::{bind_group, frame_buffer, render_pass};
 // use crate::shader_preprocessor::ShaderPreprocessor; // TODO: Needed for hot reload
 use crate::inputs::midi::MidiInputManager;
+use crate::inputs::mouse::MouseInputManager;
+use crate::inputs::osc::OscInputManager;
 use crate::texture_manager::{TextureManager, TextureType};
 use crate::timer::Timer;
-use crate::uniforms::mouse_uniform::MouseUniform;
-use crate::uniforms::osc_uniform::OscUniform;
 use crate::uniforms::spectrum_uniform::SpectrumUniform;
 use crate::uniforms::time_uniform::TimeUniform;
 use crate::uniforms::window_uniform::WindowUniform;
@@ -169,10 +169,10 @@ pub struct State<'a> {
     // uniforms
     window_uniform: WindowUniform,
     time_uniform: TimeUniform,
-    mouse_uniform: MouseUniform,
-    osc_uniform: Option<OscUniform<'a>>,
     spectrum_uniform: Option<SpectrumUniform>,
     midi_input_manager: Option<MidiInputManager>,
+    mouse_input_manager: Option<MouseInputManager>,
+    osc_input_manager: Option<OscInputManager<'a>>,
     uniform_bind_group: wgpu::BindGroup,
     device_bind_group: wgpu::BindGroup,
     sound_bind_group: Option<wgpu::BindGroup>,
@@ -253,9 +253,9 @@ impl<'a> State<'a> {
         // Uniforms
         let window_uniform = WindowUniform::new(&device, window);
         let time_uniform = TimeUniform::new(&device);
-        let mouse_uniform = MouseUniform::new(&device);
-        let osc_uniform = if let Some(osc_config) = &config.osc {
-            Some(OscUniform::new(&device, osc_config).await)
+        let mouse_input_manager = Some(MouseInputManager::new(&device));
+        let osc_input_manager = if let Some(osc_config) = &config.osc {
+            Some(OscInputManager::new(&device, osc_config).await)
         } else {
             None
         };
@@ -281,7 +281,10 @@ impl<'a> State<'a> {
 
         // Create bind group for device (Mouse, etc.)
         let mut device_bind_group_factory = BindGroupFactory::new();
-        device_bind_group_factory.add_entry(MouseUniform::BINDING_INDEX, &mouse_uniform.buffer);
+        if let Some(mim) = &mouse_input_manager {
+            device_bind_group_factory
+                .add_storage_entry(MouseInputManager::BINDING_INDEX, &mim.buffer);
+        }
         let (device_bind_group_layout, device_bind_group) =
             device_bind_group_factory.create(&device, "device");
         let (device_bind_group_layout, device_bind_group) = (
@@ -291,8 +294,11 @@ impl<'a> State<'a> {
 
         // Create bind group for sound
         let mut sound_bind_group_factory = BindGroupFactory::new();
-        if let Some(ou) = &osc_uniform {
-            sound_bind_group_factory.add_entry(OscUniform::BINDING_INDEX, &ou.buffer);
+        if let Some(oim) = &osc_input_manager {
+            if let Some(buffer) = oim.storage_buffer() {
+                sound_bind_group_factory
+                    .add_storage_entry(OscInputManager::STORAGE_BINDING_INDEX, buffer);
+            }
         }
         if let Some(su) = &spectrum_uniform {
             sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
@@ -385,11 +391,11 @@ impl<'a> State<'a> {
             timer,
             time_uniform,
             uniform_bind_group,
-            mouse_uniform,
             device_bind_group,
-            osc_uniform,
             spectrum_uniform,
             midi_input_manager,
+            mouse_input_manager,
+            osc_input_manager,
             sound_bind_group,
             hot_reloader,
             config: config.clone(),
@@ -420,7 +426,9 @@ impl<'a> State<'a> {
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
-                self.mouse_uniform.update(position);
+                if let Some(mouse_input_manager) = &mut self.mouse_input_manager {
+                    mouse_input_manager.update(position);
+                }
                 true
             }
             _ => false,
@@ -439,17 +447,20 @@ impl<'a> State<'a> {
         }
 
         let time_duration = self.timer.get_duration();
-        let time_elapsed = time_duration - self.time_uniform.data.duration;
+        let _time_elapsed = time_duration - self.time_uniform.data.duration;
         self.time_uniform.update(time_duration);
         self.time_uniform.write_buffer(&self.queue);
 
         self.window_uniform.write_buffer(&self.queue);
-        self.mouse_uniform.write_buffer(&self.queue);
 
-        // Update OscUniform
-        if let Some(osc_uniform) = self.osc_uniform.as_mut() {
-            osc_uniform.update(time_elapsed);
-            osc_uniform.write_buffer(&self.queue);
+        // Update MouseInputManager
+        if let Some(mouse_input_manager) = &self.mouse_input_manager {
+            mouse_input_manager.write_buffer(&self.queue);
+        }
+
+        // Update OscInputManager
+        if let Some(osc_input_manager) = self.osc_input_manager.as_mut() {
+            osc_input_manager.update(&self.queue);
         }
 
         // Update AudioUniform
@@ -514,21 +525,25 @@ impl<'a> State<'a> {
 
         // Recreate device bind group layout using BindGroupFactory (same as original)
         let mut device_bind_group_factory = crate::bind_group_factory::BindGroupFactory::new();
-        device_bind_group_factory.add_entry(
-            crate::uniforms::mouse_uniform::MouseUniform::BINDING_INDEX,
-            &self.mouse_uniform.buffer,
-        );
+        if let Some(mim) = &self.mouse_input_manager {
+            device_bind_group_factory.add_storage_entry(
+                crate::inputs::mouse::MouseInputManager::BINDING_INDEX,
+                &mim.buffer,
+            );
+        }
         let (device_bind_group_layout, _) =
             device_bind_group_factory.create(&self.device, "device");
         let device_bind_group_layout = device_bind_group_layout.unwrap();
 
         // Recreate sound bind group layout using BindGroupFactory (same as original)
         let mut sound_bind_group_factory = crate::bind_group_factory::BindGroupFactory::new();
-        if let Some(ou) = &self.osc_uniform {
-            sound_bind_group_factory.add_entry(
-                crate::uniforms::osc_uniform::OscUniform::BINDING_INDEX,
-                &ou.buffer,
-            );
+        if let Some(oim) = &self.osc_input_manager {
+            if let Some(buffer) = oim.storage_buffer() {
+                sound_bind_group_factory.add_storage_entry(
+                    crate::inputs::osc::OscInputManager::STORAGE_BINDING_INDEX,
+                    buffer,
+                );
+            }
         }
         if let Some(su) = &self.spectrum_uniform {
             sound_bind_group_factory.add_entry(

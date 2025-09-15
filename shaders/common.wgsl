@@ -13,10 +13,6 @@ struct TimeUniform {
     duration: f32,
 }
 
-struct MouseUniform {
-    // mouse position in physical size
-    position: vec2<f32>,
-}
 
 
 struct SpectrumUniform {
@@ -33,7 +29,7 @@ struct SpectrumUniform {
     _padding: u32,
 }
 
-struct OscUniform {
+struct OscShaderData {
     // OSC sound values (packed into vec4s for alignment)
     sounds: array<vec4<i32>, 4>,
     // OSC ttl values (packed into vec4s for alignment)
@@ -42,6 +38,12 @@ struct OscUniform {
     notes: array<vec4<f32>, 4>,
     // OSC gain values (packed into vec4s for alignment)
     gains: array<vec4<f32>, 4>,
+}
+
+struct OscHistory {
+    // 512 frames of OSC history data
+    // Index 0 = current frame, Index 511 = oldest frame
+    history_data: array<OscShaderData, 512>,
 }
 
 struct MidiShaderData {
@@ -62,6 +64,18 @@ struct MidiHistory {
     history_data: array<MidiShaderData, 512>,
 }
 
+struct MouseShaderData {
+    // mouse position (vec2 with vec4 alignment)
+    position: vec2<f32>,
+    _padding: vec2<f32>, // vec4 alignment for GPU efficiency
+}
+
+struct MouseHistory {
+    // 512 frames of mouse history data (8KB total)
+    // Index 0 = current frame, Index 511 = oldest frame
+    history_data: array<MouseShaderData, 512>,
+}
+
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
@@ -74,10 +88,10 @@ struct VertexOutput {
 @group(0) @binding(1) var<uniform> Time: TimeUniform;
 
 // Group 1: Device uniforms (conditional)
-@group(1) @binding(0) var<uniform> Mouse: MouseUniform;
+@group(1) @binding(0) var<storage, read> Mouse: MouseHistory;
 
 // Group 2: Sound uniforms (conditional - only bind what you use)
-@group(2) @binding(0) var<uniform> Osc: OscUniform;
+@group(2) @binding(0) var<storage, read> Osc: OscHistory;
 @group(2) @binding(1) var<uniform> Spectrum: SpectrumUniform;
 @group(2) @binding(2) var<storage, read> Midi: MidiHistory;
 
@@ -125,15 +139,16 @@ fn SpectrumAmplitude(index: u32) -> f32 {
 }
 
 // OSC data access helpers
-fn OscSound(index: u32) -> i32 {
+fn OscSoundHistory(index: u32, history: u32) -> i32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 4u {
+
+    // Bounds checking
+    if vec4_index >= 4u || history >= 512u {
         return 0;
     }
-    
-    let sound_vec = Osc.sounds[vec4_index];
+
+    let sound_vec = Osc.history_data[history].sounds[vec4_index];
     switch element_index {
         case 0u: { return sound_vec.x; }
         case 1u: { return sound_vec.y; }
@@ -143,15 +158,16 @@ fn OscSound(index: u32) -> i32 {
     }
 }
 
-fn OscTtl(index: u32) -> f32 {
+fn OscTtlHistory(index: u32, history: u32) -> f32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 4u {
+
+    // Bounds checking
+    if vec4_index >= 4u || history >= 512u {
         return 0.0;
     }
-    
-    let ttl_vec = Osc.ttls[vec4_index];
+
+    let ttl_vec = Osc.history_data[history].ttls[vec4_index];
     switch element_index {
         case 0u: { return ttl_vec.x; }
         case 1u: { return ttl_vec.y; }
@@ -161,15 +177,16 @@ fn OscTtl(index: u32) -> f32 {
     }
 }
 
-fn OscNote(index: u32) -> f32 {
+fn OscNoteHistory(index: u32, history: u32) -> f32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 4u {
+
+    // Bounds checking
+    if vec4_index >= 4u || history >= 512u {
         return 0.0;
     }
-    
-    let note_vec = Osc.notes[vec4_index];
+
+    let note_vec = Osc.history_data[history].notes[vec4_index];
     switch element_index {
         case 0u: { return note_vec.x; }
         case 1u: { return note_vec.y; }
@@ -179,15 +196,16 @@ fn OscNote(index: u32) -> f32 {
     }
 }
 
-fn OscGain(index: u32) -> f32 {
+fn OscGainHistory(index: u32, history: u32) -> f32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 4u {
+
+    // Bounds checking
+    if vec4_index >= 4u || history >= 512u {
         return 0.0;
     }
-    
-    let gain_vec = Osc.gains[vec4_index];
+
+    let gain_vec = Osc.history_data[history].gains[vec4_index];
     switch element_index {
         case 0u: { return gain_vec.x; }
         case 1u: { return gain_vec.y; }
@@ -195,6 +213,22 @@ fn OscGain(index: u32) -> f32 {
         case 3u: { return gain_vec.w; }
         default: { return 0.0; }
     }
+}
+
+fn OscSound(index: u32) -> i32 {
+    return OscSoundHistory(index, 0u);
+}
+
+fn OscTtl(index: u32) -> f32 {
+    return OscTtlHistory(index, 0u);
+}
+
+fn OscNote(index: u32) -> f32 {
+    return OscNoteHistory(index, 0u);
+}
+
+fn OscGain(index: u32) -> f32 {
+    return OscGainHistory(index, 0u);
 }
 
 // Color space conversion
@@ -216,8 +250,17 @@ fn NormalizedCoords(position: vec2<f32>) -> vec2<f32> {
     return (position * 2.0 - Window.resolution) / min_xy;
 }
 
+fn MouseCoordsHistory(history: u32) -> vec2<f32> {
+    if history >= 512u {
+        return vec2<f32>(0.0, 0.0);
+    }
+
+    let mouse_data = Mouse.history_data[history];
+    return NormalizedCoords(mouse_data.position);
+}
+
 fn MouseCoords() -> vec2<f32> {
-    return NormalizedCoords(Mouse.position);
+    return MouseCoordsHistory(0u);
 }
 
 // MIDI helper functions
