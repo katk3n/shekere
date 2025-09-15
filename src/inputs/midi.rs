@@ -1,7 +1,10 @@
 use midir::{MidiInput, MidiInputConnection};
 #[cfg(test)]
 use ringbuf::traits::Observer;
-use ringbuf::{HeapRb, traits::RingBuffer};
+use ringbuf::{
+    HeapRb,
+    traits::{Consumer, RingBuffer},
+};
 use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 
@@ -48,8 +51,6 @@ pub struct MidiShaderData {
 pub(crate) struct MidiHistoryData {
     current_frame: MidiFrameData,
     ring_buffer: HeapRb<MidiFrameData>,
-    // Simple history storage for Phase 3 - will be optimized later
-    frame_history: Vec<MidiFrameData>,
 }
 
 pub struct MidiInputManager {
@@ -63,21 +64,12 @@ impl MidiHistoryData {
         Self {
             current_frame: MidiFrameData::new(),
             ring_buffer: HeapRb::new(512),
-            frame_history: Vec::with_capacity(512),
         }
     }
 
     fn push_current_frame(&mut self) {
-        // Push to ring buffer (for future use)
+        // Push to ring buffer
         let _ = self.ring_buffer.push_overwrite(self.current_frame);
-
-        // Also maintain a simple history vector for Phase 3
-        self.frame_history.push(self.current_frame);
-
-        // Keep only the last 511 frames (512 total including current)
-        if self.frame_history.len() > 511 {
-            self.frame_history.remove(0);
-        }
     }
 
     // Convert ring buffer data to shader-compatible linear array format
@@ -87,8 +79,11 @@ impl MidiHistoryData {
         // Add current frame first (index 0 = history 0)
         shader_data.push(Self::frame_to_shader_data(&self.current_frame));
 
-        // Add frame history (newest to oldest)
-        for frame in self.frame_history.iter().rev() {
+        // Add frames from ring buffer (newest to oldest)
+        // Ring buffer iterator returns items in chronological order (oldest to newest),
+        // so we need to collect and reverse to get newest to oldest
+        let ring_data: Vec<_> = self.ring_buffer.iter().cloned().collect();
+        for frame in ring_data.iter().rev() {
             shader_data.push(Self::frame_to_shader_data(frame));
             if shader_data.len() >= 512 {
                 break;
@@ -280,10 +275,9 @@ mod tests {
         assert!(history.current_frame.controls.iter().all(|&x| x == 0.0));
         assert!(history.current_frame.note_on.iter().all(|&x| x == 0.0));
 
-        // Test that ring buffer and history are empty
+        // Test that ring buffer is empty and properly sized
         assert_eq!(history.ring_buffer.occupied_len(), 0);
         assert_eq!(history.ring_buffer.capacity().get(), 512);
-        assert_eq!(history.frame_history.len(), 0);
     }
 
     #[test]
@@ -298,12 +292,13 @@ mod tests {
         // Push current frame to ring buffer
         history.push_current_frame();
 
-        // Ring buffer and history should now have 1 frame
+        // Ring buffer should now have 1 frame
         assert_eq!(history.ring_buffer.occupied_len(), 1);
-        assert_eq!(history.frame_history.len(), 1);
 
-        // Check the frame data from history
-        let frame = &history.frame_history[0];
+        // Check the frame data from ring buffer
+        let ring_data: Vec<_> = history.ring_buffer.iter().cloned().collect();
+        assert_eq!(ring_data.len(), 1);
+        let frame = &ring_data[0];
         assert_eq!(frame.notes[60], 0.8);
         assert_eq!(frame.controls[7], 0.5);
         assert_eq!(frame.note_on[64], 0.9);
@@ -319,22 +314,19 @@ mod tests {
             history.push_current_frame();
         }
 
-        // Ring buffer should be full, history should be limited to 511
+        // Ring buffer should be full (512 frames)
         assert_eq!(history.ring_buffer.occupied_len(), 512);
-        assert_eq!(history.frame_history.len(), 511);
 
-        // Check the frame history (should be the most recent 511 frames)
-        let frames = &history.frame_history;
+        // Check the frame data from ring buffer
+        let ring_data: Vec<_> = history.ring_buffer.iter().cloned().collect();
+        assert_eq!(ring_data.len(), 512);
 
-        // Should have exactly 511 frames in history
-        assert_eq!(frames.len(), 511);
-
-        // The first frame should be from iteration 89 (600 - 511)
+        // The first frame in ring buffer should be from iteration 88 (600 - 512)
         // and the last frame should be from iteration 599
-        let expected_first_value = 89.0 / 600.0;
+        let expected_first_value = 88.0 / 600.0;
         let expected_last_value = 599.0 / 600.0;
-        assert!((frames[0].notes[0] - expected_first_value).abs() < f32::EPSILON);
-        assert!((frames[510].notes[0] - expected_last_value).abs() < f32::EPSILON);
+        assert!((ring_data[0].notes[0] - expected_first_value).abs() < f32::EPSILON);
+        assert!((ring_data[511].notes[0] - expected_last_value).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -367,16 +359,17 @@ mod tests {
     fn test_prepare_shader_data() {
         let mut history = MidiHistoryData::new();
 
-        // Set current frame values
-        history.current_frame.notes[60] = 1.0;
-        history.current_frame.controls[7] = 0.8;
-
-        // Add some frames to history
+        // Add some frames to history using push_current_frame
         for i in 0..3 {
             let mut frame = MidiFrameData::new();
             frame.notes[60] = (i as f32) * 0.1;
-            history.frame_history.push(frame);
+            history.current_frame = frame;
+            history.push_current_frame();
         }
+
+        // Set final current frame values
+        history.current_frame.notes[60] = 1.0;
+        history.current_frame.controls[7] = 0.8;
 
         let shader_data = history.prepare_shader_data();
 
@@ -393,7 +386,7 @@ mod tests {
         let cc_element_index = 7 % 4;
         assert_eq!(first_frame.cc[cc_vec4_index][cc_element_index], 0.8);
 
-        // Following frames should be from history (newest first)
+        // Following frames should be from ring buffer (newest first)
         let second_frame = &shader_data[1];
         assert_eq!(second_frame.notes[note_vec4_index][note_element_index], 0.2); // Last pushed frame (index 2)
 
@@ -413,6 +406,62 @@ mod tests {
                     .all(|vec4| vec4.iter().all(|&x| x == 0.0))
             );
         }
+    }
+
+    #[test]
+    fn test_ring_buffer_only_history() {
+        let mut history = MidiHistoryData::new();
+
+        // Create frames and push them through ring buffer
+        let mut frames = Vec::new();
+        for i in 0..5 {
+            let mut frame = MidiFrameData::new();
+            frame.notes[60] = (i as f32) * 0.1;
+            frame.controls[7] = (i as f32) * 0.2;
+            frames.push(frame);
+
+            // Set as current frame and push to ring buffer
+            history.current_frame = frame;
+            history.push_current_frame();
+        }
+
+        // Verify ring buffer contains the correct data
+        assert_eq!(history.ring_buffer.occupied_len(), 5);
+
+        // Ring buffer should contain frames in chronological order
+        let ring_data: Vec<_> = history.ring_buffer.iter().cloned().collect();
+        for (i, frame) in ring_data.iter().enumerate() {
+            assert_eq!(frame.notes[60], (i as f32) * 0.1);
+            assert_eq!(frame.controls[7], (i as f32) * 0.2);
+        }
+
+        // Current frame should be the last one we set
+        assert_eq!(history.current_frame.notes[60], 0.4);
+        assert_eq!(history.current_frame.controls[7], 0.8);
+    }
+
+    #[test]
+    fn test_ring_buffer_overwrite() {
+        let mut history = MidiHistoryData::new();
+
+        // Fill the ring buffer beyond capacity (512 + 10 = 522 frames)
+        for i in 0..522 {
+            let mut frame = MidiFrameData::new();
+            frame.notes[60] = (i % 256) as f32 / 255.0; // Use modulo to avoid large values
+            history.current_frame = frame;
+            history.push_current_frame();
+        }
+
+        // Ring buffer should be at full capacity
+        assert_eq!(history.ring_buffer.occupied_len(), 512);
+
+        // The oldest frames should have been overwritten
+        // The first frame in the ring buffer should now be frame 10 (index 10)
+        let ring_data: Vec<_> = history.ring_buffer.iter().cloned().collect();
+        assert_eq!(ring_data[0].notes[60], 10.0 / 255.0);
+
+        // The last frame should be frame 521 (index 521)
+        assert_eq!(ring_data[511].notes[60], (521 % 256) as f32 / 255.0);
     }
 
     #[test]
