@@ -90,10 +90,10 @@ for (var i = 0u; i < 32u; i++) {
 ### Spectrum Analysis
 
 #### `SpectrumFrequency(index: u32) -> f32`
-Frequency value at spectrum index (0-2047).
+Frequency value at spectrum index. Index range: 0-2047, returns: frequency in Hz.
 
 #### `SpectrumAmplitude(index: u32) -> f32`
-Amplitude value at spectrum index (0.0-1.0+).
+Amplitude value at spectrum index. Index range: 0-2047, returns: 0.0-1.0+.
 
 ```wgsl
 // Audio-reactive bars
