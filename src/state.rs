@@ -7,9 +7,9 @@ use crate::render_constants::{bind_group, frame_buffer, render_pass};
 use crate::inputs::midi::MidiInputManager;
 use crate::inputs::mouse::MouseInputManager;
 use crate::inputs::osc::OscInputManager;
+use crate::inputs::spectrum::SpectrumInputManager;
 use crate::texture_manager::{TextureManager, TextureType};
 use crate::timer::Timer;
-use crate::uniforms::spectrum_uniform::SpectrumUniform;
 use crate::uniforms::time_uniform::TimeUniform;
 use crate::uniforms::window_uniform::WindowUniform;
 use crate::vertex::{INDICES, VERTICES};
@@ -169,7 +169,7 @@ pub struct State<'a> {
     // uniforms
     window_uniform: WindowUniform,
     time_uniform: TimeUniform,
-    spectrum_uniform: Option<SpectrumUniform>,
+    spectrum_input_manager: Option<SpectrumInputManager>,
     midi_input_manager: Option<MidiInputManager>,
     mouse_input_manager: Option<MouseInputManager>,
     osc_input_manager: Option<OscInputManager<'a>>,
@@ -259,10 +259,10 @@ impl<'a> State<'a> {
         } else {
             None
         };
-        let spectrum_uniform = config
+        let spectrum_input_manager = config
             .spectrum
             .as_ref()
-            .map(|audio_config| SpectrumUniform::new(&device, audio_config));
+            .map(|audio_config| SpectrumInputManager::new(&device, audio_config));
         let midi_input_manager = config
             .midi
             .as_ref()
@@ -300,8 +300,9 @@ impl<'a> State<'a> {
                     .add_storage_entry(OscInputManager::STORAGE_BINDING_INDEX, buffer);
             }
         }
-        if let Some(su) = &spectrum_uniform {
-            sound_bind_group_factory.add_entry(SpectrumUniform::BINDING_INDEX, &su.buffer);
+        if let Some(sim) = &spectrum_input_manager {
+            sound_bind_group_factory
+                .add_storage_entry(SpectrumInputManager::STORAGE_BINDING_INDEX, &sim.buffer);
         }
         if let Some(mu) = &midi_input_manager {
             sound_bind_group_factory.add_storage_entry(MidiInputManager::BINDING_INDEX, &mu.buffer);
@@ -392,7 +393,7 @@ impl<'a> State<'a> {
             time_uniform,
             uniform_bind_group,
             device_bind_group,
-            spectrum_uniform,
+            spectrum_input_manager,
             midi_input_manager,
             mouse_input_manager,
             osc_input_manager,
@@ -464,9 +465,9 @@ impl<'a> State<'a> {
         }
 
         // Update AudioUniform
-        if let Some(spectrum_uniform) = self.spectrum_uniform.as_mut() {
-            spectrum_uniform.update();
-            spectrum_uniform.write_buffer(&self.queue);
+        if let Some(spectrum_input_manager) = self.spectrum_input_manager.as_mut() {
+            spectrum_input_manager.update();
+            spectrum_input_manager.write_buffer(&self.queue);
         }
 
         // Update MidiInputManager
@@ -545,10 +546,10 @@ impl<'a> State<'a> {
                 );
             }
         }
-        if let Some(su) = &self.spectrum_uniform {
-            sound_bind_group_factory.add_entry(
-                crate::uniforms::spectrum_uniform::SpectrumUniform::BINDING_INDEX,
-                &su.buffer,
+        if let Some(sim) = &self.spectrum_input_manager {
+            sound_bind_group_factory.add_storage_entry(
+                crate::inputs::spectrum::SpectrumInputManager::STORAGE_BINDING_INDEX,
+                &sim.buffer,
             );
         }
         if let Some(mu) = &self.midi_input_manager {
@@ -1898,9 +1899,11 @@ file = "test.wgsl"
             requires_multipass: bool,
         }
 
-        let test_texture_creation_call = |_pass_info: &MockPassInfo| -> bool {
+        let test_texture_creation_call = |pass_info: &MockPassInfo| -> bool {
             // This simulates that create_textures_for_passes should be called
             // regardless of whether it's single-pass or multi-pass
+            // The actual behavior doesn't depend on requires_multipass value
+            let _is_multipass = pass_info.requires_multipass;
             true // Should always be called at top level
         };
 

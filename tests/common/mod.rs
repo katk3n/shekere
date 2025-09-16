@@ -1,6 +1,5 @@
 use shekere::Config;
 use wgpu::{Device, Queue, SurfaceConfiguration, TextureFormat};
-use winit::dpi::PhysicalSize;
 
 /// Creates a WebGPU device and queue for testing purposes
 pub fn create_test_device_and_queue() -> (Device, Queue) {
@@ -32,11 +31,6 @@ pub fn create_test_device_and_queue() -> (Device, Queue) {
             .await
             .unwrap()
     })
-}
-
-/// Creates a WebGPU device for testing purposes (backwards compatibility)
-pub fn create_test_device() -> Device {
-    create_test_device_and_queue().0
 }
 
 /// Mock surface configuration for testing
@@ -123,11 +117,6 @@ file = "persistent.wgsl"
 persistent = true
 "#;
     toml::from_str(config_content).unwrap()
-}
-
-/// Test size for consistent dimensions across tests
-pub fn test_size() -> PhysicalSize<u32> {
-    PhysicalSize::new(800, 600)
 }
 
 /// Creates a temporary config directory for testing

@@ -15,7 +15,7 @@ struct TimeUniform {
 
 
 
-struct SpectrumUniform {
+struct SpectrumShaderData {
     // frequency values of audio input (packed into vec4s for alignment)
     frequencies: array<vec4<f32>, 512>,
     // amplitude values of audio input (packed into vec4s for alignment)
@@ -27,6 +27,12 @@ struct SpectrumUniform {
     // max amplitude of audio input
     max_amplitude: f32,
     _padding: u32,
+}
+
+struct SpectrumHistory {
+    // 512 frames of spectrum history data
+    // Index 0 = current frame, Index 511 = oldest frame
+    history_data: array<SpectrumShaderData, 512>,
 }
 
 struct OscShaderData {
@@ -92,7 +98,7 @@ struct VertexOutput {
 
 // Group 2: Sound uniforms (conditional - only bind what you use)
 @group(2) @binding(0) var<storage, read> Osc: OscHistory;
-@group(2) @binding(1) var<uniform> Spectrum: SpectrumUniform;
+@group(2) @binding(1) var<storage, read> Spectrum: SpectrumHistory;
 @group(2) @binding(2) var<storage, read> Midi: MidiHistory;
 
 // Group 3: Multi-pass textures (conditional - only available in multi-pass shaders)
@@ -102,15 +108,16 @@ struct VertexOutput {
 // === UTILITY FUNCTIONS ===
 
 // Spectrum data access helpers
-fn SpectrumFrequency(index: u32) -> f32 {
+fn SpectrumFrequencyHistory(index: u32, history: u32) -> f32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 512u {
+
+    // Bounds checking
+    if vec4_index >= 512u || history >= 512u {
         return 0.0;
     }
-    
-    let freq_vec = Spectrum.frequencies[vec4_index];
+
+    let freq_vec = Spectrum.history_data[history].frequencies[vec4_index];
     switch element_index {
         case 0u: { return freq_vec.x; }
         case 1u: { return freq_vec.y; }
@@ -120,15 +127,16 @@ fn SpectrumFrequency(index: u32) -> f32 {
     }
 }
 
-fn SpectrumAmplitude(index: u32) -> f32 {
+fn SpectrumAmplitudeHistory(index: u32, history: u32) -> f32 {
     let vec4_index = index / 4u;
     let element_index = index % 4u;
-    
-    if vec4_index >= 512u {
+
+    // Bounds checking
+    if vec4_index >= 512u || history >= 512u {
         return 0.0;
     }
-    
-    let amp_vec = Spectrum.amplitudes[vec4_index];
+
+    let amp_vec = Spectrum.history_data[history].amplitudes[vec4_index];
     switch element_index {
         case 0u: { return amp_vec.x; }
         case 1u: { return amp_vec.y; }
@@ -136,6 +144,27 @@ fn SpectrumAmplitude(index: u32) -> f32 {
         case 3u: { return amp_vec.w; }
         default: { return 0.0; }
     }
+}
+
+fn SpectrumFrequency(index: u32) -> f32 {
+    return SpectrumFrequencyHistory(index, 0u);
+}
+
+fn SpectrumAmplitude(index: u32) -> f32 {
+    return SpectrumAmplitudeHistory(index, 0u);
+}
+
+// Helper functions for spectrum metadata access
+fn SpectrumNumPoints() -> u32 {
+    return Spectrum.history_data[0].num_points;
+}
+
+fn SpectrumMaxFrequency() -> f32 {
+    return Spectrum.history_data[0].max_frequency;
+}
+
+fn SpectrumMaxAmplitude() -> f32 {
+    return Spectrum.history_data[0].max_amplitude;
 }
 
 // OSC data access helpers
