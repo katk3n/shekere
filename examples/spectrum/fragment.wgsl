@@ -24,7 +24,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let min_xy = min(Window.resolution.x, Window.resolution.y);
     let uv = vec2(in.position.x / min_xy,(1.0 - in.position.y / min_xy) * 2.0 - 1.0);
 
-    let num_steps = Spectrum.num_points;
+    let num_steps = SpectrumNumPoints();
     let width = 1.0 / f32(num_steps) / 2.0;
     let max_hue = 0.7;
 

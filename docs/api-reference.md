@@ -1,516 +1,248 @@
-# Shekere API Reference
+# Shekere Shader API Reference
 
-This document provides a complete reference for all uniforms, structures, and helper functions available in shekere shaders.
+Welcome to shekere! This reference covers all the functions and variables you can use to create interactive shader art that responds to time, mouse input, and audio data.
 
-## Vertex Output Structure
+## Getting Started
 
-```wgsl
-struct VertexOutput {
-    @builtin(position) position: vec4<f32>,
-    tex_coords: vec2<f32>,
-}
-```
-
-This structure is passed to your fragment shader's `fs_main` function:
+Your fragment shader receives this input structure:
 
 ```wgsl
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Your shader code here
+    // Your creative code here
+    let uv = NormalizedCoords(in.position.xy);
+    return vec4(sin(Time.duration + uv.x), 0.0, 0.0, 1.0);
 }
 ```
 
-## Binding Groups
+## Core Functions
 
-Uniforms are organized into binding groups for efficient GPU access:
+### Time and Animation
 
-- **Group 0**: Always available (Window, Time)
-- **Group 1**: Device uniforms (Mouse)
-- **Group 2**: Sound uniforms (OSC, Spectrum, MIDI - only bound when configured)
-- **Group 3**: Multi-pass textures (only available in multi-pass configurations)
-
-## Uniform Structures
-
-### Always Available Uniforms
-
-#### WindowUniform - `Window`
-```wgsl
-struct WindowUniform {
-    resolution: vec2<f32>,  // Window size in physical pixels [width, height]
-}
-```
-- **Usage**: `Window.resolution.x`, `Window.resolution.y`
-- **Binding**: `@group(0) @binding(0)`
-
-#### TimeUniform - `Time`
-```wgsl
-struct TimeUniform {
-    duration: f32,  // Time elapsed since program start (seconds)
-}
-```
-- **Usage**: `Time.duration`
-- **Binding**: `@group(0) @binding(1)`
-
-### Device Uniforms (Group 1)
-
-#### MouseUniform - `Mouse`
-```wgsl
-struct MouseUniform {
-    position: vec2<f32>,  // Mouse position in physical pixels
-}
-```
-- **Usage**: `Mouse.position.x`, `Mouse.position.y`
-- **Binding**: `@group(1) @binding(0)`
-- **Helper**: Use `MouseCoords()` for normalized coordinates
-
-### Sound Uniforms (Group 2)
-
-#### OscUniform - `Osc`
-```wgsl
-struct OscUniform {
-    sounds: array<vec4<i32>, 4>,  // Sound IDs (packed into vec4s)
-    ttls: array<vec4<f32>, 4>,    // Time to live values (packed)
-    notes: array<vec4<f32>, 4>,   // Note/pitch values (packed)
-    gains: array<vec4<f32>, 4>,   // Volume/gain values (packed)
-}
-```
-- **Usage**: Use helper functions `OscSound()`, `OscTtl()`, `OscNote()`, `OscGain()` instead of direct access
-- **Binding**: `@group(2) @binding(0)`
-- **Note**: Index 0 corresponds to `d1` in TidalCycles, index 1 to `d2`, etc.
-
-#### SpectrumUniform - `Spectrum`
-```wgsl
-struct SpectrumUniform {
-    frequencies: array<vec4<f32>, 512>,  // Frequency values (packed into vec4s)
-    amplitudes: array<vec4<f32>, 512>,   // Amplitude values (packed into vec4s)
-    num_points: u32,                     // Number of valid data points
-    max_frequency: f32,                  // Frequency with max amplitude
-    max_amplitude: f32,                  // Maximum amplitude in current frame
-}
-```
-- **Usage**: Use helper functions `SpectrumFrequency()`, `SpectrumAmplitude()` instead of direct access
-- **Binding**: `@group(2) @binding(1)`
-- **Note**: Total of 2048 data points (512 × 4) packed for WebGPU alignment
-
-#### MidiHistory - `Midi`
-```wgsl
-struct MidiShaderData {
-    notes: array<vec4<f32>, 32>,      // Note velocities (packed)
-    controls: array<vec4<f32>, 32>,   // Control change values (packed)
-    note_on: array<vec4<f32>, 32>,    // Note On attack detection (packed)
-}
-
-struct MidiHistory {
-    history_data: array<MidiShaderData, 512>,  // 512 frames of MIDI history
-}
-```
-- **Usage**: Use helper functions `MidiNote()`, `MidiControl()`, `MidiNoteOn()` for current frame, or `MidiNoteHistory()`, `MidiControlHistory()`, `MidiNoteOnHistory()` for historical data
-- **Binding**: `@group(2) @binding(2)` (Storage Buffer)
-- **Note**: Values are normalized from 0-127 to 0.0-1.0
-- **History**: Index 0 = current frame, Index 511 = oldest frame (512 frames total)
-
-### Multi-Pass Textures (Group 3)
-
-#### Previous Pass/Frame Texture
+#### `Time.duration`
+Current time in seconds since the program started.
 
 ```wgsl
-@group(3) @binding(0) var previous_pass: texture_2d<f32>;
-@group(3) @binding(1) var texture_sampler: sampler;
+// Animate colors over time
+let color = vec3(sin(Time.duration), cos(Time.duration), 0.5);
+
+// Create pulsing effects
+let pulse = 0.5 + 0.5 * sin(Time.duration * 2.0);
 ```
 
-Multi-pass textures are automatically created and bound when using multi-pass shader configurations. The system creates different types of textures based on your configuration:
+#### `Window.resolution`
+Current window size as `vec2<f32>` (width, height) in pixels.
 
-- **Multi-Pass Rendering**: `temp_0`, `temp_1`, etc. for intermediate render targets
-- **Ping-Pong Buffers**: `buffer_a` and `buffer_b` that alternate each frame
-- **Persistent Textures**: Single texture that preserves content between frames
+```wgsl
+// Use window dimensions for effects
+let aspect_ratio = Window.resolution.x / Window.resolution.y;
+let screen_size = length(Window.resolution);
 
-**Automatic Texture Management:**
-- First pass: No Group 3 binding (no previous pass exists)
-- Subsequent passes: Previous pass output bound to Group 3
-- Ping-pong mode: Previous frame state bound to Group 3
-- Persistent mode: Previous frame content bound to Group 3
-
-**Texture Properties:**
-- **Format**: Matches screen format (typically `Bgra8UnormSrgb`)
-- **Size**: Matches window dimensions
-- **Filter**: Linear sampling
-- **Usage**: Read-only in shaders (via `previous_pass` texture)
-
-## Helper Functions
+// Create patterns based on screen size
+let grid_frequency = screen_size * 0.01;
+```
 
 ### Coordinate System
 
 #### `NormalizedCoords(position: vec2<f32>) -> vec2<f32>`
-Converts screen position to normalized coordinates (-1.0 to 1.0).
-
-- **Input**: Screen position in pixels
-- **Output**: Normalized coordinates where (-1,-1) is bottom-left, (1,1) is top-right
-- **Aspect ratio**: Maintains aspect ratio using the smaller dimension
+Converts screen pixels to normalized coordinates (-1.0 to 1.0), maintaining aspect ratio.
 
 ```wgsl
-// Basic usage
+// Get normalized coordinates
 let uv = NormalizedCoords(in.position.xy);
 
-// Creating patterns based on position
-let uv = NormalizedCoords(in.position.xy);
-let color = vec3(sin(Time.duration + uv.x));
+// Create centered patterns
+let distance_from_center = length(uv);
+let circle = smoothstep(0.5, 0.4, distance_from_center);
 ```
 
-#### `MouseCoords() -> vec2<f32>`
-Gets normalized mouse coordinates.
+### Mouse Interaction
 
-- **Output**: Normalized mouse coordinates (-1.0 to 1.0)
-- **Equivalent to**: `NormalizedCoords(Mouse.position)`
+#### `MouseCoords() -> vec2<f32>`
+Current mouse position in normalized coordinates.
 
 ```wgsl
 // Mouse interaction
 let uv = NormalizedCoords(in.position.xy);
 let mouse = MouseCoords();
-let dist = length(uv - mouse);
+let dist_to_mouse = length(uv - mouse);
+
+// Create mouse-following effects
+let glow = exp(-dist_to_mouse * 10.0);
 ```
+
+#### `MouseCoordsHistory(history: u32) -> vec2<f32>`
+Mouse position from previous frames (0 = current, 511 = oldest).
+
+```wgsl
+// Mouse trail effect
+var trail = vec3(0.0);
+for (var i = 0u; i < 32u; i++) {
+    let old_pos = MouseCoordsHistory(i * 4u);
+    let dist = distance(uv, old_pos);
+    let intensity = 1.0 - f32(i) / 32.0;
+    trail += vec3(intensity) * exp(-dist * 20.0);
+}
+```
+
+## Audio Functions
+
+### Spectrum Analysis
+
+#### `SpectrumFrequency(index: u32) -> f32`
+Frequency value at spectrum index. Index range: 0-2047, returns: frequency in Hz.
+
+#### `SpectrumAmplitude(index: u32) -> f32`
+Amplitude value at spectrum index. Index range: 0-2047, returns: 0.0-1.0+.
+
+```wgsl
+// Audio-reactive bars
+let bar_index = u32(uv.x * 64.0);  // 64 bars across screen
+let amplitude = SpectrumAmplitude(bar_index * 32u);
+let bar_height = amplitude * 2.0;
+
+if (uv.y < bar_height && uv.y > 0.0) {
+    color = vec3(amplitude, 0.5, 1.0 - amplitude);
+}
+```
+
+#### History Functions (512 frames)
+- `SpectrumFrequencyHistory(index: u32, history: u32) -> f32` - Historical frequency values
+- `SpectrumAmplitudeHistory(index: u32, history: u32) -> f32` - Historical amplitude values
+
+#### Helper Functions
+- `SpectrumNumPoints() -> u32` - Number of active frequency points
+- `SpectrumMaxFrequency() -> f32` - Maximum frequency in current frame
+- `SpectrumMaxAmplitude() -> f32` - Maximum amplitude in current frame
+
+Where `history`: 0 = current frame, 1 = 1 frame ago, ..., 511 = 511 frames ago
+
+```wgsl
+// Spectrum history effects - frequency waterfall
+for (var i: u32 = 0u; i < 32u; i++) {
+    let historical_amp = SpectrumAmplitudeHistory(64u, i * 4u);
+    let trail_y = uv.y - f32(i) * 0.02;  // Vertical trail
+    if (trail_y > 0.0 && trail_y < 0.1 && historical_amp > 0.1) {
+        let trail_alpha = historical_amp * (1.0 - f32(i) / 32.0);
+        color += vec3(0.0, trail_alpha, 1.0) * 0.5;
+    }
+}
+
+// Use helper functions for adaptive effects
+let max_amp = SpectrumMaxAmplitude();
+let normalized_response = SpectrumAmplitude(32u) / max(max_amp, 0.01);
+```
+
+### OSC Integration
+
+#### Current Frame Functions
+- `OscSound(index: u32) -> i32` - Sound ID for OSC track (0-15)
+- `OscTtl(index: u32) -> f32` - Time remaining for OSC track
+- `OscNote(index: u32) -> f32` - Note/pitch value for OSC track
+- `OscGain(index: u32) -> f32` - Volume/gain for OSC track (0.0-1.0+)
+
+#### History Functions (512 frames)
+- `OscSoundHistory(index: u32, history: u32) -> i32` - Historical sound values
+- `OscTtlHistory(index: u32, history: u32) -> f32` - Historical TTL values
+- `OscNoteHistory(index: u32, history: u32) -> f32` - Historical note values
+- `OscGainHistory(index: u32, history: u32) -> f32` - Historical gain values
+
+Where `history`: 0 = current frame, 1 = 1 frame ago, ..., 511 = 511 frames ago
+
+```wgsl
+// React to TidalCycles patterns
+if (OscSound(0u) == 1) {  // Check if kick drum is playing
+    let gain = OscGain(0u);
+    let flash = gain * exp(-OscTtl(0u) * 2.0);  // Fade based on time
+    color += vec3(flash, 0.0, 0.0);
+}
+
+// OSC history effects
+for (var i: u32 = 0u; i < 16u; i++) {
+    let historical_gain = OscGainHistory(0u, i);
+    let trail_position = coords + vec2(f32(i) * 0.01, 0.0);
+    if (historical_gain > 0.1) {
+        let trail_alpha = historical_gain * (1.0 - f32(i) / 16.0);
+        color = mix(color, vec3(1.0, 0.5, 0.0), trail_alpha * 0.3);
+    }
+}
+```
+
+### MIDI Control
+
+#### Current Frame Functions
+- `MidiNote(note_num: u32) -> f32` - Note velocity (0-127 → 0.0-1.0)
+- `MidiControl(cc_num: u32) -> f32` - Control change value
+- `MidiNoteOn(note_num: u32) -> f32` - Attack detection (only non-zero on attack frame)
+
+```wgsl
+// MIDI keyboard interaction
+let piano_c4 = MidiNote(60u);  // Middle C
+let modwheel = MidiControl(1u);  // Modulation wheel
+
+// Flash on note attacks
+let kick_attack = MidiNoteOn(36u);
+if (kick_attack > 0.0) {
+    color += vec3(kick_attack * 2.0);  // White flash
+}
+```
+
+#### History Functions
+- `MidiNoteHistory(note_num: u32, history: u32) -> f32`
+- `MidiControlHistory(cc_num: u32, history: u32) -> f32`
+- `MidiNoteOnHistory(note_num: u32, history: u32) -> f32`
+
+```wgsl
+// MIDI echo effects
+let kick_now = MidiNoteOnHistory(36u, 0u);
+let echo1 = MidiNoteOnHistory(36u, 30u) * 0.5;  // 0.5s ago
+let echo2 = MidiNoteOnHistory(36u, 60u) * 0.25; // 1.0s ago
+let total_flash = kick_now + echo1 + echo2;
+```
+
+## Visual Effects Functions
 
 ### Color Conversion
 
 #### `ToLinearRgb(col: vec3<f32>) -> vec3<f32>`
-Converts color to linear RGB space (applies gamma correction).
-
-- **Input**: Color in sRGB space (0.0-1.0)
-- **Output**: Color in linear RGB space
-- **Gamma**: 2.2
-- **Use case**: For correct color blending and lighting calculations
-
-```wgsl
-// Apply gamma correction for final output
-let color = vec3(sin(Time.duration + uv.x));
-return vec4(ToLinearRgb(color), 1.0);
-```
+Converts sRGB to linear RGB (for proper color math).
 
 #### `ToSrgb(col: vec3<f32>) -> vec3<f32>`
-Converts color to sRGB space.
-
-- **Input**: Color in linear RGB space
-- **Output**: Color in sRGB space (0.0-1.0)
-- **Gamma**: 1/2.2
-- **Use case**: For display output (opposite of `ToLinearRgb`)
+Converts linear RGB to sRGB (for display).
 
 ```wgsl
-// Convert linear color back to sRGB
-let linear_color = vec3(0.5, 0.3, 0.8);
-let srgb_color = ToSrgb(linear_color);
+// Proper color blending
+let linear_color = ToLinearRgb(base_color);
+let blended = mix(linear_color, effect_color, 0.5);
+return vec4(ToSrgb(blended), 1.0);
 ```
 
-### Multi-Pass Helpers
+### Multi-Pass Effects
 
 #### `SamplePreviousPass(uv: vec2<f32>) -> vec4<f32>`
-Samples from the previous pass or frame texture.
-
-- **Input**: UV coordinates (0.0-1.0)
-- **Output**: Color from previous pass/frame
-- **Availability**: Only in multi-pass configurations (not available in first pass)
-- **Use case**: Accessing the result from the previous rendering pass or previous frame
-
-```wgsl
-// Basic multi-pass sampling
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.tex_coords;
-    
-    // Sample from previous pass
-    let previous = SamplePreviousPass(uv);
-    
-    // Apply effect (e.g., blur, color correction)
-    let result = apply_effect(previous, uv);
-    
-    return result;
-}
-```
+Sample from previous rendering pass or frame.
 
 #### `SamplePreviousPassOffset(uv: vec2<f32>, offset: vec2<f32>) -> vec4<f32>`
-Samples from the previous pass or frame texture with an offset.
-
-- **Input**: UV coordinates (0.0-1.0) and offset in UV space
-- **Output**: Color from previous pass/frame at offset position
-- **Availability**: Only in multi-pass configurations (not available in first pass)
-- **Use case**: Blur effects, neighborhood sampling, convolution filters
+Sample with UV offset (useful for blur/distortion).
 
 ```wgsl
-// Multi-sample blur effect
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let uv = in.tex_coords;
-    let blur_size = 0.01;
-    
-    var result = vec4(0.0);
-    
-    // Sample multiple points for blur
-    for (var x = -2; x <= 2; x++) {
-        for (var y = -2; y <= 2; y++) {
-            let offset = vec2(f32(x), f32(y)) * blur_size;
-            result += SamplePreviousPassOffset(uv, offset);
-        }
-    }
-    
-    return result / 25.0;  // Average of 5x5 samples
-}
+// Feedback effect
+let uv = in.tex_coords;
+let previous = SamplePreviousPass(uv + vec2(0.01 * sin(Time.duration), 0.0));
+let current = vec4(sin(Time.duration + uv.x), 0.0, 0.0, 1.0);
+return mix(previous * 0.95, current, 0.1);  // Fade trail
 ```
 
-### Audio Spectrum Helpers
-
-#### `SpectrumFrequency(index: u32) -> f32`
-Gets frequency value at a specific spectrum index.
-
-- **Input**: Spectrum data index (0-2047)
-- **Output**: Frequency value in Hz
-- **Range**: Depends on configuration (min_frequency to max_frequency)
-- **Invalid input**: Returns 0.0 for index > 2047
-
 ```wgsl
-// Use spectrum data for color visualization
-for (var i = 0u; i < Spectrum.num_points; i++) {
-    let freq = SpectrumFrequency(i);
-    let amp = SpectrumAmplitude(i);
-    // Create color based on frequency and amplitude
-}
-```
-
-#### `SpectrumAmplitude(index: u32) -> f32`
-Gets amplitude value at a specific spectrum index.
-
-- **Input**: Spectrum data index (0-2047)
-- **Output**: Amplitude value (0.0-1.0+)
-- **Range**: 0.0 = silence, 1.0+ = loud (can exceed 1.0)
-- **Invalid input**: Returns 0.0 for index > 2047
-
-```wgsl
-// Create bars visualization
-let height = SpectrumAmplitude(i);
-if (uv.y < height) {
-    color = vec3(1.0, 0.0, 0.0);  // Red for audio activity
-}
-```
-
-### OSC Helpers
-
-#### `OscSound(index: u32) -> i32`
-Gets sound ID for a specific OSC track.
-
-- **Input**: OSC track index (0-15)
-- **Output**: Sound ID (from configuration)
-- **Range**: Depends on sound mapping in config
-- **Invalid input**: Returns 0 for index > 15
-
-```wgsl
-// Check if kick drum (sound ID 1) is playing on track 0
-if (OscSound(0u) == 1) {
-    gain = OscGain(0u);  // Get the gain for this sound
-}
-```
-
-#### `OscTtl(index: u32) -> f32`
-Gets time-to-live for a specific OSC track.
-
-- **Input**: OSC track index (0-15)
-- **Output**: Time remaining (seconds)
-- **Range**: 0.0+ (decreases over time)
-- **Invalid input**: Returns 0.0 for index > 15
-
-```wgsl
-// Fade effect based on time remaining
-let fade = OscTtl(0u) * 0.1;  // Scale factor
-let color = vec3(fade);
-```
-
-#### `OscNote(index: u32) -> f32`
-Gets note/pitch value for a specific OSC track.
-
-- **Input**: OSC track index (0-15)
-- **Output**: Note value (often MIDI note number)
-- **Range**: Depends on OSC message content
-- **Invalid input**: Returns 0.0 for index > 15
-
-```wgsl
-// Use note value for frequency-based effects
-let note = OscNote(0u);
-let freq = 440.0 * pow(2.0, (note - 69.0) / 12.0);  // Convert MIDI to Hz
-```
-
-#### `OscGain(index: u32) -> f32`
-Gets gain/volume for a specific OSC track.
-
-- **Input**: OSC track index (0-15)
-- **Output**: Gain value (0.0-1.0+)
-- **Range**: 0.0 = silent, 1.0+ = loud
-- **Invalid input**: Returns 0.0 for index > 15
-
-```wgsl
-// Use gain for brightness control
-let brightness = OscGain(0u);
-let color = vec3(brightness);
-```
-
-### MIDI Helpers
-
-The MIDI system provides both simple current-frame functions and powerful history-aware functions for advanced audio-visual programming.
-
-#### Current Frame Functions (Backward Compatible)
-
-##### `MidiNote(note_num: u32) -> f32`
-Gets current MIDI note velocity for a specific note number.
-
-- **Input**: MIDI note number (0-127)
-- **Output**: Note velocity (0.0-1.0)
-- **Range**: 0.0 = note off, 1.0 = maximum velocity
-- **Invalid input**: Returns 0.0 for note numbers > 127
-- **Implementation**: Wrapper for `MidiNoteHistory(note_num, 0u)`
-
-```wgsl
-// Simple current note access (unchanged from previous versions)
-let piano_c4 = MidiNote(60u);  // Middle C
-let color = vec3(piano_c4);
-```
-
-##### `MidiControl(cc_num: u32) -> f32`
-Gets current MIDI control change value for a specific CC number.
-
-- **Input**: MIDI CC number (0-127)
-- **Output**: Control change value (0.0-1.0)
-- **Range**: 0.0 = minimum, 1.0 = maximum
-- **Invalid input**: Returns 0.0 for CC numbers > 127
-- **Implementation**: Wrapper for `MidiControlHistory(cc_num, 0u)`
-
-```wgsl
-// Simple current control access
-let modwheel = MidiControl(1u);  // Modulation wheel
-let speed = 1.0 + modwheel * 3.0;
-```
-
-##### `MidiNoteOn(note_num: u32) -> f32`
-Gets current MIDI Note On attack detection for a specific note number.
-
-- **Input**: MIDI note number (0-127)
-- **Output**: Note attack velocity (0.0-1.0)
-- **Range**: 0.0 = no attack, 1.0 = maximum attack velocity
-- **Duration**: Only non-zero for the exact frame when Note On occurs
-- **Invalid input**: Returns 0.0 for note numbers > 127
-- **Implementation**: Wrapper for `MidiNoteOnHistory(note_num, 0u)`
-
-```wgsl
-// Simple current attack detection
-let kick_attack = MidiNoteOn(36u);  // Kick drum
-if kick_attack > 0.0 {
-    // Flash on attack
-    color = vec3(kick_attack * 2.0);
-}
-```
-
-#### History-Aware Functions (New in v0.11.0)
-
-##### `MidiNoteHistory(note_num: u32, history: u32) -> f32`
-Gets MIDI note velocity for a specific note number at a specific point in history.
-
-- **Input**:
-  - `note_num`: MIDI note number (0-127)
-  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
-- **Output**: Note velocity (0.0-1.0)
-- **Range**: 0.0 = note off, 1.0 = maximum velocity
-- **Invalid input**: Returns 0.0 for note numbers > 127 or history > 511
-
-```wgsl
-// Create fade trail using historical data
-let current = MidiNoteHistory(60u, 0u);    // Current frame
-let fade1 = MidiNoteHistory(60u, 10u) * 0.8;  // 10 frames ago
-let fade2 = MidiNoteHistory(60u, 20u) * 0.6;  // 20 frames ago
-let combined = max(current, max(fade1, fade2));
-
-// Smooth parameter changes using historical averaging
-var smooth_note = 0.0;
-for (var i = 0u; i < 10u; i++) {
-    smooth_note += MidiNoteHistory(60u, i);
-}
-smooth_note /= 10.0;  // Average over last 10 frames
-```
-
-##### `MidiControlHistory(cc_num: u32, history: u32) -> f32`
-Gets MIDI control change value for a specific CC number at a specific point in history.
-
-- **Input**:
-  - `cc_num`: MIDI CC number (0-127)
-  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
-- **Output**: Control change value (0.0-1.0)
-- **Range**: 0.0 = minimum, 1.0 = maximum
-- **Invalid input**: Returns 0.0 for CC numbers > 127 or history > 511
-
-```wgsl
-// Analyze control parameter trends
-let current_mod = MidiControlHistory(1u, 0u);
-let previous_mod = MidiControlHistory(1u, 30u);  // 0.5s ago at 60fps
-let delta = current_mod - previous_mod;  // Rate of change
-
-// Use trend for dynamic effects
-if delta > 0.1 {
-    color += vec3(0.2, 0.0, 0.0);  // Red flash when increasing rapidly
-}
-```
-
-##### `MidiNoteOnHistory(note_num: u32, history: u32) -> f32`
-Gets MIDI Note On attack detection for a specific note number at a specific point in history.
-
-- **Input**:
-  - `note_num`: MIDI note number (0-127)
-  - `history`: Frame history (0-511, where 0 = current frame, 511 = oldest frame)
-- **Output**: Note attack velocity (0.0-1.0)
-- **Range**: 0.0 = no attack, 1.0 = maximum attack velocity
-- **Duration**: Only non-zero for the exact frame when Note On occurs
-- **Invalid input**: Returns 0.0 for note numbers > 127 or history > 511
-
-```wgsl
-// Create echo effects using historical attacks
-let kick_now = MidiNoteOnHistory(36u, 0u);   // Current attack
-let echo1 = MidiNoteOnHistory(36u, 30u) * 0.5;  // 0.5s ago
-let echo2 = MidiNoteOnHistory(36u, 60u) * 0.25; // 1.0s ago
-
-var flash_intensity = kick_now;
-if echo1 > 0.0 { flash_intensity += echo1; }
-if echo2 > 0.0 { flash_intensity += echo2; }
-
-// Analyze rhythmic patterns over time
-var rhythm_density = 0.0;
-for (var i = 0u; i < 240u; i++) {  // Last 4 seconds at 60fps
-    if MidiNoteOnHistory(36u, i) > 0.0 {
-        rhythm_density += 1.0;
+// Blur effect
+var blur = vec4(0.0);
+let blur_amount = 0.01;
+for (var x = -2; x <= 2; x++) {
+    for (var y = -2; y <= 2; y++) {
+        let offset = vec2(f32(x), f32(y)) * blur_amount;
+        blur += SamplePreviousPassOffset(uv, offset);
     }
 }
-rhythm_density /= 240.0;  // Attacks per frame (0.0-1.0)
-
-// Use for adaptive visual complexity
-let complexity_factor = rhythm_density * 5.0;
-```
-
-#### Advanced History Patterns
-
-```wgsl
-// Polyrhythmic visualization using multiple instruments
-let kick_pattern = MidiNoteOnHistory(36u, frame_offset);    // Kick
-let snare_pattern = MidiNoteOnHistory(38u, frame_offset);   // Snare
-let hihat_pattern = MidiNoteOnHistory(42u, frame_offset);   // Hi-hat
-
-// Create visual layers based on instrument combinations
-if kick_pattern > 0.0 && snare_pattern > 0.0 {
-    // Special effect for simultaneous hits
-    color += vec3(1.0, 1.0, 0.0) * (kick_pattern + snare_pattern);
-}
-
-// Time-stretched audio analysis
-var bass_energy = 0.0;
-for (var i = 0u; i < 60u; i++) {  // Last 1 second
-    // Check multiple bass notes
-    bass_energy += MidiNoteHistory(36u, i);  // Kick
-    bass_energy += MidiNoteHistory(41u, i);  // Low tom
-}
-let bass_intensity = bass_energy / 60.0;
-
-// Use for low-frequency visual effects
-let bass_radius = bass_intensity * 2.0;
-let bass_circle = length(uv) < bass_radius ? 1.0 : 0.0;
+return blur / 25.0;  // Average of 5x5 samples
 ```
 

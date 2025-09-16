@@ -12,12 +12,14 @@ The application follows a modular architecture centered around the State pattern
 
 - **State (`src/state.rs`)**: Central state management handling WebGPU setup, uniforms, and render loop
 - **Config (`src/config.rs`)**: TOML-based configuration system for window, shaders, OSC, and audio spectrum
-- **Uniforms (`src/uniforms/`)**: Modular uniform system with separate modules for different data types:
+- **Uniforms (`src/uniforms/`)**: Basic uniform data types:
   - `window_uniform.rs`: Window resolution data
   - `time_uniform.rs`: Time-based animation data
-  - `mouse_uniform.rs`: Mouse position tracking
-  - `osc_uniform.rs`: OSC (Open Sound Control) integration for Tidalcycles
-  - `spectrum_uniform.rs`: Real-time audio spectrum analysis via FFT
+- **Inputs (`src/inputs/`)**: Complex input processing with history support:
+  - `mouse.rs`: Mouse input with 512-frame history
+  - `osc.rs`: OSC (Open Sound Control) integration with history
+  - `spectrum.rs`: Real-time audio spectrum analysis via FFT with history
+  - `midi.rs`: MIDI input processing with history
 - **Pipeline (`src/pipeline.rs`)**: WebGPU render pipeline creation and shader compilation
 - **BindGroupFactory (`src/bind_group_factory.rs`)**: Dynamic bind group creation for different uniform combinations
 
