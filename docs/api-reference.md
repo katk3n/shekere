@@ -106,7 +106,34 @@ if (uv.y < bar_height && uv.y > 0.0) {
 }
 ```
 
-### OSC Integration (TidalCycles)
+#### History Functions (512 frames)
+- `SpectrumFrequencyHistory(index: u32, history: u32) -> f32` - Historical frequency values
+- `SpectrumAmplitudeHistory(index: u32, history: u32) -> f32` - Historical amplitude values
+
+#### Helper Functions
+- `SpectrumNumPoints() -> u32` - Number of active frequency points
+- `SpectrumMaxFrequency() -> f32` - Maximum frequency in current frame
+- `SpectrumMaxAmplitude() -> f32` - Maximum amplitude in current frame
+
+Where `history`: 0 = current frame, 1 = 1 frame ago, ..., 511 = 511 frames ago
+
+```wgsl
+// Spectrum history effects - frequency waterfall
+for (var i: u32 = 0u; i < 32u; i++) {
+    let historical_amp = SpectrumAmplitudeHistory(64u, i * 4u);
+    let trail_y = uv.y - f32(i) * 0.02;  // Vertical trail
+    if (trail_y > 0.0 && trail_y < 0.1 && historical_amp > 0.1) {
+        let trail_alpha = historical_amp * (1.0 - f32(i) / 32.0);
+        color += vec3(0.0, trail_alpha, 1.0) * 0.5;
+    }
+}
+
+// Use helper functions for adaptive effects
+let max_amp = SpectrumMaxAmplitude();
+let normalized_response = SpectrumAmplitude(32u) / max(max_amp, 0.01);
+```
+
+### OSC Integration
 
 #### Current Frame Functions
 - `OscSound(index: u32) -> i32` - Sound ID for OSC track (0-15)

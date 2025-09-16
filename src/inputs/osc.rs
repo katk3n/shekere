@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
-use crate::{config::OscConfig, osc};
-use async_std::channel::Receiver;
+use crate::config::OscConfig;
+use async_std::channel::{Receiver, unbounded};
+use async_std::net::{SocketAddrV4, UdpSocket};
+use async_std::task;
 use ringbuf::{
     HeapRb,
     traits::{Consumer, Observer, RingBuffer},
@@ -10,6 +13,27 @@ use rosc::{OscMessage, OscPacket, OscType};
 use wgpu::util::DeviceExt;
 
 const HISTORY_SIZE: usize = 512;
+
+// OSC server setup function
+async fn osc_start(port: u32) -> Receiver<OscPacket> {
+    let addr = match SocketAddrV4::from_str(&format!("0.0.0.0:{}", port)) {
+        Ok(addr) => addr,
+        Err(_) => panic!("Error"),
+    };
+    let sock = UdpSocket::bind(addr).await.unwrap();
+    println!("[OSC] Listening to {}", addr);
+    let mut buf = [0u8; rosc::decoder::MTU];
+    let (sender, receiver) = unbounded();
+    task::spawn(async move {
+        loop {
+            let (size, _addr) = sock.recv_from(&mut buf).await.unwrap();
+            let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
+            let _ = sender.send(packet).await;
+        }
+    });
+
+    receiver
+}
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
@@ -160,7 +184,7 @@ impl<'a> OscInputManager<'a> {
             sound_map.insert(s.name.as_str(), s.id);
         }
 
-        let receiver = osc::osc_start(config.port).await;
+        let receiver = osc_start(config.port).await;
 
         Self {
             history_data,
@@ -206,7 +230,7 @@ impl<'a> OscInputManager<'a> {
     }
 
     fn process_osc_message(&mut self, msg: &OscMessage) {
-        // Parse OSC message parameters (matching original OscUniform behavior)
+        // Parse OSC message parameters
         let mut id: usize = 0;
         let mut ttl = 0.0;
         let mut note = 0.0;

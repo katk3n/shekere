@@ -32,7 +32,7 @@ file = "fragment.wgsl"
 
 ### Optional Configuration
 
-#### OSC (Integration with TidalCycles, etc.)
+#### OSC Integration
 
 ```toml
 [osc]
@@ -72,6 +72,10 @@ Real-time MIDI input provides:
 - 128 note velocities (0-127 mapped to 0.0-1.0)
 - 128 control change values (0-127 mapped to 0.0-1.0)
 - Access via `MidiNote(note_num)` and `MidiControl(cc_num)` helper functions
+
+#### Input History
+
+All input sources (Mouse, OSC, MIDI, Spectrum) provide 512 frames of history for trail effects and temporal analysis. See [API Reference](api-reference.md) for details.
 
 #### Hot Reload
 
@@ -202,7 +206,7 @@ For practical examples, see the `examples/` directory:
 - **[examples/circular/](../examples/circular/)** - Circular patterns and concentric rings
 - **[examples/mouse/](../examples/mouse/)** - Mouse interaction and cursor-based effects
 - **[examples/midi/](../examples/midi/)** - MIDI control integration
-- **[examples/osc/](../examples/osc/)** - OSC integration with TidalCycles
+- **[examples/osc/](../examples/osc/)** - OSC integration
 - **[examples/spectrum/](../examples/spectrum/)** - Audio spectrum visualization
 
 ### Multi-Pass Shader Examples
