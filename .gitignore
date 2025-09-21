@@ -25,3 +25,9 @@ Cargo.lock
 
 # Serena memories
 .serena/
+
+# Node modules
+node_modules/
+
+# Code coverage
+coverage-reports/

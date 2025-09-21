@@ -1,0 +1,50 @@
+[workspace_coverage]
+# Coverage configuration for the workspace
+# This will be used once we convert to workspace structure
+
+# Exclude test files and examples from coverage
+exclude_files = [
+    "*/tests/*",
+    "*/examples/*",
+    "*/target/*",
+    "*/.github/*",
+    "*/docs/*",
+]
+
+# Output formats
+out = ["Html", "Lcov", "Json"]
+
+# Coverage thresholds (85% as per plan requirements)
+fail_under = 85
+
+# Include all workspace packages
+workspace = true
+
+# Run all tests including unit tests and integration tests
+run_types = ["Tests"]
+
+# Generate detailed coverage report
+line = true
+count = true
+
+# Timeout configuration (important for GPU tests)
+timeout = "300s"
+
+[current_project]
+# Configuration for current single-crate structure
+# This section will be removed after workspace conversion
+
+exclude_files = [
+    "tests/*",
+    "examples/*",
+    "target/*",
+    ".github/*",
+    "docs/*",
+    "shaders/*"
+]
+
+out = ["Html", "Lcov", "Json"]
+fail_under = 85
+line = true
+count = true
+timeout = "300s"

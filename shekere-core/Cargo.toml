@@ -1,0 +1,43 @@
+[package]
+name = "shekere-core"
+version.workspace = true
+authors.workspace = true
+description = "Core library for shekere creative coding tool"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Graphics and rendering
+winit.workspace = true
+wgpu.workspace = true
+bytemuck.workspace = true
+pollster.workspace = true
+
+# Logging
+log.workspace = true
+env_logger.workspace = true
+
+# Serialization
+toml.workspace = true
+serde.workspace = true
+
+# Audio and networking
+rosc.workspace = true
+async-std.workspace = true
+cpal.workspace = true
+ringbuf.workspace = true
+spectrum-analyzer.workspace = true
+midir.workspace = true
+
+# File system and utilities
+notify.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+
+[lib]
+name = "shekere_core"
+path = "src/lib.rs"

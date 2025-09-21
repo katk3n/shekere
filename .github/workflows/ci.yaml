@@ -40,19 +40,61 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --verbose
+          args: --workspace --verbose
 
       - name: Check formatting
         uses: actions-rs/cargo@v1
         with:
           command: fmt
-          args: -- --check
+          args: --all -- --check
 
       - name: Run clippy
         uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
+          args: --workspace --all-targets -- -D clippy::correctness -D clippy::suspicious -D clippy::complexity -W clippy::perf -W clippy::style
+
+      - name: Test CLI binary compilation
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin shekere-cli
+
+      - name: Test CLI version
+        run: ./target/debug/shekere-cli --version
+
+      - name: Test CLI help
+        run: ./target/debug/shekere-cli --help
+
+      - name: Test CLI error handling
+        run: |
+          # Test that CLI fails gracefully with missing file
+          if ./target/debug/shekere-cli non_existent.toml 2>/dev/null; then
+            echo "Error: CLI should fail with missing file"
+            exit 1
+          else
+            echo "✓ CLI correctly handles missing file"
+          fi
+
+      - name: Test CLI with example configurations
+        run: |
+          echo "Testing CLI with example configurations..."
+          for config in examples/*/*.toml; do
+            if [ -f "$config" ]; then
+              echo "Testing: $config"
+              timeout 3s ./target/debug/shekere-cli "$config" || {
+                exit_code=$?
+                if [ $exit_code -eq 124 ]; then
+                  echo "  ✓ Timeout (expected for GUI app)"
+                elif [ $exit_code -eq 0 ]; then
+                  echo "  ✓ Success"
+                else
+                  echo "  ✗ Failed with exit code $exit_code"
+                  exit 1
+                fi
+              }
+            fi
+          done
 
   build:
     name: Build
@@ -85,4 +127,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --verbose
+          args: --workspace --release --verbose

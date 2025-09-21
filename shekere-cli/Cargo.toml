@@ -1,0 +1,31 @@
+[package]
+name = "shekere-cli"
+version.workspace = true
+authors.workspace = true
+description = "CLI application for shekere creative coding tool"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core library
+shekere-core = { path = "../shekere-core" }
+
+# CLI and logging
+clap.workspace = true
+env_logger.workspace = true
+log.workspace = true
+
+# Serialization
+toml.workspace = true
+
+# Utilities
+pollster.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true
+
+[[bin]]
+name = "shekere-cli"
+path = "src/main.rs"
