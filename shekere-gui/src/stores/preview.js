@@ -53,8 +53,8 @@ export const previewActions = {
     preview.update(state => ({
       ...state,
       handle: null,
-      isRunning: false,
-      config: null
+      isRunning: false
+      // Preserve config to maintain selection state
     }));
   }
 };

@@ -5,7 +5,6 @@ use ringbuf::{
     traits::{Consumer, RingBuffer},
 };
 use std::sync::{Arc, Mutex};
-use winit::dpi::PhysicalPosition;
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
@@ -18,9 +17,9 @@ impl MouseFrameData {
         Self { position: [x, y] }
     }
 
-    fn from_physical_position(position: &PhysicalPosition<f64>) -> Self {
+    fn from_coordinates(x: f64, y: f64) -> Self {
         Self {
-            position: [position.x as f32, position.y as f32],
+            position: [x as f32, y as f32],
         }
     }
 }
@@ -112,13 +111,13 @@ impl MouseInputManager {
         }
     }
 
-    pub fn update(&mut self, position: &PhysicalPosition<f64>) {
+    pub fn update(&mut self, x: f64, y: f64) {
         // Update history data
         if let Ok(mut history) = self.history_data.lock() {
             // Push the previous frame to history
             history.push_current_frame();
             // Update current frame with new position
-            history.current_frame = MouseFrameData::from_physical_position(position);
+            history.current_frame = MouseFrameData::from_coordinates(x, y);
         }
     }
 
@@ -143,9 +142,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mouse_frame_data_from_physical_position() {
-        let physical_pos = PhysicalPosition::new(150.0, 250.0);
-        let frame = MouseFrameData::from_physical_position(&physical_pos);
+    fn test_mouse_frame_data_from_coordinates() {
+        let frame = MouseFrameData::from_coordinates(150.0, 250.0);
         assert_eq!(frame.position, [150.0, 250.0]);
     }
 
@@ -285,8 +283,7 @@ mod tests {
         let device = create_test_device();
         let mut manager = MouseInputManager::new(&device);
 
-        let position = PhysicalPosition::new(100.0, 200.0);
-        manager.update(&position);
+        manager.update(100.0, 200.0);
 
         // Check that current frame was updated
         if let Ok(history) = manager.history_data.lock() {

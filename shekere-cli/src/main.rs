@@ -1,8 +1,16 @@
 use clap::Parser;
-use shekere_core::{Config, run};
+use shekere_core::{Config, Renderer, WebGpuContext};
 use std::panic;
 use std::path::Path;
 use std::process;
+use std::rc::Rc;
+use winit::{
+    dpi::LogicalSize,
+    event::*,
+    event_loop::EventLoop,
+    keyboard::{KeyCode, PhysicalKey},
+    window::WindowBuilder,
+};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -102,7 +110,7 @@ fn run_with_error_handling(config_path: &str) -> Result<(), i32> {
     }
 
     // Run the application
-    match panic::catch_unwind(|| pollster::block_on(run(&conf, conf_dir))) {
+    match panic::catch_unwind(|| pollster::block_on(run_shekere(&conf, conf_dir))) {
         Ok(_) => {
             println!("shekere completed successfully.");
             Ok(())
@@ -136,4 +144,161 @@ fn validate_shader_files(config: &Config, base_dir: &Path) -> Result<(), String>
         }
     }
     Ok(())
+}
+
+/// Run shekere with window management using the new Renderer API
+/// This function was moved from shekere-core and adapted for Phase 2
+async fn run_shekere(conf: &Config, conf_dir: &Path) {
+    env_logger::init();
+    let event_loop = EventLoop::new().unwrap();
+    let window = Rc::new(WindowBuilder::new()
+        .with_title("shekere")
+        .with_inner_size(LogicalSize::new(conf.window.width, conf.window.height))
+        .build(&event_loop)
+        .unwrap());
+
+    // Get window ID before creating surface (to avoid borrowing issues later)
+    let window_id = window.id();
+
+    // Create surface and WebGPU context
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        #[cfg(not(target_arch = "wasm32"))]
+        backends: wgpu::Backends::PRIMARY,
+        #[cfg(target_arch = "wasm32")]
+        backends: wgpu::Backends::GL,
+        ..Default::default()
+    });
+    let surface = instance.create_surface(window.as_ref()).unwrap();
+
+    // Get adapter and configure surface using the same instance
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        })
+        .await
+        .unwrap();
+
+    let (device, queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                required_features: wgpu::Features::empty(),
+                required_limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    wgpu::Limits::default()
+                },
+                label: None,
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Create WebGPU context from existing device and queue
+    let context = WebGpuContext { device, queue };
+
+    // Configure surface
+    let size = window.as_ref().inner_size();
+    let surface_caps = surface.get_capabilities(&adapter);
+    let surface_format = surface_caps
+        .formats
+        .iter()
+        .find(|f| f.is_srgb())
+        .copied()
+        .unwrap_or(surface_caps.formats[0]);
+    let mut surface_config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: surface_format,
+        width: size.width,
+        height: size.height,
+        present_mode: surface_caps.present_modes[0],
+        alpha_mode: surface_caps.alpha_modes[0],
+        view_formats: if !surface_format.is_srgb() {
+            vec![surface_format.add_srgb_suffix()]
+        } else {
+            vec![]
+        },
+        desired_maximum_frame_latency: 2,
+    };
+    surface.configure(&context.device, &surface_config);
+
+    // Create renderer using new API
+    let mut renderer = Renderer::new(context, conf, conf_dir, size.width, size.height)
+        .await
+        .expect("Failed to create renderer");
+
+    // Request initial redraw to start animation loop
+    window.as_ref().request_redraw();
+
+    let window_clone = window.clone();
+    let _ = event_loop.run(move |event, control_flow| {
+        match event {
+        Event::WindowEvent {
+            ref event,
+            window_id: event_window_id,
+        } if event_window_id == window_id => {
+            match event {
+                WindowEvent::CloseRequested
+                | WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            state: ElementState::Pressed,
+                            physical_key: PhysicalKey::Code(KeyCode::Escape),
+                            ..
+                        },
+                    ..
+                } => control_flow.exit(),
+                WindowEvent::Resized(physical_size) => {
+                    if physical_size.width > 0 && physical_size.height > 0 {
+                        surface_config.width = physical_size.width;
+                        surface_config.height = physical_size.height;
+                        surface.configure(renderer.get_device(), &surface_config);
+                        renderer.update_size(physical_size.width, physical_size.height);
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    renderer.handle_mouse_input(position.x, position.y);
+                }
+                WindowEvent::RedrawRequested => {
+                    renderer.update(0.0); // delta_time not used currently
+                    match renderer.render_to_surface(&surface, &surface_config) {
+                        Ok(_) => {}
+                        Err(shekere_core::RendererError::Surface(
+                            wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                        )) => {
+                            if size.width > 0 && size.height > 0 {
+                                surface_config.width = size.width;
+                                surface_config.height = size.height;
+                                surface.configure(renderer.get_device(), &surface_config);
+                                renderer.update_size(size.width, size.height);
+                            }
+                        }
+                        Err(shekere_core::RendererError::Surface(
+                            wgpu::SurfaceError::OutOfMemory,
+                        )) => {
+                            log::error!("OutOfMemory");
+                            control_flow.exit();
+                        }
+                        Err(shekere_core::RendererError::Surface(wgpu::SurfaceError::Timeout)) => {
+                            log::warn!("Surface timeout")
+                        }
+                        Err(e) => {
+                            log::error!("Render error: {}", e);
+                        }
+                    }
+
+                }
+                _ => {}
+            }
+        }
+        Event::AboutToWait => {
+            // Request redraw on every event loop iteration for smooth animation
+            window_clone.request_redraw();
+        }
+        _ => {}
+        }
+    });
 }

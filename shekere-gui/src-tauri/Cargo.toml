@@ -11,6 +11,7 @@ tauri-build = { version = "2.0", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.0", features = ["rustls-tls"] }
+tauri-plugin-dialog = "2.0"
 
 # Local dependencies
 shekere-core = { path = "../../shekere-core" }
@@ -19,6 +20,14 @@ shekere-core = { path = "../../shekere-core" }
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["full"] }
 toml = "0.8.19"
+uuid = { version = "1.0", features = ["v4"] }
+bytemuck = { version = "1.0", features = ["derive"] }
+
+# WebGPU and headless rendering dependencies
+winit.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+log.workspace = true
 
 [features]
 # by default Tauri runs in production mode

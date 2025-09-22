@@ -17,6 +17,7 @@ export const fileActions = {
       root: fileTree,
       loading: false,
       error: null
+      // Selection state (selectedFile, selectedPath) is preserved
     }));
   },
 

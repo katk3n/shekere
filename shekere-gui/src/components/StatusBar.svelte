@@ -38,8 +38,8 @@
     display: flex;
     align-items: center;
     padding: 0.4rem 1rem;
-    background-color: #f8f9fa;
-    border-top: 1px solid #dee2e6;
+    background-color: #2d2d2d;
+    border-top: 1px solid #444;
     font-size: 0.75rem;
     min-height: 24px;
   }
@@ -52,23 +52,23 @@
 
   .status-label {
     font-weight: 500;
-    color: #6c757d;
+    color: #aaaaaa;
     margin-right: 0.25rem;
   }
 
   .status-value {
-    color: #495057;
+    color: #ffffff;
   }
 
   .preview-status {
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
-    background-color: #dc3545;
+    background-color: #ff6b6b;
     color: white;
     font-weight: 500;
   }
 
   .preview-status.running {
-    background-color: #28a745;
+    background-color: #51cf66;
   }
 </style>

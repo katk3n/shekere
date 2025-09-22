@@ -1,5 +1,4 @@
 use wgpu::util::DeviceExt;
-use winit::window::Window;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, PartialEq)]
@@ -15,12 +14,10 @@ pub struct WindowUniform {
 impl WindowUniform {
     pub const BINDING_INDEX: u32 = 0;
 
-    pub fn new(device: &wgpu::Device, window: &Window) -> Self {
+    /// Create a WindowUniform with explicit width and height (without requiring a Window)
+    pub fn new_with_size(device: &wgpu::Device, width: u32, height: u32) -> Self {
         let data = WindowUniformData {
-            resolution: [
-                window.inner_size().width as f32,
-                window.inner_size().height as f32,
-            ],
+            resolution: [width as f32, height as f32],
         };
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Window Buffer"),
@@ -30,11 +27,9 @@ impl WindowUniform {
         Self { data, buffer }
     }
 
-    pub fn update(&mut self, window: &Window) {
-        self.data.resolution = [
-            window.inner_size().width as f32,
-            window.inner_size().height as f32,
-        ];
+    /// Update window size without requiring a Window reference
+    pub fn update_size(&mut self, width: u32, height: u32) {
+        self.data.resolution = [width as f32, height as f32];
     }
 
     pub fn write_buffer(&self, queue: &wgpu::Queue) {

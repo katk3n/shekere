@@ -11,6 +11,10 @@ repository.workspace = true
 # Core library
 shekere-core = { path = "../shekere-core" }
 
+# Window management and event handling
+winit.workspace = true
+wgpu.workspace = true
+
 # CLI and logging
 clap.workspace = true
 env_logger.workspace = true

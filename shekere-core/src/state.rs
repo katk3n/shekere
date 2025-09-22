@@ -16,7 +16,6 @@ use crate::vertex::{INDICES, VERTICES};
 
 use std::path::Path;
 use wgpu::util::DeviceExt;
-use winit::{event::*, window::Window};
 
 /// Caches texture type analysis for all passes to avoid repeated determine_texture_type calls
 #[derive(Debug, Clone)]
@@ -145,7 +144,7 @@ pub struct State<'a> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface_config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: (u32, u32),
 
     // Multi-pass pipeline support
     multi_pass_pipeline: MultiPassPipeline,
@@ -155,11 +154,6 @@ pub struct State<'a> {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     timer: Timer,
-
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
-    window: &'a Window,
 
     // hot reload
     hot_reloader: Option<HotReloader>,
@@ -181,15 +175,16 @@ pub struct State<'a> {
 impl<'a> State<'a> {
     // Creating some of the wgpu types requires async code
     pub async fn new(
-        window: &'a Window,
+        surface: wgpu::Surface<'a>,
         config: &'a Config,
         conf_dir: &Path,
+        width: u32,
+        height: u32,
     ) -> Result<State<'a>, Box<dyn std::error::Error>> {
-        let size = window.inner_size();
+        let size = (width, height);
         let timer = Timer::new();
 
-        // The instance is a handle to our GPU
-        // Backends::all => Vulkan + Metal + DX12 + Browser WebGPU
+        // Use provided surface
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
@@ -197,8 +192,6 @@ impl<'a> State<'a> {
             backends: wgpu::Backends::GL,
             ..Default::default()
         });
-
-        let surface = instance.create_surface(window).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -238,8 +231,8 @@ impl<'a> State<'a> {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: size.0,
+            height: size.1,
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: if !surface_format.is_srgb() {
@@ -251,7 +244,7 @@ impl<'a> State<'a> {
         };
 
         // Uniforms
-        let window_uniform = WindowUniform::new(&device, window);
+        let window_uniform = WindowUniform::new_with_size(&device, size.0, size.1);
         let time_uniform = TimeUniform::new(&device);
         let mouse_input_manager = Some(MouseInputManager::new(&device));
         let osc_input_manager = if let Some(osc_config) = &config.osc {
@@ -371,13 +364,12 @@ impl<'a> State<'a> {
 
         let texture_manager = TextureManager::new_with_format(
             &device,
-            size.width,
-            size.height,
+            size.0,
+            size.1,
             surface_config.format.add_srgb_suffix(),
         );
 
         Ok(Self {
-            window,
             surface,
             device,
             queue,
@@ -404,35 +396,28 @@ impl<'a> State<'a> {
         })
     }
 
-    pub fn window(&self) -> &Window {
-        self.window
+    pub fn size(&self) -> (u32, u32) {
+        self.size
     }
 
-    pub fn size(&self) -> &winit::dpi::PhysicalSize<u32> {
-        &self.size
-    }
-
-    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.surface_config.width = new_size.width;
-            self.surface_config.height = new_size.height;
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            self.size = (width, height);
+            self.surface_config.width = width;
+            self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
-            self.window_uniform.update(self.window);
+            self.window_uniform.update_size(width, height);
             // Clear textures on resize
             self.texture_manager.clear_all_textures();
         }
     }
 
-    pub fn input(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                if let Some(mouse_input_manager) = &mut self.mouse_input_manager {
-                    mouse_input_manager.update(position);
-                }
-                true
-            }
-            _ => false,
+    pub fn handle_mouse_input(&mut self, x: f64, y: f64) -> bool {
+        if let Some(mouse_input_manager) = &mut self.mouse_input_manager {
+            mouse_input_manager.update(x, y);
+            true
+        } else {
+            false
         }
     }
 

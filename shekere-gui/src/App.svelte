@@ -34,6 +34,8 @@
     flex-direction: column;
     height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #1e1e1e;
+    color: #ffffff;
   }
 
   .app-header {
@@ -41,15 +43,15 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
-    background-color: #f5f5f5;
-    border-bottom: 1px solid #ddd;
+    background-color: #2d2d2d;
+    border-bottom: 1px solid #444;
   }
 
   .app-header h1 {
     margin: 0;
     font-size: 1.2rem;
     font-weight: 600;
-    color: #333;
+    color: #ffffff;
   }
 
   .app-body {
@@ -62,8 +64,8 @@
     width: 250px;
     min-width: 200px;
     max-width: 400px;
-    background-color: #fafafa;
-    border-right: 1px solid #ddd;
+    background-color: #1e1e1e;
+    border-right: 1px solid #444;
     resize: horizontal;
     overflow: auto;
   }
@@ -73,5 +75,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    background-color: #1e1e1e;
   }
 </style>

@@ -82,6 +82,16 @@ impl TextureManager {
         self.current_frame += 1;
     }
 
+    /// Get the current width
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Get the current height
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
     fn create_texture(&self, device: &Device, label: &str) -> (Texture, TextureView) {
         let texture = device.create_texture(&TextureDescriptor {
             label: Some(label),
