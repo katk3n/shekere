@@ -97,7 +97,6 @@
 
   // Canvas initialization and WebGPU setup
   async function initializeCanvas() {
-    console.log('initializeCanvas called, renderCanvas:', !!renderCanvas);
     if (!renderCanvas) return;
 
     try {
@@ -149,14 +148,7 @@
         context.fillText(`${canvasWidth}×${canvasHeight}`, canvasWidth / 2, canvasHeight / 2 + 25);
       }
 
-      console.log('Setting canvasReady to true');
       canvasReady = true;
-      console.log('Canvas initialization complete. canvasReady is now:', canvasReady);
-
-      // Start frame update loop if preview is running
-      if (previewData?.isRunning) {
-        startFrameUpdateLoop();
-      }
     } catch (err) {
       console.error('Failed to initialize canvas:', err);
       webgpuSupported = false;
@@ -175,12 +167,28 @@
       }
 
       try {
-        const frameData = await invoke('get_frame_data');
-        if (frameData && frameData.length > 0) {
-          displayFrameData(frameData);
+        const frameDataWithDims = await invoke('get_frame_data_with_dimensions');
+        if (frameDataWithDims && frameDataWithDims.data && frameDataWithDims.data.length > 0) {
+          // Update canvas dimensions if they've changed
+          if (frameDataWithDims.width !== canvasWidth || frameDataWithDims.height !== canvasHeight) {
+            canvasWidth = frameDataWithDims.width;
+            canvasHeight = frameDataWithDims.height;
+            renderCanvas.width = canvasWidth;
+            renderCanvas.height = canvasHeight;
+          }
+          displayFrameData(frameDataWithDims.data);
         }
       } catch (err) {
-        console.warn('Failed to get frame data:', err);
+        console.warn('Failed to get frame data with dimensions:', err);
+        // Fallback to old method
+        try {
+          const frameData = await invoke('get_frame_data');
+          if (frameData && frameData.length > 0) {
+            displayFrameData(frameData);
+          }
+        } catch (fallbackErr) {
+          console.warn('Failed to get frame data (fallback):', fallbackErr);
+        }
       }
     }, 33); // ~30 FPS
   }
@@ -198,29 +206,94 @@
     const context = renderCanvas.getContext('2d');
     if (!context) return;
 
-    // Create ImageData from the frame data
-    const imageData = new ImageData(
-      new Uint8ClampedArray(data),
-      canvasWidth,
-      canvasHeight
-    );
+    // Validate data size before creating ImageData
+    const expectedSize = canvasWidth * canvasHeight * 4; // RGBA = 4 bytes per pixel
+    if (data.length !== expectedSize) {
+      console.warn(`Frame data size mismatch: expected ${expectedSize} bytes but got ${data.length} bytes`);
+      console.warn(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
 
-    // Draw the image data to canvas
-    context.putImageData(imageData, 0, 0);
+      // Try to handle the mismatch gracefully
+      if (data.length === 0) {
+        // Clear canvas if no data
+        context.fillStyle = '#1a1a1a';
+        context.fillRect(0, 0, canvasWidth, canvasHeight);
+        return;
+      }
+
+      // If data size doesn't match, don't try to create ImageData
+      return;
+    }
+
+    try {
+      // Create ImageData from the frame data
+      const imageData = new ImageData(
+        new Uint8ClampedArray(data),
+        canvasWidth,
+        canvasHeight
+      );
+
+      // Draw the image data to canvas
+      context.putImageData(imageData, 0, 0);
+    } catch (error) {
+      console.error('Failed to create or display ImageData:', error);
+      console.error('Data length:', data.length, 'Expected:', expectedSize);
+      console.error('Canvas dimensions:', canvasWidth, 'x', canvasHeight);
+    }
+  }
+
+  // Mouse event handlers
+  async function handleMouseMove(event) {
+    if (!previewData?.isRunning) return;
+
+    const rect = renderCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    try {
+      await invoke('handle_mouse_input', { x, y });
+    } catch (err) {
+      console.warn('Failed to send mouse input:', err);
+    }
+  }
+
+  async function handleMouseEnter(event) {
+    if (!previewData?.isRunning) return;
+
+    const rect = renderCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    try {
+      await invoke('handle_mouse_input', { x, y });
+    } catch (err) {
+      console.warn('Failed to send mouse enter:', err);
+    }
+  }
+
+  async function handleMouseLeave() {
+    if (!previewData?.isRunning) return;
+
+    try {
+      // Send mouse coordinates outside canvas bounds to indicate mouse left
+      await invoke('handle_mouse_input', { x: -1, y: -1 });
+    } catch (err) {
+      console.warn('Failed to send mouse leave:', err);
+    }
   }
 
   // Reactive statements
   $: {
-    console.log('Reactive check - isRunning:', previewData?.isRunning, 'renderCanvas:', !!renderCanvas, 'canvasReady:', canvasReady);
-    console.log('Full previewData object:', previewData);
     if (previewData?.isRunning && renderCanvas && !canvasReady) {
-      console.log('All conditions met, calling initializeCanvas from reactive statement');
       initializeCanvas();
-    } else {
-      console.log('Conditions not met for canvas initialization:');
-      console.log('  - isRunning:', previewData?.isRunning);
-      console.log('  - renderCanvas exists:', !!renderCanvas);
-      console.log('  - canvasReady is false:', !canvasReady);
+    }
+  }
+
+  // Separate reactive statement for frame update loop
+  $: {
+    if (previewData?.isRunning && renderCanvas && canvasReady) {
+      startFrameUpdateLoop();
+    } else if (!previewData?.isRunning) {
+      stopFrameUpdateLoop();
     }
   }
 
@@ -323,6 +396,9 @@
                 class="webgpu-canvas"
                 width={canvasWidth}
                 height={canvasHeight}
+                on:mousemove={handleMouseMove}
+                on:mouseenter={handleMouseEnter}
+                on:mouseleave={handleMouseLeave}
               />
               <div class="canvas-overlay" class:hidden={canvasReady}>
                 <span>Initializing WebGPU Renderer...</span>

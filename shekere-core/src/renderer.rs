@@ -56,10 +56,30 @@ impl<'a> Renderer<'a> {
         window_width: u32,
         window_height: u32,
     ) -> Result<Self, RendererError> {
-        let WebGpuContext { device, queue } = context;
-
         // Create timer
         let timer = Timer::new();
+
+        Self::new_with_timer(
+            context,
+            config,
+            config_dir,
+            window_width,
+            window_height,
+            timer,
+        )
+        .await
+    }
+
+    /// Create a new Renderer with a custom timer for animation continuity.
+    pub async fn new_with_timer(
+        context: WebGpuContext,
+        config: &'a Config,
+        config_dir: &Path,
+        window_width: u32,
+        window_height: u32,
+        timer: Timer,
+    ) -> Result<Self, RendererError> {
+        let WebGpuContext { device, queue } = context;
 
         // Create uniform manager
         let uniform_manager =
@@ -468,8 +488,15 @@ impl<'a> Renderer<'a> {
             };
 
             // Create any missing intermediate textures first (mutable operations)
-            if let Some((crate::texture_manager::TextureType::Intermediate, texture_pass_index, _)) = input_texture_info {
-                let _ = self.texture_manager.get_or_create_intermediate_texture(&self.device, texture_pass_index);
+            if let Some((
+                crate::texture_manager::TextureType::Intermediate,
+                texture_pass_index,
+                _,
+            )) = input_texture_info
+            {
+                let _ = self
+                    .texture_manager
+                    .get_or_create_intermediate_texture(&self.device, texture_pass_index);
             }
 
             // Now we can safely get immutable references for render targets and texture views
@@ -495,37 +522,38 @@ impl<'a> Renderer<'a> {
 
             // Create texture bind group for input
 
-            let texture_bind_group = if let Some((texture_type, texture_pass_index, frame_index)) = input_texture_info {
-                let input_texture_view = match texture_type {
-                    crate::texture_manager::TextureType::Intermediate => {
-                        self.texture_manager.get_intermediate_render_target(texture_pass_index)
-                    }
-                    crate::texture_manager::TextureType::PingPong => {
-                        let textures = self
+            let texture_bind_group =
+                if let Some((texture_type, texture_pass_index, frame_index)) = input_texture_info {
+                    let input_texture_view = match texture_type {
+                        crate::texture_manager::TextureType::Intermediate => self
                             .texture_manager
-                            .ping_pong_textures
-                            .get(&texture_pass_index)
-                            .unwrap();
-                        Some(&textures[frame_index].1)
-                    }
-                    crate::texture_manager::TextureType::Persistent => {
-                        let textures = self
-                            .texture_manager
-                            .persistent_textures
-                            .get(&texture_pass_index)
-                            .unwrap();
-                        Some(&textures[frame_index].1)
-                    }
-                };
+                            .get_intermediate_render_target(texture_pass_index),
+                        crate::texture_manager::TextureType::PingPong => {
+                            let textures = self
+                                .texture_manager
+                                .ping_pong_textures
+                                .get(&texture_pass_index)
+                                .unwrap();
+                            Some(&textures[frame_index].1)
+                        }
+                        crate::texture_manager::TextureType::Persistent => {
+                            let textures = self
+                                .texture_manager
+                                .persistent_textures
+                                .get(&texture_pass_index)
+                                .unwrap();
+                            Some(&textures[frame_index].1)
+                        }
+                    };
 
-                if let Some(input_view) = input_texture_view {
-                    Some(self.create_texture_bind_group(input_view)?)
+                    if let Some(input_view) = input_texture_view {
+                        Some(self.create_texture_bind_group(input_view)?)
+                    } else {
+                        None
+                    }
                 } else {
                     None
-                }
-            } else {
-                None
-            };
+                };
 
             // Begin render pass
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -566,7 +594,6 @@ impl<'a> Renderer<'a> {
         for pass_index in 0..pipeline_count {
             let texture_type = context.pass_info.texture_types[pass_index];
             if context.is_stateful_texture(texture_type) {
-
                 // Get the texture view to copy from
                 let source_texture_view = match texture_type {
                     crate::texture_manager::TextureType::Persistent => self
@@ -651,7 +678,9 @@ impl<'a> Renderer<'a> {
 
             Ok(bind_group)
         } else {
-            Err(RendererError::Config("Missing texture bind group layout".to_string()))
+            Err(RendererError::Config(
+                "Missing texture bind group layout".to_string(),
+            ))
         }
     }
 }

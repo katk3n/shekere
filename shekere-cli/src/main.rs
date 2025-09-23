@@ -149,13 +149,21 @@ fn validate_shader_files(config: &Config, base_dir: &Path) -> Result<(), String>
 /// Run shekere with window management using the new Renderer API
 /// This function was moved from shekere-core and adapted for Phase 2
 async fn run_shekere(conf: &Config, conf_dir: &Path) {
-    env_logger::init();
+    // Initialize logging with filtered output - exclude verbose wgpu logs
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Warn)
+        .filter_module("shekere_core", log::LevelFilter::Info)
+        .filter_module("wgpu_core", log::LevelFilter::Warn)
+        .filter_module("wgpu_hal", log::LevelFilter::Warn)
+        .init();
     let event_loop = EventLoop::new().unwrap();
-    let window = Rc::new(WindowBuilder::new()
-        .with_title("shekere")
-        .with_inner_size(LogicalSize::new(conf.window.width, conf.window.height))
-        .build(&event_loop)
-        .unwrap());
+    let window = Rc::new(
+        WindowBuilder::new()
+            .with_title("shekere")
+            .with_inner_size(LogicalSize::new(conf.window.width, conf.window.height))
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     // Get window ID before creating surface (to avoid borrowing issues later)
     let window_id = window.id();
@@ -236,69 +244,70 @@ async fn run_shekere(conf: &Config, conf_dir: &Path) {
     let window_clone = window.clone();
     let _ = event_loop.run(move |event, control_flow| {
         match event {
-        Event::WindowEvent {
-            ref event,
-            window_id: event_window_id,
-        } if event_window_id == window_id => {
-            match event {
-                WindowEvent::CloseRequested
-                | WindowEvent::KeyboardInput {
-                    event:
-                        KeyEvent {
-                            state: ElementState::Pressed,
-                            physical_key: PhysicalKey::Code(KeyCode::Escape),
-                            ..
-                        },
-                    ..
-                } => control_flow.exit(),
-                WindowEvent::Resized(physical_size) => {
-                    if physical_size.width > 0 && physical_size.height > 0 {
-                        surface_config.width = physical_size.width;
-                        surface_config.height = physical_size.height;
-                        surface.configure(renderer.get_device(), &surface_config);
-                        renderer.update_size(physical_size.width, physical_size.height);
+            Event::WindowEvent {
+                ref event,
+                window_id: event_window_id,
+            } if event_window_id == window_id => {
+                match event {
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => control_flow.exit(),
+                    WindowEvent::Resized(physical_size) => {
+                        if physical_size.width > 0 && physical_size.height > 0 {
+                            surface_config.width = physical_size.width;
+                            surface_config.height = physical_size.height;
+                            surface.configure(renderer.get_device(), &surface_config);
+                            renderer.update_size(physical_size.width, physical_size.height);
+                        }
                     }
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    renderer.handle_mouse_input(position.x, position.y);
-                }
-                WindowEvent::RedrawRequested => {
-                    renderer.update(0.0); // delta_time not used currently
-                    match renderer.render_to_surface(&surface, &surface_config) {
-                        Ok(_) => {}
-                        Err(shekere_core::RendererError::Surface(
-                            wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                        )) => {
-                            if size.width > 0 && size.height > 0 {
-                                surface_config.width = size.width;
-                                surface_config.height = size.height;
-                                surface.configure(renderer.get_device(), &surface_config);
-                                renderer.update_size(size.width, size.height);
+                    WindowEvent::CursorMoved { position, .. } => {
+                        renderer.handle_mouse_input(position.x, position.y);
+                    }
+                    WindowEvent::RedrawRequested => {
+                        renderer.update(0.0); // delta_time not used currently
+                        match renderer.render_to_surface(&surface, &surface_config) {
+                            Ok(_) => {}
+                            Err(shekere_core::RendererError::Surface(
+                                wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                            )) => {
+                                if size.width > 0 && size.height > 0 {
+                                    surface_config.width = size.width;
+                                    surface_config.height = size.height;
+                                    surface.configure(renderer.get_device(), &surface_config);
+                                    renderer.update_size(size.width, size.height);
+                                }
+                            }
+                            Err(shekere_core::RendererError::Surface(
+                                wgpu::SurfaceError::OutOfMemory,
+                            )) => {
+                                log::error!("OutOfMemory");
+                                control_flow.exit();
+                            }
+                            Err(shekere_core::RendererError::Surface(
+                                wgpu::SurfaceError::Timeout,
+                            )) => {
+                                log::warn!("Surface timeout")
+                            }
+                            Err(e) => {
+                                log::error!("Render error: {}", e);
                             }
                         }
-                        Err(shekere_core::RendererError::Surface(
-                            wgpu::SurfaceError::OutOfMemory,
-                        )) => {
-                            log::error!("OutOfMemory");
-                            control_flow.exit();
-                        }
-                        Err(shekere_core::RendererError::Surface(wgpu::SurfaceError::Timeout)) => {
-                            log::warn!("Surface timeout")
-                        }
-                        Err(e) => {
-                            log::error!("Render error: {}", e);
-                        }
                     }
-
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-        Event::AboutToWait => {
-            // Request redraw on every event loop iteration for smooth animation
-            window_clone.request_redraw();
-        }
-        _ => {}
+            Event::AboutToWait => {
+                // Request redraw on every event loop iteration for smooth animation
+                window_clone.request_redraw();
+            }
+            _ => {}
         }
     });
 }

@@ -11,6 +11,10 @@ impl Timer {
         }
     }
 
+    pub fn new_with_start(start: Instant) -> Self {
+        Self { start }
+    }
+
     #[cfg(test)]
     pub fn with_start(start: Instant) -> Self {
         Self { start }
