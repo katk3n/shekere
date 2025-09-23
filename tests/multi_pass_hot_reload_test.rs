@@ -1,4 +1,4 @@
-use shekere::Config;
+use shekere_core::Config;
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
 
@@ -16,7 +16,7 @@ fn test_hot_reload_multi_file_creation() {
 
     let shader_paths = vec![shader1.path().to_path_buf(), shader2.path().to_path_buf()];
 
-    let result = shekere::hot_reload::HotReloader::new_multi_file(shader_paths);
+    let result = shekere_core::hot_reload::HotReloader::new_multi_file(shader_paths);
     assert!(
         result.is_ok(),
         "Should successfully create HotReloader for multiple files"
@@ -31,7 +31,7 @@ fn test_hot_reload_multi_file_invalid_path() {
         std::path::PathBuf::from("/non/existent/path2.wgsl"),
     ];
 
-    let result = shekere::hot_reload::HotReloader::new_multi_file(shader_paths);
+    let result = shekere_core::hot_reload::HotReloader::new_multi_file(shader_paths);
     assert!(
         result.is_err(),
         "Should fail to create HotReloader for invalid paths"
@@ -213,7 +213,7 @@ fn test_hot_reload_config_persistent() {
 
 #[cfg(test)]
 mod integration_tests {
-    use shekere::hot_reload::MockHotReloader;
+    use shekere_core::hot_reload::MockHotReloader;
 
     #[test]
     fn test_mock_hot_reloader_for_testing() {

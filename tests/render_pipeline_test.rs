@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use shekere::{
+use shekere_core::{
     Config,
     pipeline::MultiPassPipeline,
     texture_manager::{TextureManager, TextureType},

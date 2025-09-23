@@ -1,4 +1,4 @@
-use shekere::Config;
+use shekere_core::Config;
 
 // Helper function to create a basic test config with persistent texture
 fn create_persistent_config() -> Config {

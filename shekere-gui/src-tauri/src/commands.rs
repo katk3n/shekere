@@ -1,9 +1,13 @@
-use crate::file_tree::{get_file_tree, FileTree};
+use crate::file_tree::{FileTree, get_file_tree};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::command;
+
+// Import shekere_core types needed for preview functionality
+use shekere_core::timer::Timer;
+use shekere_core::{Renderer, WebGpuContext};
 
 #[derive(Debug, thiserror::Error)]
 pub enum CommandError {
@@ -125,8 +129,7 @@ fn validate_config(config: &shekere_core::Config, config_path: &Path) -> Command
                 _ => {
                     return Err(CommandError::Config(format!(
                         "Invalid shader file extension '{}' in pipeline[{}]. Expected: .wgsl, .glsl, .frag, .vert, or .hlsl",
-                        extension,
-                        index
+                        extension, index
                     )));
                 }
             }
@@ -148,8 +151,7 @@ fn validate_config(config: &shekere_core::Config, config_path: &Path) -> Command
             _ => {
                 return Err(CommandError::Config(format!(
                     "Invalid shader type '{}' in pipeline[{}]. Expected: fragment, vertex, or compute",
-                    pipeline.shader_type,
-                    index
+                    pipeline.shader_type, index
                 )));
             }
         }
@@ -506,13 +508,13 @@ pub async fn start_preview(
 
         // Create the actual shekere-core Renderer ONCE and reuse it
         let mut core_renderer = match rt.block_on(async {
-            let context = shekere_core::WebGpuContext::new_headless()
+            let context = WebGpuContext::new_headless()
                 .await
                 .map_err(|e| format!("Failed to create WebGPU context: {}", e))?;
 
-            let timer = shekere_core::Timer::new_with_start(simple_renderer.animation_start_time);
+            let timer = Timer::new_with_start(simple_renderer.animation_start_time);
 
-            shekere_core::Renderer::new_with_timer(
+            Renderer::new_with_timer(
                 context,
                 &config_clone,
                 &config_dir_clone,

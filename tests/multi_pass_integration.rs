@@ -1,4 +1,4 @@
-use shekere::config::{Config, ShaderConfig};
+use shekere_core::config::{Config, ShaderConfig};
 
 #[test]
 fn test_multi_pass_configuration_parsing() {
@@ -75,8 +75,8 @@ fn test_intermediate_texture_configuration() {
 #[cfg(test)]
 mod gpu_tests {
     use super::*;
-    use shekere::pipeline::MultiPassPipeline;
-    use shekere::texture_manager::TextureManager;
+    use shekere_core::pipeline::MultiPassPipeline;
+    use shekere_core::texture_manager::TextureManager;
     use std::path::PathBuf;
     use wgpu::{Device, Queue};
 

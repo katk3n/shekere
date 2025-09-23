@@ -153,7 +153,7 @@ impl<'a> Renderer<'a> {
 
     /// Update the renderer with time and input data.
     /// This should be called once per frame before rendering.
-    pub fn update(&mut self, delta_time: f32) {
+    pub fn update(&mut self, _delta_time: f32) {
         let time_duration = self.timer.get_duration();
         self.uniform_manager.update(&self.queue, time_duration);
     }
@@ -294,7 +294,7 @@ impl<'a> Renderer<'a> {
     /// Analyze texture requirements for all passes (extracted from State::analyze_pass_texture_requirements)
     fn analyze_pass_texture_requirements(&self) -> crate::state::PassTextureInfo {
         let pipeline_count = self.multi_pass_pipeline.pipeline_count();
-        let is_multipass = self.multi_pass_pipeline.is_multi_pass();
+        let _is_multipass = self.multi_pass_pipeline.is_multi_pass();
 
         // Collect texture types for all passes
         let texture_types: Vec<TextureType> = (0..pipeline_count)

@@ -6,7 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 shekere is a Rust-based creative coding tool that combines WebGPU-based fragment shaders with audio integration (OSC and spectrum analysis). It creates real-time visual effects driven by sound and user interaction.
 
-## Core Architecture
+## Workspace Architecture
+
+shekere is organized as a Rust workspace with three main packages:
+
+- **shekere-core**: Core library containing WebGPU rendering engine, audio integration, shader management, and uniform systems
+- **shekere-cli**: Command-line application that provides the traditional shekere experience
+- **shekere-gui**: Desktop GUI application built with Tauri and Svelte for visual shader development
+
+### Package Dependencies
+- Both CLI and GUI depend on shekere-core
+- All packages share workspace-level dependencies for consistency
+- shekere-core is designed to be embeddable and window-system independent
 
 For detailed architecture specifications, see [docs/design/architecture.md](docs/design/architecture.md).
 
@@ -14,14 +25,24 @@ For detailed architecture specifications, see [docs/design/architecture.md](docs
 
 ### Build and Run
 ```bash
-# Build the project
+# Build the entire workspace
 cargo build
 
-# Run with a configuration file
-cargo run -- examples/spectrum/spectrum.toml
+# Build specific packages
+cargo build --package shekere-core
+cargo build --package shekere-cli
+cargo build --package shekere-gui
 
-# Build release version
+# Run CLI with a configuration file
+cargo run --bin shekere-cli -- examples/spectrum/spectrum.toml
+
+# Run GUI application
+cargo run --bin shekere-gui
+
+# Build release versions
 cargo build --release
+cargo build --release --bin shekere-cli
+cargo build --release --bin shekere-gui
 ```
 
 ### Testing

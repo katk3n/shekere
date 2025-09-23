@@ -48,7 +48,7 @@ pub struct MidiShaderData {
 }
 
 // History data structure using ring buffer
-pub(crate) struct MidiHistoryData {
+pub struct MidiHistoryData {
     current_frame: MidiFrameData,
     ring_buffer: HeapRb<MidiFrameData>,
 }

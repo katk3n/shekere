@@ -1,4 +1,4 @@
-use shekere::Config;
+use shekere_core::Config;
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
 

@@ -6,6 +6,16 @@
 
 shekere is a real-time shader art framework that combines WGSL shaders with sound input. It supports mouse interaction, OSC control (TidalCycles, etc.), and audio spectrum analysis.
 
+## Architecture
+
+shekere is built as a Rust workspace with three main components:
+
+- **shekere-core**: Core library providing WebGPU rendering, audio integration, and shader management
+- **shekere-cli**: Command-line application for running shader projects
+- **shekere-gui**: Desktop GUI application built with Tauri for visual shader development
+
+This modular architecture allows shekere to be embedded in other applications or used as a standalone tool.
+
 ## Features
 
 ### 🎨 **Shader Support**
@@ -29,35 +39,46 @@ shekere is a real-time shader art framework that combines WGSL shaders with soun
 - **Built-in Uniforms**: Time, window, mouse, audio data automatically available
 - **Helper Functions**: Color space conversion, coordinate helpers, audio accessors
 
-## Installation
+## Installation & Usage
 
-### Install from Cargo
+shekere is available as both a command-line tool and a GUI application.
 
-```bash
-cargo install shekere
-```
+### Command Line Interface (CLI)
 
-### Download Binary
-
-Download binaries from [Releases](https://github.com/katk3n/shekere/releases).
-
-## Basic Usage
+Build and run from source:
 
 ```bash
-shekere <config_file>
+git clone https://github.com/katk3n/shekere.git
+cd shekere
+cargo run --bin shekere-cli -- examples/basic/basic.toml
 ```
 
-### Example:
+Or build a release binary:
 
 ```bash
-shekere examples/basic/basic.toml
+cargo build --release --bin shekere-cli
+./target/release/shekere-cli examples/basic/basic.toml
 ```
+
+### Graphical User Interface (GUI)
+
+Build and run the GUI application:
+
+```bash
+cargo run --bin shekere-gui
+```
+
+The GUI provides:
+- Visual project browser and file management
+- Live shader editing with preview
+- Real-time configuration editing
+- Built-in examples and templates
 
 ## Getting Started
 
 1. Create a TOML config file with window settings and shader path
 2. Write a fragment shader using the built-in uniforms and helpers
-3. Run with `shekere config.toml`
+3. Run with `cargo run --bin shekere-cli config.toml` or open in the GUI
 
 ### MIDI History Features
 

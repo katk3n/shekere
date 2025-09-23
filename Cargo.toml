@@ -42,6 +42,10 @@ midir = "0.10.0"
 notify = "6.1.1"
 thiserror = "1.0"
 
+# GUI dependencies
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+
 # Dev dependencies (shared across workspace)
 tempfile = "3.8.1"
 tokio = { version = "1.0", features = ["full"] }

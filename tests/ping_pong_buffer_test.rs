@@ -1,4 +1,4 @@
-use shekere::Config;
+use shekere_core::Config;
 use toml;
 
 #[test]
@@ -86,7 +86,7 @@ file = "final.wgsl"
 
 #[cfg(test)]
 mod ping_pong_texture_manager_tests {
-    use shekere::texture_manager::*;
+    use shekere_core::texture_manager::*;
     use tokio;
     use wgpu::{Device, DeviceDescriptor, Features, Instance, Limits, MemoryHints, Queue};
 
@@ -231,8 +231,8 @@ mod ping_pong_texture_manager_tests {
 
 #[cfg(test)]
 mod ping_pong_integration_tests {
-    use shekere::Config;
-    use shekere::texture_manager::TextureType;
+    use shekere_core::Config;
+    use shekere_core::texture_manager::TextureType;
     use toml;
 
     #[test]

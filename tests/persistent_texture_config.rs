@@ -1,4 +1,4 @@
-use shekere::{Config, ShaderConfig};
+use shekere_core::{Config, ShaderConfig};
 
 #[test]
 fn test_persistent_texture_config_parsing() {

@@ -96,7 +96,7 @@ fn test_new_api_exports() {
 
     // Test that old API is still available (backward compatibility)
     let _: Option<Config> = None;
-    let _: Option<shekere_core::State> = None;
+    // Note: State is not exported from shekere_core as it's an internal implementation detail
 
     println!("All new API components are properly exported");
 }

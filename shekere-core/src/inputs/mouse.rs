@@ -42,7 +42,7 @@ impl MouseShaderData {
 }
 
 // History data structure using ring buffer only (optimized)
-pub(crate) struct MouseHistoryData {
+pub struct MouseHistoryData {
     current_frame: MouseFrameData,
     ring_buffer: HeapRb<MouseFrameData>,
 }
@@ -275,7 +275,7 @@ mod tests {
         if let Ok(history) = manager.history_data.lock() {
             assert_eq!(history.current_frame.position, [0.0, 0.0]);
             assert_eq!(history.ring_buffer.occupied_len(), 0);
-        }
+        };
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
             assert_eq!(history.current_frame.position, [100.0, 200.0]);
             // Should have pushed previous frame (which was 0,0) to history
             assert_eq!(history.ring_buffer.occupied_len(), 1);
-        }
+        };
     }
 
     // Helper function to create a test device

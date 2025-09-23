@@ -1,4 +1,4 @@
-use shekere::Config;
+use shekere_core::Config;
 use wgpu::{Device, Queue, SurfaceConfiguration, TextureFormat};
 
 /// Creates a WebGPU device and queue for testing purposes
