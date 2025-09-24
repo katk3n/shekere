@@ -1,4 +1,4 @@
-use shekere_core::Config;
+use shekere_core::{Config, hot_reload::HotReloader};
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
 
@@ -67,7 +67,7 @@ fn test_hot_reload_multi_file_watcher_functionality() {
     let shader_paths = vec![shader1.path().to_path_buf(), shader2.path().to_path_buf()];
 
     // Test creating HotReloader with multiple valid files
-    let result = shekere::hot_reload::HotReloader::new_multi_file(shader_paths);
+    let result = HotReloader::new_multi_file(shader_paths);
     assert!(
         result.is_ok(),
         "Should successfully create HotReloader for multiple valid shader files"

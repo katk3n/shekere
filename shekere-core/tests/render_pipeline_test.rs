@@ -31,7 +31,7 @@ impl RenderPipelineAnalyzer {
             if let Some(parent) = shader_path.parent() {
                 std::fs::create_dir_all(parent).unwrap();
             }
-            std::fs::write(&shader_path, include_str!("shaders/basic.wgsl")).unwrap();
+            std::fs::write(&shader_path, include_str!("shaders/test.wgsl")).unwrap();
         }
 
         // Mock bind group layouts (empty for testing)

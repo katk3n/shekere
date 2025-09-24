@@ -119,7 +119,7 @@ mod gpu_tests {
                 shader_type: "fragment".to_string(),
                 label: "Pass 1".to_string(),
                 entry_point: "fs_main".to_string(),
-                file: "shaders/basic.wgsl".to_string(),
+                file: "shaders/test.wgsl".to_string(),
                 ping_pong: None,
                 persistent: None,
             },

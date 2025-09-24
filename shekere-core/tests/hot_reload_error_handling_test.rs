@@ -1,10 +1,11 @@
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
+use shekere_core::{Config, hot_reload::{HotReloader, MockHotReloader}};
 
 #[test]
 fn test_mock_hot_reloader_error_scenarios() {
     // Test that MockHotReloader handles error scenarios correctly
-    let mock_reloader = shekere::hot_reload::MockHotReloader::new();
+    let mock_reloader = MockHotReloader::new();
 
     // Test initial state
     assert!(!mock_reloader.check_for_changes());
@@ -44,7 +45,7 @@ fn test_hot_reload_with_valid_shader_syntax() {
     .expect("Failed to write valid shader");
 
     let shader_paths = vec![valid_shader.path().to_path_buf()];
-    let result = shekere::hot_reload::HotReloader::new_multi_file(shader_paths);
+    let result = HotReloader::new_multi_file(shader_paths);
     assert!(
         result.is_ok(),
         "Should successfully create HotReloader with valid shader"
@@ -75,7 +76,7 @@ fn test_hot_reload_with_invalid_shader_files() {
 
     // File watching should still work even if the content is invalid
     // The actual compilation error will be caught during pipeline creation
-    let result = shekere::hot_reload::HotReloader::new_multi_file(shader_paths);
+    let result = HotReloader::new_multi_file(shader_paths);
     assert!(
         result.is_ok(),
         "HotReloader creation should succeed even with invalid shader content"
@@ -100,7 +101,7 @@ fn test_hot_reload_config_for_error_handling() {
         entry_point = "fs_main"
     "#;
 
-    let config: shekere::Config = toml::from_str(config_content).expect("Failed to parse config");
+    let config: Config = toml::from_str(config_content).expect("Failed to parse config");
 
     // Verify hot reload is properly configured
     assert!(config.hot_reload.is_some());
@@ -136,7 +137,7 @@ fn test_hot_reload_with_multi_pass_error_scenario() {
         entry_point = "fs_main"
     "#;
 
-    let config: shekere::Config =
+    let config: Config =
         toml::from_str(config_content).expect("Failed to parse multi-pass config");
 
     // Verify multi-pass configuration
@@ -152,7 +153,7 @@ fn test_hot_reload_with_multi_pass_error_scenario() {
 #[test]
 fn test_error_recovery_simulation() {
     // Simulate the error recovery workflow using MockHotReloader
-    let mock_reloader = shekere::hot_reload::MockHotReloader::new();
+    let mock_reloader = MockHotReloader::new();
 
     // Phase 1: Normal operation (no changes)
     assert!(!mock_reloader.check_for_changes());

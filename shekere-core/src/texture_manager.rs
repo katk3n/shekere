@@ -262,11 +262,6 @@ impl TextureManager {
             // Return the write texture (current frame)
             // For double-buffering: read from previous frame, write to current frame
             let write_index = frame_buffer::current_buffer_index(self.current_frame); // Write to current frame
-            log::info!(
-                "Persistent texture output: frame={}, write_index={}",
-                self.current_frame,
-                write_index
-            );
             &textures[write_index].1
         })
     }

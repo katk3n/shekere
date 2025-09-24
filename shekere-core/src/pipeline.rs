@@ -271,7 +271,7 @@ mod tests {
             shader_type: "fragment".to_string(),
             label: "Basic Shader".to_string(),
             entry_point: "fs_main".to_string(),
-            file: "tests/shaders/basic.wgsl".to_string(),
+            file: "tests/shaders/test.wgsl".to_string(),
             ping_pong: None,
             persistent: None,
         }];
@@ -300,7 +300,7 @@ mod tests {
                 shader_type: "fragment".to_string(),
                 label: "Main Render".to_string(),
                 entry_point: "fs_main".to_string(),
-                file: "tests/shaders/main.wgsl".to_string(),
+                file: "tests/shaders/test.wgsl".to_string(),
                 ping_pong: None,
                 persistent: None,
             },
@@ -339,7 +339,7 @@ mod tests {
             shader_type: "fragment".to_string(),
             label: "Game of Life".to_string(),
             entry_point: "fs_main".to_string(),
-            file: "tests/shaders/life.wgsl".to_string(),
+            file: "tests/shaders/test.wgsl".to_string(),
             ping_pong: Some(true),
             persistent: None,
         }];
