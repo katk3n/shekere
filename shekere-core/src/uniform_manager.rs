@@ -1,8 +1,11 @@
 use crate::bind_group_factory::BindGroupFactory;
 use crate::config::Config;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::inputs::midi::MidiInputManager;
 use crate::inputs::mouse::MouseInputManager;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::inputs::osc::OscInputManager;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::inputs::spectrum::SpectrumInputManager;
 use crate::uniforms::time_uniform::TimeUniform;
 use crate::uniforms::window_uniform::WindowUniform;
@@ -24,8 +27,11 @@ pub struct UniformManager<'a> {
 
     // Input managers
     pub mouse_input_manager: Option<MouseInputManager>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub osc_input_manager: Option<OscInputManager<'a>>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub spectrum_input_manager: Option<SpectrumInputManager>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub midi_input_manager: Option<MidiInputManager>,
 
     // Bind groups
@@ -55,6 +61,7 @@ impl<'a> UniformManager<'a> {
         // Create input managers based on configuration
         let mouse_input_manager = Some(MouseInputManager::new(device));
 
+        #[cfg(not(target_arch = "wasm32"))]
         let osc_input_manager = if let Some(osc_config) = &config.osc {
             Some(OscInputManager::new(device, osc_config).await)
         } else {

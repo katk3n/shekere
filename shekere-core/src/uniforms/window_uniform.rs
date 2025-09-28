@@ -45,17 +45,14 @@ impl WindowUniformData {
         }
     }
 
-    #[cfg(test)]
     pub fn width(&self) -> f32 {
         self.resolution[0]
     }
 
-    #[cfg(test)]
     pub fn height(&self) -> f32 {
         self.resolution[1]
     }
 
-    #[cfg(test)]
     pub fn aspect_ratio(&self) -> f32 {
         if self.resolution[1] != 0.0 {
             self.resolution[0] / self.resolution[1]

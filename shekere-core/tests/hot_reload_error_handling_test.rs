@@ -1,6 +1,9 @@
+use shekere_core::{
+    Config,
+    hot_reload::{HotReloader, MockHotReloader},
+};
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
-use shekere_core::{Config, hot_reload::{HotReloader, MockHotReloader}};
 
 #[test]
 fn test_mock_hot_reloader_error_scenarios() {
@@ -137,8 +140,7 @@ fn test_hot_reload_with_multi_pass_error_scenario() {
         entry_point = "fs_main"
     "#;
 
-    let config: Config =
-        toml::from_str(config_content).expect("Failed to parse multi-pass config");
+    let config: Config = toml::from_str(config_content).expect("Failed to parse multi-pass config");
 
     // Verify multi-pass configuration
     assert!(config.hot_reload.is_some());

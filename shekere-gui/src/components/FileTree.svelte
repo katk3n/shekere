@@ -34,10 +34,12 @@
     try {
       const result = await invoke('get_directory_tree', { path });
       console.log('File tree result:', result);
+      console.log('Loading state before setting:', loading);
 
       // Set the FileTree result directly to the store
       fileActions.setFileTree(result);
       currentDirectory = path;
+      console.log('FileTree data after setting:', result);
 
       // Expand root directory by default
       if (result && result.root) {
@@ -49,8 +51,10 @@
       fileActions.setError(err);
       console.error('Failed to load file tree:', err);
     } finally {
+      console.log('Setting loading to false in finally block');
       loading = false;
       fileActions.setLoading(false);
+      console.log('Loading state after finally:', loading);
     }
   }
 
@@ -94,14 +98,20 @@
     // Update store for other components
     fileActions.selectFile(filePath, fileName);
 
-    // If it's a TOML file, load the configuration
+    // If it's a TOML file, load the configuration and shader content
     if (fileType === 'config') {
       try {
+        console.log('📋 Loading TOML config from:', filePath);
         const config = await invoke('load_toml_config', { path: filePath });
-        previewActions.setConfig(config);
-        console.log('Loaded TOML config:', config);
+
+        console.log('🎨 Loading shader content from:', filePath);
+        const shaderContent = await invoke('load_shader_content', { configPath: filePath });
+
+        // Set both config and shader content
+        previewActions.setConfig(config, shaderContent);
+        console.log('✅ Loaded TOML config and shaders:', { config, shaderContent });
       } catch (err) {
-        console.error('Failed to load TOML config:', err);
+        console.error('❌ Failed to load TOML config or shaders:', err);
         previewActions.setError(`Failed to load ${fileName}: ${err}`);
       }
     }
@@ -163,6 +173,11 @@
   </div>
 
   <div class="file-tree-content">
+    <!-- Debug info -->
+    <div style="font-size: 10px; color: #666; margin-bottom: 5px;">
+      Debug: loading={loading}, error={error ? 'yes' : 'no'}, fileTreeData={fileTreeData ? 'yes' : 'no'}
+    </div>
+
     {#if loading}
       <div class="loading">Loading files...</div>
     {:else if error}
@@ -172,8 +187,8 @@
       </div>
     {:else if fileTreeData?.root}
       <!-- Render the actual file tree -->
-      {#if fileTreeData.root.root?.children}
-        {#each fileTreeData.root.root.children as child}
+      {#if fileTreeData.root?.children}
+        {#each fileTreeData.root.children as child}
           <FileTreeNode
             node={child}
             level={0}
@@ -188,7 +203,7 @@
 
       <!-- File tree stats -->
       <div class="file-tree-stats">
-        {fileTreeData?.root?.total_directories || 0} directories, {fileTreeData?.root?.total_files || 0} files
+        {fileTreeData?.total_directories || 0} directories, {fileTreeData?.total_files || 0} files
       </div>
     {:else}
       <div class="empty-tree">

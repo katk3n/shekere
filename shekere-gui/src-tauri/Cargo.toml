@@ -31,6 +31,12 @@ wgpu.workspace = true
 # Logging - keep for error reporting
 log.workspace = true
 env_logger.workspace = true
+# Futures executor for async operations without runtime overhead
+futures = "0.3"
+# Winit for direct window management and WebGPU surface creation
+winit.workspace = true
+# Pollster for blocking on async operations in sync contexts
+pollster = "0.3"
 
 [features]
 # by default Tauri runs in production mode

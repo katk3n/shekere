@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Availability Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1e1e1e;
+            color: white;
+            font-family: monospace;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+        }
+        .success { border-color: #28a745; background: #1f5a1f; }
+        .error { border-color: #dc3545; background: #5a1f1f; }
+        .warning { border-color: #ffc107; background: #5a5a1f; }
+        .info { border-color: #17a2b8; background: #1f4a5a; }
+        .log {
+            background: #333;
+            padding: 10px;
+            border-radius: 3px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 WebGPU & WASM Availability Test</h1>
+
+    <div id="webgpu-test" class="test-section info">
+        <h3>🔧 WebGPU Availability Test</h3>
+        <p>Status: <span id="webgpu-status">Testing...</span></p>
+        <div id="webgpu-log" class="log"></div>
+    </div>
+
+    <div id="wasm-test" class="test-section info">
+        <h3>📦 WASM Module Test</h3>
+        <p>Status: <span id="wasm-status">Waiting for WebGPU...</span></p>
+        <div id="wasm-log" class="log"></div>
+    </div>
+
+    <div id="wasm-init-test" class="test-section info">
+        <h3>🎨 WASM Canvas Initialization Test</h3>
+        <p>Status: <span id="init-status">Waiting for WASM...</span></p>
+        <div id="init-log" class="log"></div>
+        <canvas id="test-canvas" width="400" height="300" style="border: 1px solid #666; margin: 10px 0;"></canvas>
+    </div>
+
+    <script type="module">
+        let testLogs = {
+            webgpu: '',
+            wasm: '',
+            init: ''
+        };
+
+        function log(section, message) {
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] ${message}`;
+            testLogs[section] += logMessage + '\n';
+            document.getElementById(`${section}-log`).textContent = testLogs[section];
+            console.log(`[${section.toUpperCase()}] ${message}`);
+        }
+
+        function setStatus(section, status, className = 'info') {
+            document.getElementById(`${section}-status`).textContent = status;
+            document.getElementById(`${section}-test`).className = `test-section ${className}`;
+        }
+
+        async function testWebGPU() {
+            log('webgpu', '🔍 Checking WebGPU availability...');
+            log('webgpu', `🌐 User Agent: ${navigator.userAgent}`);
+            log('webgpu', `🖥️ Platform: ${navigator.platform}`);
+
+            try {
+                if (!navigator.gpu) {
+                    log('webgpu', '❌ navigator.gpu not available');
+
+                    // Test WebGL2 as fallback
+                    log('webgpu', '🔍 Testing WebGL2 fallback...');
+                    const testCanvas = document.createElement('canvas');
+                    const webgl2Context = testCanvas.getContext('webgl2');
+
+                    if (webgl2Context) {
+                        log('webgpu', '✅ WebGL2 is available as fallback');
+                        log('webgpu', '💡 To enable WebGPU in Chrome: chrome://flags/#enable-unsafe-webgpu');
+                        log('webgpu', '💡 To enable WebGPU in Firefox: about:config dom.webgpu.enabled=true');
+                    } else {
+                        log('webgpu', '❌ WebGL2 also not available');
+                    }
+
+                    throw new Error('WebGPU not supported in this browser');
+                }
+                log('webgpu', '✅ navigator.gpu is available');
+
+                const adapter = await navigator.gpu.requestAdapter({
+                    powerPreference: 'high-performance'
+                });
+                if (!adapter) {
+                    throw new Error('No WebGPU adapter available');
+                }
+                log('webgpu', '✅ WebGPU adapter obtained');
+
+                // Log adapter features and limits
+                if (adapter.features) {
+                    log('webgpu', `📊 Adapter features: ${Array.from(adapter.features).join(', ')}`);
+                }
+                if (adapter.limits) {
+                    log('webgpu', `📊 Max texture size: ${adapter.limits.maxTextureDimension2D}`);
+                    log('webgpu', `📊 Max bind groups: ${adapter.limits.maxBindGroups}`);
+                }
+
+                const device = await adapter.requestDevice();
+                if (!device) {
+                    throw new Error('Could not create WebGPU device');
+                }
+                log('webgpu', '✅ WebGPU device created successfully');
+                log('webgpu', `📊 Device features: ${Array.from(device.features).join(', ')}`);
+
+                setStatus('webgpu', 'WebGPU Available', 'success');
+                return true;
+            } catch (error) {
+                log('webgpu', `❌ WebGPU test failed: ${error.message}`);
+                log('webgpu', `Stack: ${error.stack}`);
+                setStatus('webgpu', `WebGPU Failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testWASM() {
+            setStatus('wasm', 'Testing WASM...', 'info');
+            log('wasm', '📦 Starting WASM module test...');
+
+            try {
+                log('wasm', '🔄 Importing WASM module...');
+                const wasmModule = await import('./pkg/shekere-core.js');
+                log('wasm', '✅ WASM module imported successfully');
+
+                log('wasm', '🔧 Initializing WASM default...');
+                await wasmModule.default();
+                log('wasm', '✅ WASM default initialized');
+
+                log('wasm', '🏗️ Creating WasmShekereCore instance...');
+                const wasmCore = new wasmModule.WasmShekereCore();
+                log('wasm', '✅ WasmShekereCore created successfully');
+
+                setStatus('wasm', 'WASM Module Loaded', 'success');
+                return wasmCore;
+            } catch (error) {
+                log('wasm', `❌ WASM test failed: ${error.message}`);
+                log('wasm', `Stack trace: ${error.stack}`);
+                setStatus('wasm', `WASM Failed: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function testWASMInitialization(wasmCore) {
+            if (!wasmCore) {
+                log('init', '❌ No WASM core available for initialization test');
+                setStatus('init', 'Skipped (WASM failed)', 'warning');
+                return;
+            }
+
+            setStatus('init', 'Testing initialization...', 'info');
+            log('init', '🎨 Starting WASM canvas initialization test...');
+
+            try {
+                const canvas = document.getElementById('test-canvas');
+                log('init', `🎨 Canvas element: ${canvas.tagName}, ${canvas.width}x${canvas.height}`);
+
+                log('init', '🔄 Calling init_with_canvas...');
+                await wasmCore.init_with_canvas(canvas);
+                log('init', '✅ init_with_canvas completed');
+
+                const isInitialized = wasmCore.is_initialized();
+                log('init', `🔍 is_initialized() result: ${isInitialized}`);
+
+                if (isInitialized) {
+                    log('init', '🎉 WASM initialization successful!');
+                    setStatus('init', 'WASM Initialized Successfully', 'success');
+                } else {
+                    log('init', '❌ WASM reports as not initialized after init_with_canvas');
+                    setStatus('init', 'Initialization reported as failed', 'error');
+                }
+
+                const stats = wasmCore.get_stats();
+                log('init', `📊 WASM Stats: ${stats}`);
+
+            } catch (error) {
+                log('init', `❌ WASM initialization failed: ${error.message}`);
+                log('init', `Stack trace: ${error.stack}`);
+                setStatus('init', `Initialization Failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function runAllTests() {
+            console.log('🚀 Starting comprehensive WebGPU and WASM tests...');
+
+            // Test 1: WebGPU availability
+            const webgpuAvailable = await testWebGPU();
+
+            if (!webgpuAvailable) {
+                log('wasm', '⚠️ Skipping WASM tests due to WebGPU unavailability');
+                setStatus('wasm', 'Skipped (WebGPU failed)', 'warning');
+                setStatus('init', 'Skipped (WebGPU failed)', 'warning');
+                return;
+            }
+
+            // Test 2: WASM module loading
+            const wasmCore = await testWASM();
+
+            // Test 3: WASM initialization
+            await testWASMInitialization(wasmCore);
+
+            console.log('✅ All tests completed');
+        }
+
+        // Start tests when page loads
+        window.addEventListener('load', runAllTests);
+    </script>
+</body>
+</html>

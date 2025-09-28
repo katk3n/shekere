@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Shekere WASM Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .canvas-container {
+            border: 2px solid #444;
+            border-radius: 8px;
+            padding: 10px;
+            background: #2a2a2a;
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 600px;
+            display: block;
+            background: #000;
+            border-radius: 4px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #4a90e2;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background: #357abd;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error {
+            color: #ff6b6b;
+        }
+
+        .success {
+            color: #51cf66;
+        }
+
+        .info {
+            color: #74c0fc;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #333;
+            border-radius: 50%;
+            border-top-color: #4a90e2;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Shekere WASM WebGPU Test</h1>
+            <p>Phase 1: Basic Fragment Shader Rendering</p>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="canvas" width="800" height="600"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="init-btn">Initialize WebGPU</button>
+            <button id="render-btn" disabled>Start Rendering</button>
+            <button id="stop-btn" disabled>Stop Rendering</button>
+            <button id="fullscreen-btn">Toggle Fullscreen</button>
+            <div class="loading" id="loading" style="display: none;"></div>
+        </div>
+
+        <div class="status" id="status">
+Ready to test Shekere WASM module...
+        </div>
+    </div>
+
+    <script type="module">
+        import init, { WasmShekereCore, greet } from './pkg/shekere_core.js';
+
+        class ShekereWasmTest {
+            constructor() {
+                this.canvas = document.getElementById('canvas');
+                this.statusEl = document.getElementById('status');
+                this.initBtn = document.getElementById('init-btn');
+                this.renderBtn = document.getElementById('render-btn');
+                this.stopBtn = document.getElementById('stop-btn');
+                this.fullscreenBtn = document.getElementById('fullscreen-btn');
+                this.loading = document.getElementById('loading');
+
+                this.core = null;
+                this.renderingId = null;
+                this.isInitialized = false;
+
+                this.bindEvents();
+                this.checkWebGpuSupport();
+            }
+
+            bindEvents() {
+                this.initBtn.addEventListener('click', () => this.initialize());
+                this.renderBtn.addEventListener('click', () => this.startRendering());
+                this.stopBtn.addEventListener('click', () => this.stopRendering());
+                this.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+
+                // Handle canvas resize
+                window.addEventListener('resize', () => this.handleResize());
+            }
+
+            async checkWebGpuSupport() {
+                // Check if running on HTTPS or localhost
+                const isSecureContext = window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+                if (!isSecureContext) {
+                    this.log('❌ WebGPU requires HTTPS or localhost', 'error');
+                    this.initBtn.disabled = true;
+                    return false;
+                }
+
+                if (!navigator.gpu) {
+                    this.log('❌ WebGPU not supported in this browser', 'error');
+                    this.log('   Make sure to enable WebGPU in browser flags:', 'info');
+                    this.log('   Chrome: chrome://flags/#enable-unsafe-webgpu', 'info');
+                    this.log('   Firefox: about:config -> dom.webgpu.enabled = true', 'info');
+                    this.initBtn.disabled = true;
+                    return false;
+                }
+
+                this.log('✅ navigator.gpu API is available', 'success');
+
+                try {
+                    this.log('🔄 Requesting WebGPU adapter...', 'info');
+                    const adapter = await navigator.gpu.requestAdapter({
+                        powerPreference: 'high-performance'
+                    });
+
+                    if (!adapter) {
+                        this.log('❌ WebGPU adapter not available', 'error');
+                        this.log('   This could be due to:', 'info');
+                        this.log('   - GPU drivers not compatible with WebGPU', 'info');
+                        this.log('   - WebGPU not fully enabled in browser', 'info');
+                        this.log('   - Hardware not supported', 'info');
+                        this.initBtn.disabled = true;
+                        return false;
+                    }
+
+                    this.log('✅ WebGPU adapter obtained successfully', 'success');
+
+                    // Try to get device info if available
+                    try {
+                        const info = adapter.info || {};
+                        this.log(`   Vendor: ${info.vendor || 'Unknown'}`, 'info');
+                        this.log(`   Device: ${info.device || 'Unknown'}`, 'info');
+                        this.log(`   Architecture: ${info.architecture || 'Unknown'}`, 'info');
+                    } catch (e) {
+                        this.log('   (Adapter info not available)', 'info');
+                    }
+
+                    // Test device request
+                    try {
+                        this.log('🔄 Testing device request...', 'info');
+                        const device = await adapter.requestDevice();
+                        device.destroy();
+                        this.log('✅ WebGPU device request successful', 'success');
+                        return true;
+                    } catch (error) {
+                        this.log(`❌ WebGPU device request failed: ${error.message}`, 'error');
+                        this.initBtn.disabled = true;
+                        return false;
+                    }
+
+                } catch (error) {
+                    this.log(`❌ WebGPU check failed: ${error.message}`, 'error');
+                    this.log('   Full error details:', 'info');
+                    this.log(`   ${error.stack || error}`, 'info');
+                    this.initBtn.disabled = true;
+                    return false;
+                }
+            }
+
+            async initialize() {
+                try {
+                    this.showLoading(true);
+                    this.log('🔄 Initializing WASM module...', 'info');
+
+                    // Initialize the wasm module
+                    await init();
+                    this.log('✅ WASM module loaded successfully', 'success');
+
+                    // Test the greeting function
+                    try {
+                        const greeting = greet();
+                        this.log(`📢 ${greeting}`, 'success');
+                    } catch (greetError) {
+                        this.log(`⚠️ Greeting function failed: ${greetError.message}`, 'error');
+                        console.error('Greeting error:', greetError);
+                    }
+
+                    // Create the core instance
+                    try {
+                        this.core = new WasmShekereCore();
+                        this.log('✅ WASM core instance created', 'success');
+                    } catch (coreError) {
+                        this.log(`❌ Failed to create WASM core: ${coreError.message}`, 'error');
+                        console.error('Core creation error:', coreError);
+                        throw coreError;
+                    }
+
+                    // Initialize with canvas
+                    this.log('🔄 Initializing WebGPU context with canvas...', 'info');
+                    this.log(`   Canvas dimensions: ${this.canvas.width}x${this.canvas.height}`, 'info');
+                    this.log(`   Canvas context: ${this.canvas.getContext ? 'available' : 'not available'}`, 'info');
+
+                    try {
+                        await this.core.init_with_canvas(this.canvas);
+                        this.log('✅ WebGPU context initialized successfully', 'success');
+                    } catch (webgpuError) {
+                        this.log(`❌ WebGPU context initialization failed: ${webgpuError.message || webgpuError}`, 'error');
+                        console.error('WebGPU initialization error:', webgpuError);
+                        console.error('Error type:', typeof webgpuError);
+                        console.error('Error constructor:', webgpuError.constructor?.name);
+                        console.error('Error stack:', webgpuError.stack);
+                        throw webgpuError;
+                    }
+
+                    this.isInitialized = true;
+                    this.initBtn.disabled = true;
+                    this.renderBtn.disabled = false;
+
+                    this.log('🎉 Ready to render!', 'success');
+
+                } catch (error) {
+                    this.log(`❌ Initialization failed: ${error.message || error || 'Unknown error'}`, 'error');
+                    console.error('Detailed error:', error);
+                    console.error('Error type:', typeof error);
+                    console.error('Error toString:', error.toString());
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            startRendering() {
+                if (!this.isInitialized || this.renderingId) return;
+
+                this.log('🎬 Starting render loop...', 'info');
+                this.renderBtn.disabled = true;
+                this.stopBtn.disabled = false;
+
+                const render = () => {
+                    try {
+                        this.core.render();
+                        this.renderingId = requestAnimationFrame(render);
+                    } catch (error) {
+                        this.log(`❌ Render error: ${error.message}`, 'error');
+                        this.stopRendering();
+                    }
+                };
+
+                this.renderingId = requestAnimationFrame(render);
+                this.log('✅ Render loop started', 'success');
+            }
+
+            stopRendering() {
+                if (this.renderingId) {
+                    cancelAnimationFrame(this.renderingId);
+                    this.renderingId = null;
+                }
+
+                this.renderBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                this.log('⏹️ Rendering stopped', 'info');
+            }
+
+            handleResize() {
+                if (!this.core) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const width = rect.width;
+                const height = rect.height;
+
+                this.canvas.width = width;
+                this.canvas.height = height;
+
+                try {
+                    this.core.resize(width, height);
+                    this.log(`📏 Canvas resized to ${width}x${height}`, 'info');
+                } catch (error) {
+                    this.log(`❌ Resize error: ${error.message}`, 'error');
+                }
+            }
+
+            toggleFullscreen() {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    this.canvas.requestFullscreen();
+                }
+            }
+
+            showLoading(show) {
+                this.loading.style.display = show ? 'inline-block' : 'none';
+            }
+
+            log(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const icon = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+                const line = `[${timestamp}] ${message}`;
+
+                const statusEl = this.statusEl;
+                statusEl.innerHTML += `<div class="${type}">${line}</div>`;
+                statusEl.scrollTop = statusEl.scrollHeight;
+            }
+        }
+
+        // Initialize the test when the page loads
+        window.addEventListener('load', () => {
+            new ShekereWasmTest();
+        });
+
+        // Handle errors
+        window.addEventListener('error', (event) => {
+            console.error('Page error:', event.error);
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
+        });
+    </script>
+</body>
+</html>

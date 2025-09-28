@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 
 /// Enhanced CLI compatibility tests following TDD methodology
@@ -13,9 +13,11 @@ fn test_shekere_cli_binary_exists_and_runs() {
         .output()
         .expect("Failed to run cargo build");
 
-    assert!(build_output.status.success(),
+    assert!(
+        build_output.status.success(),
         "shekere-cli binary should build successfully. stderr: {}",
-        String::from_utf8_lossy(&build_output.stderr));
+        String::from_utf8_lossy(&build_output.stderr)
+    );
 
     // Test that the binary shows version information
     let version_output = Command::new("./target/debug/shekere-cli")
@@ -23,12 +25,17 @@ fn test_shekere_cli_binary_exists_and_runs() {
         .output()
         .expect("Failed to run shekere-cli --version");
 
-    assert!(version_output.status.success(),
-        "shekere-cli --version should work");
+    assert!(
+        version_output.status.success(),
+        "shekere-cli --version should work"
+    );
 
     let version_str = String::from_utf8_lossy(&version_output.stdout);
-    assert!(version_str.contains("shekere-cli"),
-        "Version output should contain 'shekere-cli', got: {}", version_str);
+    assert!(
+        version_str.contains("shekere-cli"),
+        "Version output should contain 'shekere-cli', got: {}",
+        version_str
+    );
 }
 
 #[test]
@@ -44,14 +51,20 @@ fn test_shekere_cli_help_output() {
         .output()
         .expect("Failed to run shekere-cli --help");
 
-    assert!(help_output.status.success(),
-        "shekere-cli --help should work");
+    assert!(
+        help_output.status.success(),
+        "shekere-cli --help should work"
+    );
 
     let help_str = String::from_utf8_lossy(&help_output.stdout);
-    assert!(help_str.contains("FILE"),
-        "Help should mention FILE parameter");
-    assert!(help_str.contains("config"),
-        "Help should mention configuration file");
+    assert!(
+        help_str.contains("FILE"),
+        "Help should mention FILE parameter"
+    );
+    assert!(
+        help_str.contains("config"),
+        "Help should mention configuration file"
+    );
 }
 
 #[test]
@@ -62,8 +75,10 @@ fn test_cli_works_with_all_example_configs() {
         .output()
         .expect("Failed to build CLI");
 
-    assert!(build_output.status.success(),
-        "CLI should build before testing examples");
+    assert!(
+        build_output.status.success(),
+        "CLI should build before testing examples"
+    );
 
     // Get all .toml files in examples directory
     let examples_dir = Path::new("examples");
@@ -90,7 +105,11 @@ fn test_cli_works_with_all_example_configs() {
                         // (Using timeout to prevent infinite loops during testing)
                         let start_time = Instant::now();
                         let output = Command::new("timeout")
-                            .args(&["5s", "./target/debug/shekere-cli", subpath.to_str().unwrap()])
+                            .args(&[
+                                "5s",
+                                "./target/debug/shekere-cli",
+                                subpath.to_str().unwrap(),
+                            ])
                             .output();
 
                         let elapsed = start_time.elapsed();
@@ -104,15 +123,26 @@ fn test_cli_works_with_all_example_configs() {
                                 if !acceptable_codes.contains(&exit_code) {
                                     println!("stdout: {}", String::from_utf8_lossy(&result.stdout));
                                     println!("stderr: {}", String::from_utf8_lossy(&result.stderr));
-                                    panic!("Config {} failed with exit code {}, expected 0 or 124 (timeout)",
-                                        subpath.display(), exit_code);
+                                    panic!(
+                                        "Config {} failed with exit code {}, expected 0 or 124 (timeout)",
+                                        subpath.display(),
+                                        exit_code
+                                    );
                                 }
 
-                                println!("  → Config {} tested successfully (exit: {}, time: {:?})",
-                                    subpath.display(), exit_code, elapsed);
+                                println!(
+                                    "  → Config {} tested successfully (exit: {}, time: {:?})",
+                                    subpath.display(),
+                                    exit_code,
+                                    elapsed
+                                );
                             }
                             Err(e) => {
-                                panic!("Failed to run CLI with config {}: {}", subpath.display(), e);
+                                panic!(
+                                    "Failed to run CLI with config {}: {}",
+                                    subpath.display(),
+                                    e
+                                );
                             }
                         }
                     }
@@ -121,8 +151,15 @@ fn test_cli_works_with_all_example_configs() {
         }
     }
 
-    assert!(!tested_configs.is_empty(), "Should have found at least one example config");
-    println!("Successfully tested {} configurations: {:?}", tested_configs.len(), tested_configs);
+    assert!(
+        !tested_configs.is_empty(),
+        "Should have found at least one example config"
+    );
+    println!(
+        "Successfully tested {} configurations: {:?}",
+        tested_configs.len(),
+        tested_configs
+    );
 }
 
 #[test]
@@ -133,9 +170,11 @@ fn test_workspace_builds_successfully() {
         .output()
         .expect("Failed to run cargo build --workspace");
 
-    assert!(output.status.success(),
+    assert!(
+        output.status.success(),
         "Workspace should build successfully. stderr: {}",
-        String::from_utf8_lossy(&output.stderr));
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -147,8 +186,14 @@ fn test_core_library_tests_pass() {
         .expect("Failed to run cargo test on shekere-core");
 
     if !output.status.success() {
-        println!("Core library test output: {}", String::from_utf8_lossy(&output.stdout));
-        println!("Core library test errors: {}", String::from_utf8_lossy(&output.stderr));
+        println!(
+            "Core library test output: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        println!(
+            "Core library test errors: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         // For now, we'll make this non-failing as we're in transition
         println!("Warning: Core library tests are not yet fully passing");
     }

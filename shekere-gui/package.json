@@ -4,8 +4,9 @@
   "description": "GUI frontend for shekere creative coding tool",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "npm run build-wasm && vite",
+    "build": "npm run build-wasm && vite build",
+    "build-wasm": "wasm-pack build ../shekere-core --target web --out-dir ../shekere-gui/pkg --out-name shekere-core",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri"

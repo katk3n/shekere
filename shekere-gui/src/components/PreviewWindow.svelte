@@ -1,62 +1,53 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { preview, previewActions } from '../stores/preview.js';
   import { files } from '../stores/files.js';
+  import ShaderCanvas from './ShaderCanvas.svelte';
 
   let previewContainer;
-  let loading = false;
   let error = null;
   let previewData = null;
   let filesData = null;
-  let statusCheckInterval = null;
+  let shaderCanvas; // Reference to ShaderCanvas component
+  let isWasmRendering = false; // WASM rendering state
+  let loading = false;
+  let wasmInitialized = false; // WASM initialization status
 
-  // Canvas-related variables
-  let renderCanvas;
-  let canvasWidth = 800;
-  let canvasHeight = 600;
-  let canvasReady = false;
-  let webgpuSupported = false;
+  // Reactive statements for store subscriptions
+  $: previewData = $preview;
+  $: filesData = $files;
 
-  // Subscribe to store changes
-  preview.subscribe(value => {
-    previewData = value;
-  });
+  // Poll WASM initialization status
+  function checkWasmStatus() {
+    if (shaderCanvas) {
+      const status = shaderCanvas.getInitializationStatus();
+      const newWasmInitialized = status.isInitialized && status.wasmCore;
 
-  files.subscribe(value => {
-    filesData = value;
-  });
-
-  onMount(() => {
-    // Check preview status when component mounts
-    checkPreviewStatus();
-
-    // Set up periodic status checking
-    statusCheckInterval = setInterval(checkPreviewStatus, 2000);
-  });
-
-  onDestroy(() => {
-    if (statusCheckInterval) {
-      clearInterval(statusCheckInterval);
-    }
-    stopFrameUpdateLoop();
-  });
-
-  async function checkPreviewStatus() {
-    try {
-      const status = await invoke('get_preview_status');
-      if (status) {
-        previewActions.setHandle(status);
-        previewActions.updateStats(status.fps, status.render_time_ms);
-      } else {
-        previewActions.stop();
+      if (newWasmInitialized !== wasmInitialized) {
+        console.log('🔄 WASM status changed:', {
+          old: wasmInitialized,
+          new: newWasmInitialized,
+          status
+        });
+        wasmInitialized = newWasmInitialized;
       }
-    } catch (err) {
-      // Silently handle - preview might not be running
+    } else {
+      console.log('⚠️ ShaderCanvas not available for status check');
     }
   }
 
-  async function startPreview() {
+  // Check WASM status periodically
+  let statusInterval = setInterval(checkWasmStatus, 500);
+
+  // Clean up interval on destroy
+  onDestroy(() => {
+    if (statusInterval) {
+      clearInterval(statusInterval);
+    }
+  });
+
+  async function startWasmPreview() {
     if (!previewData.config) {
       error = 'No configuration loaded. Please select a TOML file from the file tree.';
       return;
@@ -64,268 +55,81 @@
 
     loading = true;
     error = null;
-    previewActions.setError(null);
 
     try {
-      const result = await invoke('start_preview', {
-        config: previewData.config,
-        configPath: filesData?.selectedPath || null
-      });
+      console.log('🚀 Starting WASM preview with config:', previewData.config);
 
-      previewActions.setHandle(result);
-      console.log('Preview started:', result);
+      // Check ShaderCanvas availability and status
+      if (!shaderCanvas) {
+        throw new Error('ShaderCanvas component not available');
+      }
+
+      const status = shaderCanvas.getInitializationStatus();
+      console.log('📊 ShaderCanvas status:', status);
+
+      if (!status.isInitialized || !status.wasmCore) {
+        throw new Error('WASM core not properly initialized. Please wait a moment and try again.');
+      }
+
+      console.log('📡 Sending config and shader content to WASM canvas...');
+      await shaderCanvas.loadConfiguration(previewData.config, previewData.shaderContent);
+      isWasmRendering = true;
+      console.log('✅ WASM preview started successfully');
     } catch (err) {
-      error = err;
-      previewActions.setError(err);
-      console.error('Failed to start preview:', err);
+      error = `Failed to start WASM preview: ${err.message || err}`;
+      console.error('❌ WASM preview error:', err);
     } finally {
       loading = false;
     }
   }
 
-  async function stopPreview() {
+  function stopWasmPreview() {
     try {
-      await invoke('stop_preview');
-      previewActions.stop();
-      stopFrameUpdateLoop();
+      if (shaderCanvas) {
+        shaderCanvas.stop();
+        isWasmRendering = false;
+        console.log('⏹️ WASM preview stopped');
+      }
     } catch (err) {
-      error = err;
-      previewActions.setError(err);
-      console.error('Failed to stop preview:', err);
+      error = `Failed to stop WASM preview: ${err.message || err}`;
+      console.error('❌ Stop WASM preview error:', err);
     }
   }
 
-  // Canvas initialization and WebGPU setup
-  async function initializeCanvas() {
-    if (!renderCanvas) return;
-
-    try {
-      // Check WebGPU support (but continue with canvas setup regardless)
-      console.log('navigator.gpu available:', !!navigator.gpu);
-      if (!navigator.gpu) {
-        console.warn('WebGPU not supported, but continuing with canvas setup');
-        webgpuSupported = false;
-        // Don't return - continue with canvas setup for fallback rendering
-      } else {
-        webgpuSupported = true;
-      }
-      console.log('WebGPU supported, getting canvas dimensions...');
-
-      // Get canvas dimensions from backend or use defaults
-      try {
-        const dimensions = await invoke('get_canvas_dimensions');
-        console.log('Canvas dimensions from backend:', dimensions);
-        if (dimensions) {
-          canvasWidth = dimensions[0];
-          canvasHeight = dimensions[1];
-        } else {
-          // Fallback dimensions if no preview is running yet
-          canvasWidth = 800;
-          canvasHeight = 600;
-        }
-      } catch (err) {
-        console.warn('Failed to get canvas dimensions from backend, using defaults:', err);
-        canvasWidth = 800;
-        canvasHeight = 600;
-      }
-
-      renderCanvas.width = canvasWidth;
-      renderCanvas.height = canvasHeight;
-
-      // Basic canvas setup
-      const context = renderCanvas.getContext('2d');
-      console.log('Canvas 2D context:', !!context);
-      if (context) {
-        // Clear canvas with a dark background
-        context.fillStyle = '#1a1a1a';
-        context.fillRect(0, 0, canvasWidth, canvasHeight);
-
-        // Add a simple visualization indicator
-        context.fillStyle = '#007acc';
-        context.font = '16px Arial';
-        context.textAlign = 'center';
-        context.fillText('WebGPU Renderer Active', canvasWidth / 2, canvasHeight / 2);
-        context.fillText(`${canvasWidth}×${canvasHeight}`, canvasWidth / 2, canvasHeight / 2 + 25);
-      }
-
-      canvasReady = true;
-    } catch (err) {
-      console.error('Failed to initialize canvas:', err);
-      webgpuSupported = false;
-    }
-  }
-
-  let frameUpdateInterval = null;
-
-  async function startFrameUpdateLoop() {
-    if (frameUpdateInterval) return; // Already running
-
-    frameUpdateInterval = setInterval(async () => {
-      if (!previewData?.isRunning || !renderCanvas) {
-        stopFrameUpdateLoop();
-        return;
-      }
-
-      try {
-        const frameDataWithDims = await invoke('get_frame_data_with_dimensions');
-        if (frameDataWithDims && frameDataWithDims.data && frameDataWithDims.data.length > 0) {
-          // Update canvas dimensions if they've changed
-          if (frameDataWithDims.width !== canvasWidth || frameDataWithDims.height !== canvasHeight) {
-            canvasWidth = frameDataWithDims.width;
-            canvasHeight = frameDataWithDims.height;
-            renderCanvas.width = canvasWidth;
-            renderCanvas.height = canvasHeight;
-          }
-          displayFrameData(frameDataWithDims.data);
-        }
-      } catch (err) {
-        console.warn('Failed to get frame data with dimensions:', err);
-        // Fallback to old method
-        try {
-          const frameData = await invoke('get_frame_data');
-          if (frameData && frameData.length > 0) {
-            displayFrameData(frameData);
-          }
-        } catch (fallbackErr) {
-          console.warn('Failed to get frame data (fallback):', fallbackErr);
-        }
-      }
-    }, 33); // ~30 FPS
-  }
-
-  function stopFrameUpdateLoop() {
-    if (frameUpdateInterval) {
-      clearInterval(frameUpdateInterval);
-      frameUpdateInterval = null;
-    }
-  }
-
-  function displayFrameData(data) {
-    if (!renderCanvas) return;
-
-    const context = renderCanvas.getContext('2d');
-    if (!context) return;
-
-    // Validate data size before creating ImageData
-    const expectedSize = canvasWidth * canvasHeight * 4; // RGBA = 4 bytes per pixel
-    if (data.length !== expectedSize) {
-      console.warn(`Frame data size mismatch: expected ${expectedSize} bytes but got ${data.length} bytes`);
-      console.warn(`Canvas dimensions: ${canvasWidth}x${canvasHeight}`);
-
-      // Try to handle the mismatch gracefully
-      if (data.length === 0) {
-        // Clear canvas if no data
-        context.fillStyle = '#1a1a1a';
-        context.fillRect(0, 0, canvasWidth, canvasHeight);
-        return;
-      }
-
-      // If data size doesn't match, don't try to create ImageData
-      return;
-    }
-
-    try {
-      // Create ImageData from the frame data
-      const imageData = new ImageData(
-        new Uint8ClampedArray(data),
-        canvasWidth,
-        canvasHeight
-      );
-
-      // Draw the image data to canvas
-      context.putImageData(imageData, 0, 0);
-    } catch (error) {
-      console.error('Failed to create or display ImageData:', error);
-      console.error('Data length:', data.length, 'Expected:', expectedSize);
-      console.error('Canvas dimensions:', canvasWidth, 'x', canvasHeight);
-    }
-  }
-
-  // Mouse event handlers
-  async function handleMouseMove(event) {
-    if (!previewData?.isRunning) return;
-
-    const rect = renderCanvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    try {
-      await invoke('handle_mouse_input', { x, y });
-    } catch (err) {
-      console.warn('Failed to send mouse input:', err);
-    }
-  }
-
-  async function handleMouseEnter(event) {
-    if (!previewData?.isRunning) return;
-
-    const rect = renderCanvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    try {
-      await invoke('handle_mouse_input', { x, y });
-    } catch (err) {
-      console.warn('Failed to send mouse enter:', err);
-    }
-  }
-
-  async function handleMouseLeave() {
-    if (!previewData?.isRunning) return;
-
-    try {
-      // Send mouse coordinates outside canvas bounds to indicate mouse left
-      await invoke('handle_mouse_input', { x: -1, y: -1 });
-    } catch (err) {
-      console.warn('Failed to send mouse leave:', err);
-    }
-  }
-
-  // Reactive statements
-  $: {
-    if (previewData?.isRunning && renderCanvas && !canvasReady) {
-      initializeCanvas();
-    }
-  }
-
-  // Separate reactive statement for frame update loop
-  $: {
-    if (previewData?.isRunning && renderCanvas && canvasReady) {
-      startFrameUpdateLoop();
-    } else if (!previewData?.isRunning) {
-      stopFrameUpdateLoop();
-    }
-  }
-
-  $: canStartPreview = previewData?.config && !previewData?.isRunning && !loading;
-  $: canStopPreview = previewData?.isRunning;
+  $: canStart = previewData?.config && !isWasmRendering && !loading && wasmInitialized;
+  $: canStop = isWasmRendering && !loading;
 </script>
 
 <div class="preview-window">
   <div class="preview-header">
     <div class="preview-title">
-      <h3>Shader Preview</h3>
-      {#if previewData?.handle}
+      <h3>WASM Shader Preview</h3>
+      {#if previewData?.config}
         <div class="preview-status">
-          <span class="status-badge running">RUNNING</span>
+          <span class="status-badge"
+                class:ready={!isWasmRendering && wasmInitialized}
+                class:running={isWasmRendering}
+                class:initializing={!wasmInitialized}>
+            {isWasmRendering ? 'RUNNING' : wasmInitialized ? 'READY' : 'INITIALIZING'}
+          </span>
           <span class="config-name">{filesData?.selectedFile || 'Unknown'}</span>
         </div>
       {/if}
     </div>
     <div class="preview-controls">
       <button
-        on:click={startPreview}
-        disabled={!canStartPreview || loading}
+        on:click={startWasmPreview}
+        disabled={!canStart}
         class="start-btn"
-        class:disabled={!canStartPreview || loading}
+        class:disabled={!canStart}
       >
-        {loading ? 'Starting...' : 'Start Preview'}
+        {loading ? 'Starting...' : wasmInitialized ? 'Start Preview' : 'Initializing...'}
       </button>
       <button
-        on:click={stopPreview}
-        disabled={!canStopPreview}
+        on:click={stopWasmPreview}
+        disabled={!canStop}
         class="stop-btn"
-        class:disabled={!canStopPreview}
+        class:disabled={!canStop}
       >
         Stop
       </button>
@@ -333,77 +137,61 @@
   </div>
 
   <!-- Preview Stats Bar -->
-  {#if previewData?.handle}
+  {#if previewData?.config}
     <div class="preview-stats">
       <div class="stat-item">
-        <span class="stat-label">FPS:</span>
-        <span class="stat-value">{previewData.fps.toFixed(1)}</span>
+        <span class="stat-label">Mode:</span>
+        <span class="stat-value">WASM</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">Render Time:</span>
-        <span class="stat-value">{previewData.renderTime.toFixed(1)}ms</span>
+        <span class="stat-label">Config:</span>
+        <span class="stat-value">{filesData?.selectedFile || 'N/A'}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-label">ID:</span>
-        <span class="stat-value">{previewData.handle.id}</span>
+        <span class="stat-label">Resolution:</span>
+        <span class="stat-value">{previewData.config.window?.width || 800}×{previewData.config.window?.height || 600}</span>
       </div>
     </div>
   {/if}
 
   <div class="preview-content" bind:this={previewContainer}>
-    {#if error || previewData?.error}
+    {#if error}
       <div class="error">
-        <div class="error-title">❌ Preview Error</div>
-        <div class="error-message">{error || previewData?.error}</div>
+        <div class="error-title">❌ WASM Preview Error</div>
+        <div class="error-message">{error}</div>
         <div class="error-actions">
-          <button on:click={() => { error = null; previewActions.setError(null); }}>
-            Dismiss
-          </button>
-          {#if previewData?.config}
-            <button on:click={startPreview} class="retry-btn">
-              Retry
-            </button>
-          {/if}
+          <button on:click={() => error = null}>Dismiss</button>
         </div>
       </div>
-    {:else if previewData?.isRunning}
-      <div class="preview-active">
-        <div class="preview-canvas-placeholder">
-          <div class="canvas-info">
-            <h4>🎨 Shader Rendering Active</h4>
-            <p>Configuration: <strong>{filesData?.selectedFile || 'Unknown'}</strong></p>
-            <p>Resolution: <strong>{previewData.config?.window?.width}×{previewData.config?.window?.height}</strong></p>
-            <p>Pipelines: <strong>{previewData.config?.pipeline?.length || 0}</strong></p>
-
-            <div class="pipeline-info">
-              {#if previewData.config?.pipeline}
-                <h5>Active Pipelines:</h5>
-                <ul>
-                  {#each previewData.config.pipeline as pipeline, index}
-                    <li>
-                      <span class="pipeline-name">{pipeline.label || `Pipeline ${index + 1}`}</span>
-                      <span class="pipeline-details">({pipeline.shader_type} - {pipeline.file})</span>
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
+    {:else if previewData?.config}
+      <div class="wasm-preview-active">
+        <div class="wasm-canvas-container">
+          <ShaderCanvas
+            bind:this={shaderCanvas}
+            width={previewData.config.window?.width || 800}
+            height={previewData.config.window?.height || 600}
+          />
+        </div>
+        <div class="wasm-info-panel">
+          <h5>🌐 WASM Shader Renderer</h5>
+          <div class="wasm-config-info">
+            <div class="info-item">
+              <span>Configuration:</span>
+              <span>{filesData?.selectedFile || 'Unknown'}</span>
             </div>
-
-            <!-- Real WebGPU Canvas -->
-            <div class="canvas-container">
-              <canvas
-                bind:this={renderCanvas}
-                class="webgpu-canvas"
-                width={canvasWidth}
-                height={canvasHeight}
-                on:mousemove={handleMouseMove}
-                on:mouseenter={handleMouseEnter}
-                on:mouseleave={handleMouseLeave}
-              />
-              <div class="canvas-overlay" class:hidden={canvasReady}>
-                <span>Initializing WebGPU Renderer...</span>
-                <span class="note">Real-time shader preview</span>
-              </div>
+            <div class="info-item">
+              <span>Resolution:</span>
+              <span>{previewData.config.window?.width || 800}×{previewData.config.window?.height || 600}</span>
+            </div>
+            <div class="info-item">
+              <span>Pipelines:</span>
+              <span>{previewData.config.pipeline?.length || 0}</span>
+            </div>
+            <div class="info-item">
+              <span>Status:</span>
+              <span class="status-indicator" class:active={isWasmRendering}>
+                {isWasmRendering ? 'Rendering' : 'Stopped'}
+              </span>
             </div>
           </div>
         </div>
@@ -412,33 +200,33 @@
       <div class="preview-ready">
         <div class="ready-content">
           <h4>✅ Configuration Loaded</h4>
-          <p>Ready to start preview with:</p>
+          <p>Ready to start WASM preview with:</p>
           <div class="config-summary">
             <div class="config-item">
               <strong>File:</strong> {filesData?.selectedFile}
             </div>
             <div class="config-item">
-              <strong>Resolution:</strong> {previewData.config.window.width}×{previewData.config.window.height}
+              <strong>Resolution:</strong> {previewData.config.window?.width || 800}×{previewData.config.window?.height || 600}
             </div>
             <div class="config-item">
-              <strong>Pipelines:</strong> {previewData.config.pipeline.length}
+              <strong>Pipelines:</strong> {previewData.config.pipeline?.length || 0}
             </div>
           </div>
-          <button on:click={startPreview} class="large-start-btn" disabled={loading}>
-            {loading ? 'Starting Preview...' : '▶ Start Preview'}
+          <button on:click={startWasmPreview} class="large-start-btn" disabled={loading}>
+            {loading ? 'Starting Preview...' : '▶ Start WASM Preview'}
           </button>
         </div>
       </div>
     {:else}
       <div class="preview-empty">
         <div class="empty-content">
-          <h4>📁 No Configuration Loaded</h4>
-          <p>Select a TOML configuration file from the file tree to start previewing shaders.</p>
+          <h4>🌐 WASM Shader Preview</h4>
+          <p>Select a TOML configuration file to start WASM-based shader rendering.</p>
           <div class="instructions">
             <ol>
               <li>Browse the file tree on the left</li>
               <li>Click on a <strong>.toml</strong> configuration file</li>
-              <li>Click "Start Preview" to begin rendering</li>
+              <li>Click the <strong>Start Preview</strong> button to begin rendering</li>
             </ol>
           </div>
         </div>
@@ -475,7 +263,7 @@
     margin: 0;
     font-size: 0.9rem;
     font-weight: 600;
-    color: #ffffff;
+    color: #4a9eff;
   }
 
   .preview-status {
@@ -492,15 +280,19 @@
     text-transform: uppercase;
   }
 
-  .status-badge.running {
+  .status-badge.ready {
     background-color: #28a745;
     color: white;
   }
 
-  .config-name {
-    font-size: 0.75rem;
-    color: #aaa;
-    font-style: italic;
+  .status-badge.running {
+    background-color: #4a9eff;
+    color: white;
+  }
+
+  .status-badge.initializing {
+    background-color: #ffc107;
+    color: #000;
   }
 
   .preview-controls {
@@ -540,6 +332,12 @@
   .preview-controls button.disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .config-name {
+    font-size: 0.75rem;
+    color: #aaa;
+    font-style: italic;
   }
 
   .preview-stats {
@@ -620,125 +418,73 @@
     color: white;
   }
 
-  .retry-btn {
-    background: #ff6b6b !important;
-    color: white !important;
-  }
-
-  .retry-btn:hover {
-    background: #fa5252 !important;
-  }
-
-  /* Preview Active State */
-  .preview-active {
-    padding: 1rem;
+  /* WASM Mode Styles */
+  .wasm-preview-active {
+    display: flex;
+    flex-direction: column;
     height: 100%;
-    overflow-y: auto;
+    padding: 1rem;
+    gap: 1rem;
   }
 
-  .canvas-info h4 {
-    margin: 0 0 1rem 0;
-    color: #28a745;
-    font-size: 1.1rem;
-  }
-
-  .canvas-info p {
-    margin: 0.5rem 0;
-    font-size: 0.9rem;
-  }
-
-  .pipeline-info {
-    margin: 1rem 0;
-    padding: 0.75rem;
-    background-color: #2d2d2d;
-    border-radius: 4px;
-  }
-
-  .pipeline-info h5 {
-    margin: 0 0 0.5rem 0;
-    font-size: 0.85rem;
-    color: #cccccc;
-  }
-
-  .pipeline-info ul {
-    margin: 0;
-    padding-left: 1rem;
-  }
-
-  .pipeline-info li {
-    margin-bottom: 0.25rem;
-    font-size: 0.8rem;
-  }
-
-  .pipeline-name {
-    font-weight: 600;
-    color: #ffffff;
-  }
-
-  .pipeline-details {
-    color: #aaaaaa;
-    font-style: italic;
-  }
-
-  .canvas-placeholder {
-    margin-top: 1rem;
-  }
-
-  .animated-border {
-    position: relative;
-    border: 2px solid #007acc;
-    border-radius: 8px;
-    overflow: hidden;
-    height: 200px;
-  }
-
-  /* New WebGPU Canvas Styles */
-  .canvas-container {
-    position: relative;
-    margin-top: 1rem;
-    border: 2px solid #007acc;
-    border-radius: 8px;
-    overflow: hidden;
-    background: #1a1a1a;
+  .wasm-canvas-container {
+    flex: 1;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 300px;
+    background: #000;
+    border-radius: 8px;
+    border: 2px solid #4a9eff;
+    min-height: 400px;
   }
 
-  .webgpu-canvas {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
-    border-radius: 6px;
-    background: #1a1a1a;
-  }
-
-  .canvas-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    background: rgba(45, 45, 45, 0.95);
-    color: #ffffff;
+  .wasm-info-panel {
+    background: #2d2d2d;
     padding: 1rem;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    z-index: 10;
-    transition: opacity 0.3s ease;
+    border-radius: 6px;
+    border: 1px solid #444;
   }
 
-  .canvas-overlay.hidden {
-    opacity: 0;
-    pointer-events: none;
+  .wasm-info-panel h5 {
+    margin: 0 0 0.75rem 0;
+    color: #4a9eff;
+    font-size: 1rem;
+    font-weight: 600;
   }
 
-  .canvas-overlay .note {
-    display: block;
-    font-size: 0.75rem;
-    color: #aaaaaa;
-    margin-top: 0.5rem;
+  .wasm-config-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 120px;
+  }
+
+  .info-item span:first-child {
+    font-size: 0.7rem;
+    color: #aaa;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .info-item span:last-child {
+    font-size: 0.85rem;
+    color: #fff;
+    font-weight: 600;
+    font-family: monospace;
+  }
+
+  .status-indicator {
+    color: #dc3545;
+  }
+
+  .status-indicator.active {
+    color: #28a745;
   }
 
   /* Preview Ready State */
@@ -803,7 +549,7 @@
 
   .empty-content h4 {
     margin: 0 0 1rem 0;
-    color: #cccccc;
+    color: #4a9eff;
     font-size: 1.2rem;
   }
 
@@ -818,7 +564,7 @@
     background-color: #2d2d2d;
     padding: 1rem;
     border-radius: 4px;
-    border-left: 4px solid #007acc;
+    border-left: 4px solid #4a9eff;
   }
 
   .instructions ol {
@@ -830,59 +576,5 @@
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
     line-height: 1.4;
-  }
-
-  .placeholder {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  }
-
-  .placeholder-content {
-    text-align: center;
-    color: #666;
-  }
-
-  .placeholder-content h4 {
-    margin: 0 0 0.5rem 0;
-    color: #333;
-  }
-
-  .placeholder-content p {
-    margin: 0 0 1rem 0;
-    line-height: 1.4;
-    font-size: 0.9rem;
-  }
-
-  .mock-canvas {
-    width: 400px;
-    height: 300px;
-    border: 2px solid #007acc;
-    border-radius: 8px;
-    overflow: hidden;
-    margin: 0 auto;
-  }
-
-  .mock-shader-output {
-    width: 100%;
-    height: 100%;
-    position: relative;
-  }
-
-  .gradient-demo {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(45deg,
-      #ff006e, #ff7700, #ffcc00, #8338ec, #3a86ff);
-    background-size: 200% 200%;
-    animation: gradientShift 3s ease-in-out infinite;
-  }
-
-  @keyframes gradientShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
   }
 </style>

@@ -14,7 +14,7 @@ export const fileActions = {
   setFileTree: (fileTree) => {
     files.update(state => ({
       ...state,
-      root: fileTree,
+      ...fileTree,  // Spread the FileTree directly instead of nesting it under 'root'
       loading: false,
       error: null
       // Selection state (selectedFile, selectedPath) is preserved

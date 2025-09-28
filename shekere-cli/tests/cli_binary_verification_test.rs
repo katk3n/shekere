@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::Path;
+use std::process::Command;
 
 /// Binary name and version verification tests
 /// Ensures the CLI binary is correctly named and versioned according to Phase 2 requirements
@@ -12,18 +12,21 @@ fn test_binary_name_is_shekere_cli() {
         .output()
         .expect("Failed to build shekere-cli");
 
-    assert!(build_output.status.success(),
+    assert!(
+        build_output.status.success(),
         "shekere-cli binary should build successfully. stderr: {}",
-        String::from_utf8_lossy(&build_output.stderr));
+        String::from_utf8_lossy(&build_output.stderr)
+    );
 
     // Verify the binary exists with correct name
     let binary_path = Path::new("./target/debug/shekere-cli");
-    assert!(binary_path.exists(),
-        "Binary should exist at ./target/debug/shekere-cli");
+    assert!(
+        binary_path.exists(),
+        "Binary should exist at ./target/debug/shekere-cli"
+    );
 
     // Verify it's executable
-    assert!(binary_path.is_file(),
-        "Binary should be a file");
+    assert!(binary_path.is_file(), "Binary should be a file");
 
     println!("✓ Binary exists at: {:?}", binary_path);
 }
@@ -42,19 +45,27 @@ fn test_binary_version_matches_cargo_toml() {
         .output()
         .expect("Failed to get CLI version");
 
-    assert!(version_output.status.success(),
-        "Version command should succeed");
+    assert!(
+        version_output.status.success(),
+        "Version command should succeed"
+    );
 
     let version_text = String::from_utf8_lossy(&version_output.stdout);
     println!("CLI version output: {}", version_text);
 
     // Should contain the binary name
-    assert!(version_text.contains("shekere-cli"),
-        "Version output should contain 'shekere-cli', got: {}", version_text);
+    assert!(
+        version_text.contains("shekere-cli"),
+        "Version output should contain 'shekere-cli', got: {}",
+        version_text
+    );
 
     // Should contain version number (0.13.0 or similar)
-    assert!(version_text.contains("0.13.0") || version_text.contains("0."),
-        "Version output should contain version number, got: {}", version_text);
+    assert!(
+        version_text.contains("0.13.0") || version_text.contains("0."),
+        "Version output should contain version number, got: {}",
+        version_text
+    );
 }
 
 #[test]
@@ -65,14 +76,18 @@ fn test_cargo_metadata_shows_correct_binary() {
         .output()
         .expect("Failed to get cargo metadata");
 
-    assert!(metadata_output.status.success(),
-        "Cargo metadata should succeed");
+    assert!(
+        metadata_output.status.success(),
+        "Cargo metadata should succeed"
+    );
 
     let metadata_text = String::from_utf8_lossy(&metadata_output.stdout);
 
     // Should mention shekere-cli binary
-    assert!(metadata_text.contains("shekere-cli"),
-        "Cargo metadata should reference shekere-cli binary");
+    assert!(
+        metadata_text.contains("shekere-cli"),
+        "Cargo metadata should reference shekere-cli binary"
+    );
 
     println!("✓ Cargo metadata includes shekere-cli binary");
 }
@@ -95,8 +110,10 @@ fn test_binary_shows_correct_package_info() {
     println!("Help text:\n{}", help_text);
 
     // Help should reference the correct binary name
-    assert!(help_text.contains("shekere") || help_text.contains("creative coding"),
-        "Help should reference shekere or describe its purpose");
+    assert!(
+        help_text.contains("shekere") || help_text.contains("creative coding"),
+        "Help should reference shekere or describe its purpose"
+    );
 }
 
 #[test]
@@ -112,7 +129,10 @@ fn test_old_binary_name_does_not_exist() {
 
     // The old binary name should not exist after our refactoring
     if old_binary_path.exists() {
-        println!("Warning: Old binary name 'shekere' still exists at: {:?}", old_binary_path);
+        println!(
+            "Warning: Old binary name 'shekere' still exists at: {:?}",
+            old_binary_path
+        );
         println!("This might indicate the refactoring is incomplete.");
 
         // For now, we'll just warn rather than fail, as this might be from old builds
@@ -130,14 +150,18 @@ fn test_workspace_build_creates_correct_binaries() {
         .output()
         .expect("Failed to build workspace");
 
-    assert!(build_output.status.success(),
+    assert!(
+        build_output.status.success(),
         "Workspace should build successfully. stderr: {}",
-        String::from_utf8_lossy(&build_output.stderr));
+        String::from_utf8_lossy(&build_output.stderr)
+    );
 
     // Check that shekere-cli binary exists
     let cli_binary = Path::new("./target/debug/shekere-cli");
-    assert!(cli_binary.exists(),
-        "shekere-cli binary should exist after workspace build");
+    assert!(
+        cli_binary.exists(),
+        "shekere-cli binary should exist after workspace build"
+    );
 
     println!("✓ Workspace build creates shekere-cli binary");
 }
@@ -152,8 +176,7 @@ fn test_release_build_works() {
 
     if release_output.status.success() {
         let release_binary = Path::new("./target/release/shekere-cli");
-        assert!(release_binary.exists(),
-            "Release binary should exist");
+        assert!(release_binary.exists(), "Release binary should exist");
 
         // Test that release binary shows version
         let version_output = Command::new("./target/release/shekere-cli")
@@ -161,17 +184,24 @@ fn test_release_build_works() {
             .output()
             .expect("Failed to get release version");
 
-        assert!(version_output.status.success(),
-            "Release binary should show version");
+        assert!(
+            version_output.status.success(),
+            "Release binary should show version"
+        );
 
         let version_text = String::from_utf8_lossy(&version_output.stdout);
-        assert!(version_text.contains("shekere-cli"),
-            "Release version should contain binary name");
+        assert!(
+            version_text.contains("shekere-cli"),
+            "Release version should contain binary name"
+        );
 
         println!("✓ Release build works correctly");
     } else {
         println!("Release build failed - this is acceptable during development");
-        println!("stderr: {}", String::from_utf8_lossy(&release_output.stderr));
+        println!(
+            "stderr: {}",
+            String::from_utf8_lossy(&release_output.stderr)
+        );
     }
 }
 
@@ -185,19 +215,24 @@ fn test_binary_has_reasonable_size() {
 
     let binary_path = Path::new("./target/debug/shekere-cli");
     if binary_path.exists() {
-        let metadata = std::fs::metadata(binary_path)
-            .expect("Failed to get binary metadata");
+        let metadata = std::fs::metadata(binary_path).expect("Failed to get binary metadata");
 
         let size_mb = metadata.len() as f64 / (1024.0 * 1024.0);
         println!("Binary size: {:.2} MB", size_mb);
 
         // Debug binary should be reasonable size (less than 500MB)
-        assert!(size_mb < 500.0,
-            "Debug binary size should be reasonable, got: {:.2} MB", size_mb);
+        assert!(
+            size_mb < 500.0,
+            "Debug binary size should be reasonable, got: {:.2} MB",
+            size_mb
+        );
 
         // Should be at least 1MB (sanity check that it's a real binary)
-        assert!(size_mb > 1.0,
-            "Binary should be substantial enough to be functional, got: {:.2} MB", size_mb);
+        assert!(
+            size_mb > 1.0,
+            "Binary should be substantial enough to be functional, got: {:.2} MB",
+            size_mb
+        );
     }
 }
 
@@ -229,8 +264,10 @@ fn test_cargo_list_shows_shekere_cli() {
                 .collect();
 
             println!("Available binaries: {:?}", binaries);
-            assert!(binaries.contains(&"shekere-cli".to_string()),
-                "shekere-cli should be in the list of built binaries");
+            assert!(
+                binaries.contains(&"shekere-cli".to_string()),
+                "shekere-cli should be in the list of built binaries"
+            );
         }
     }
 }

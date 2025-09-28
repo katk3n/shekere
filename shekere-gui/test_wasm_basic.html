@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WASM Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1e1e1e;
+            color: white;
+            font-family: monospace;
+        }
+        #canvas {
+            border: 2px solid #4a9eff;
+            background: #000;
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #005999;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: #333;
+        }
+        .error {
+            background: #5a1f1f;
+            color: #ff6b6b;
+        }
+        .success {
+            background: #1f5a1f;
+            color: #6bff6b;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 WASM Shader Test</h1>
+    <div class="controls">
+        <button onclick="initWasm()">Initialize WASM</button>
+        <button onclick="startRender()">Start Rendering</button>
+        <button onclick="stopRender()">Stop Rendering</button>
+    </div>
+    <div id="status" class="status">Ready to test</div>
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <script type="module">
+        let wasmCore = null;
+        let isInitialized = false;
+        let isRendering = false;
+
+        async function initWasm() {
+            try {
+                updateStatus("Initializing WASM...", 'loading');
+
+                // Import the WASM module
+                const wasmModule = await import('./pkg/shekere-core.js');
+                console.log('WASM module imported:', wasmModule);
+
+                // Initialize WASM default
+                await wasmModule.default();
+                console.log('WASM default initialized');
+
+                // Create WASM core instance
+                wasmCore = new wasmModule.WasmShekereCore();
+                console.log('WasmShekereCore created');
+
+                // Initialize with canvas
+                const canvas = document.getElementById('canvas');
+                await wasmCore.init_with_canvas(canvas);
+                console.log('Canvas initialization complete');
+
+                isInitialized = true;
+                updateStatus("✅ WASM initialized successfully!", 'success');
+
+                window.initWasm = () => updateStatus("Already initialized", 'success');
+            } catch (error) {
+                console.error('Failed to initialize WASM:', error);
+                updateStatus(`❌ WASM initialization failed: ${error.message}`, 'error');
+                isInitialized = false;
+            }
+        }
+
+        async function startRender() {
+            if (!isInitialized) {
+                updateStatus("❌ Please initialize WASM first", 'error');
+                return;
+            }
+
+            if (isRendering) {
+                updateStatus("Already rendering", 'success');
+                return;
+            }
+
+            try {
+                // Create basic config using the real basic example shader
+                const config = {
+                    type: "ConfigUpdate",
+                    data: {
+                        shader_config: {
+                            shader_source: `
+                                @fragment
+                                fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+                                    let uv = NormalizedCoords(in.position.xy);
+
+                                    let color = vec3(
+                                        sin(Time.duration + uv.x) * 0.5 + 0.5,
+                                        cos(Time.duration + uv.y) * 0.5 + 0.5,
+                                        sin(Time.duration + length(uv)) * 0.5 + 0.5
+                                    );
+
+                                    return vec4(ToLinearRgb(color), 1.0);
+                                }
+                            `,
+                            entry_point: "fs_main",
+                            shader_type: "Fragment",
+                            label: "Basic Animation Shader"
+                        },
+                        hot_reload: null,
+                        error: null
+                    }
+                };
+
+                await wasmCore.handle_ipc_message(JSON.stringify(config));
+                isRendering = true;
+                updateStatus("🎬 Rendering started", 'success');
+
+                // Start render loop
+                function render() {
+                    if (!isRendering) return;
+
+                    if (wasmCore && wasmCore.is_initialized()) {
+                        try {
+                            wasmCore.render();
+                        } catch (error) {
+                            console.error('Render error:', error);
+                            updateStatus(`❌ Render error: ${error.message}`, 'error');
+                            isRendering = false;
+                            return;
+                        }
+                    }
+
+                    requestAnimationFrame(render);
+                }
+                render();
+
+            } catch (error) {
+                updateStatus(`❌ Failed to start rendering: ${error.message}`, 'error');
+                console.error('Start render error:', error);
+            }
+        }
+
+        function stopRender() {
+            isRendering = false;
+            updateStatus("⏹️ Rendering stopped", 'loading');
+        }
+
+        function updateStatus(message, type) {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + (type || '');
+        }
+
+        // Make functions globally available
+        window.initWasm = initWasm;
+        window.startRender = startRender;
+        window.stopRender = stopRender;
+
+        console.log('Test page loaded');
+    </script>
+</body>
+</html>

@@ -26,7 +26,7 @@ impl WebGpuContext {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
+            backends: wgpu::Backends::BROWSER_WEBGPU,
             ..Default::default()
         });
 
@@ -67,7 +67,7 @@ impl WebGpuContext {
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
+            backends: wgpu::Backends::BROWSER_WEBGPU,
             ..Default::default()
         });
 
@@ -94,6 +94,47 @@ impl WebGpuContext {
                     memory_hints: Default::default(),
                 },
                 None, // Trace path
+            )
+            .await?;
+
+        Ok(Self { device, queue })
+    }
+
+    /// Create a WebGPU context from a canvas element (WASM only).
+    /// This is for browser scenarios where we have a canvas element.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn new_from_canvas(canvas: &web_sys::HtmlCanvasElement) -> Result<Self, WebGpuError> {
+
+        // Create instance with browser WebGPU backend
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU,
+            ..Default::default()
+        });
+
+        // Create surface from canvas
+        let surface = instance
+            .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+            .map_err(|_| WebGpuError::AdapterRequest)?;
+
+        // Request adapter with surface compatibility
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or(WebGpuError::AdapterRequest)?;
+
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                    label: Some("shekere-wasm-device"),
+                    memory_hints: Default::default(),
+                },
+                None,
             )
             .await?;
 

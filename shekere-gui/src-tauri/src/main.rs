@@ -3,6 +3,8 @@
 
 mod commands;
 mod file_tree;
+mod native_renderer;
+mod window_manager;
 
 use commands::*;
 
@@ -17,20 +19,29 @@ fn main() {
         .filter_module("wgpu_hal", log::LevelFilter::Warn)
         .init();
 
-    log::info!("Starting shekere-gui application");
+    log::info!("Starting shekere-gui application with Tauri on main thread");
 
+    // Initialize the window manager communication system
+    window_manager::init_global_communication();
+
+    // Run Tauri on the main thread (this owns the main thread)
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_directory_tree,
             load_toml_config,
-            start_preview,
+            load_shader_content,
+            start_preview,        // Compatibility alias for start_native_preview
+            start_native_preview, // Headless rendering
             stop_preview,
             get_preview_status,
-            get_frame_data,
-            get_frame_data_with_dimensions,
-            get_canvas_dimensions,
-            handle_mouse_input
+            handle_mouse_input,
+            check_webgpu_availability, // WebGPU diagnostics
+            // New window management commands
+            start_preview_window,
+            stop_preview_window,
+            get_preview_window_status,
+            handle_preview_window_mouse,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

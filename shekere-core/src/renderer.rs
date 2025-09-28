@@ -160,7 +160,8 @@ impl<'a> Renderer<'a> {
 
     /// Handle mouse input events
     pub fn handle_mouse_input(&mut self, x: f64, y: f64) -> bool {
-        self.uniform_manager.handle_mouse_input(x, y)
+        self.uniform_manager.handle_mouse_input(x, y);
+        true // Always return true for minimal implementation
     }
 
     /// Update window/viewport size

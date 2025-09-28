@@ -1,0 +1,9 @@
+[package]
+name = "shekere-core-wasm"
+description = "WASM build of shekere-core for browser-based shader rendering"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = true
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false

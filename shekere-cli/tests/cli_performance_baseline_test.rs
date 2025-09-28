@@ -1,7 +1,7 @@
-use std::process::Command;
-use std::path::Path;
-use std::time::Instant;
 use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::time::Instant;
 
 /// Performance baseline tests for all example configurations
 /// These tests establish performance expectations for the CLI
@@ -14,8 +14,10 @@ fn test_cli_startup_performance_with_all_examples() {
         .output()
         .expect("Failed to build CLI");
 
-    assert!(build_output.status.success(),
-        "CLI should build successfully for performance testing");
+    assert!(
+        build_output.status.success(),
+        "CLI should build successfully for performance testing"
+    );
 
     let examples_dir = Path::new("examples");
     assert!(examples_dir.exists(), "Examples directory should exist");
@@ -36,7 +38,8 @@ fn test_cli_startup_performance_with_all_examples() {
                     let subpath = subentry.path();
 
                     if subpath.extension().and_then(|s| s.to_str()) == Some("toml") {
-                        let config_name = subpath.file_name().unwrap().to_string_lossy().to_string();
+                        let config_name =
+                            subpath.file_name().unwrap().to_string_lossy().to_string();
                         tested_configs.push(config_name.clone());
 
                         println!("Performance testing: {:?}", subpath);
@@ -44,7 +47,11 @@ fn test_cli_startup_performance_with_all_examples() {
                         // Measure startup time
                         let start_time = Instant::now();
                         let output = Command::new("timeout")
-                            .args(&["3s", "./target/debug/shekere-cli", subpath.to_str().unwrap()])
+                            .args(&[
+                                "3s",
+                                "./target/debug/shekere-cli",
+                                subpath.to_str().unwrap(),
+                            ])
                             .output()
                             .expect("Failed to run performance test");
 
@@ -54,14 +61,25 @@ fn test_cli_startup_performance_with_all_examples() {
                         performance_results.insert(config_name.clone(), (elapsed, exit_code));
 
                         // Basic performance assertions
-                        assert!(elapsed.as_secs() <= 5,
-                            "Config {} took too long to start: {:?}", config_name, elapsed);
+                        assert!(
+                            elapsed.as_secs() <= 5,
+                            "Config {} took too long to start: {:?}",
+                            config_name,
+                            elapsed
+                        );
 
                         // Should either succeed or timeout (acceptable for GUI apps)
-                        assert!(exit_code == 0 || exit_code == 124,
-                            "Config {} failed unexpectedly with exit code: {}", config_name, exit_code);
+                        assert!(
+                            exit_code == 0 || exit_code == 124,
+                            "Config {} failed unexpectedly with exit code: {}",
+                            config_name,
+                            exit_code
+                        );
 
-                        println!("  → {} completed in {:?} (exit: {})", config_name, elapsed, exit_code);
+                        println!(
+                            "  → {} completed in {:?} (exit: {})",
+                            config_name, elapsed, exit_code
+                        );
                     }
                 }
             }
@@ -69,8 +87,11 @@ fn test_cli_startup_performance_with_all_examples() {
     }
 
     // Ensure we tested a reasonable number of configurations
-    assert!(tested_configs.len() >= 5,
-        "Should have tested at least 5 configurations, found: {:?}", tested_configs);
+    assert!(
+        tested_configs.len() >= 5,
+        "Should have tested at least 5 configurations, found: {:?}",
+        tested_configs
+    );
 
     // Report performance summary
     println!("\nPerformance Summary:");
@@ -87,14 +108,23 @@ fn test_cli_startup_performance_with_all_examples() {
 
     let avg_time = total_time / tested_configs.len() as u32;
     println!("Average startup time: {:?}", avg_time);
-    println!("Successful starts: {}/{}", successful_starts, tested_configs.len());
+    println!(
+        "Successful starts: {}/{}",
+        successful_starts,
+        tested_configs.len()
+    );
 
     // Performance baseline assertions
-    assert!(avg_time.as_millis() <= 2000,
-        "Average startup time should be under 2 seconds, got: {:?}", avg_time);
+    assert!(
+        avg_time.as_millis() <= 2000,
+        "Average startup time should be under 2 seconds, got: {:?}",
+        avg_time
+    );
 
-    assert!(successful_starts as f64 / tested_configs.len() as f64 >= 0.8,
-        "At least 80% of configs should start successfully");
+    assert!(
+        successful_starts as f64 / tested_configs.len() as f64 >= 0.8,
+        "At least 80% of configs should start successfully"
+    );
 }
 
 #[test]
@@ -113,9 +143,10 @@ fn test_cli_memory_usage_baseline() {
         let output = Command::new("timeout")
             .args(&[
                 "2s",
-                "time", "-l",  // -l for detailed stats on macOS
+                "time",
+                "-l", // -l for detailed stats on macOS
                 "./target/debug/shekere-cli",
-                simple_config
+                simple_config,
             ])
             .output();
 
@@ -178,8 +209,11 @@ file = "examples/basic/fragment.wgsl"
     let _ = std::fs::remove_file(temp_config);
 
     // Config parsing should be very fast
-    assert!(parse_time.as_millis() <= 1000,
-        "Config parsing should be fast, took: {:?}", parse_time);
+    assert!(
+        parse_time.as_millis() <= 1000,
+        "Config parsing should be fast, took: {:?}",
+        parse_time
+    );
 
     println!("Config parsing time: {:?}", parse_time);
 }
@@ -202,8 +236,11 @@ fn test_cli_error_response_time() {
     let error_response_time = start_time.elapsed();
 
     // Error responses should be immediate
-    assert!(error_response_time.as_millis() <= 500,
-        "Error response should be immediate, took: {:?}", error_response_time);
+    assert!(
+        error_response_time.as_millis() <= 500,
+        "Error response should be immediate, took: {:?}",
+        error_response_time
+    );
 
     println!("Error response time: {:?}", error_response_time);
 }
@@ -228,8 +265,11 @@ fn test_cli_help_response_time() {
     assert!(output.status.success(), "Help command should succeed");
 
     // Help should be immediate
-    assert!(help_response_time.as_millis() <= 200,
-        "Help response should be immediate, took: {:?}", help_response_time);
+    assert!(
+        help_response_time.as_millis() <= 200,
+        "Help response should be immediate, took: {:?}",
+        help_response_time
+    );
 
     println!("Help response time: {:?}", help_response_time);
 }
@@ -252,33 +292,40 @@ fn test_cli_concurrent_startup_performance() {
         let start_time = Instant::now();
 
         // Start multiple instances with short timeout
-        let handles: Vec<_> = (0..3).map(|i| {
-            let config = config_path.to_string();
-            thread::spawn(move || {
-                let output = Command::new("timeout")
-                    .args(&["1s", "./target/debug/shekere-cli", &config])
-                    .output()
-                    .expect("Failed to run concurrent test");
+        let handles: Vec<_> = (0..3)
+            .map(|i| {
+                let config = config_path.to_string();
+                thread::spawn(move || {
+                    let output = Command::new("timeout")
+                        .args(&["1s", "./target/debug/shekere-cli", &config])
+                        .output()
+                        .expect("Failed to run concurrent test");
 
-                let exit_code = output.status.code().unwrap_or(-1);
-                println!("Instance {} exit code: {}", i, exit_code);
+                    let exit_code = output.status.code().unwrap_or(-1);
+                    println!("Instance {} exit code: {}", i, exit_code);
 
-                // Should either succeed or timeout
-                exit_code == 0 || exit_code == 124
+                    // Should either succeed or timeout
+                    exit_code == 0 || exit_code == 124
+                })
             })
-        }).collect();
+            .collect();
 
         // Wait for all instances
         let results: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
         let concurrent_time = start_time.elapsed();
 
         // All instances should complete successfully
-        assert!(results.iter().all(|&success| success),
-            "All concurrent instances should complete successfully");
+        assert!(
+            results.iter().all(|&success| success),
+            "All concurrent instances should complete successfully"
+        );
 
         // Concurrent startup shouldn't take much longer than sequential
-        assert!(concurrent_time.as_secs() <= 5,
-            "Concurrent startup took too long: {:?}", concurrent_time);
+        assert!(
+            concurrent_time.as_secs() <= 5,
+            "Concurrent startup took too long: {:?}",
+            concurrent_time
+        );
 
         println!("Concurrent startup time: {:?}", concurrent_time);
     } else {

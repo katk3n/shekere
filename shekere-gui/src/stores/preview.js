@@ -5,6 +5,7 @@ export const preview = writable({
   handle: null,
   isRunning: false,
   config: null,
+  shaderContent: null,
   error: null,
   fps: 0,
   renderTime: 0
@@ -20,10 +21,11 @@ export const previewActions = {
     }));
   },
 
-  setConfig: (config) => {
+  setConfig: (config, shaderContent = null) => {
     preview.update(state => ({
       ...state,
-      config
+      config,
+      shaderContent
     }));
   },
 
