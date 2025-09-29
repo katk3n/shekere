@@ -60,7 +60,7 @@ pub struct MidiInputManager {
 }
 
 impl MidiHistoryData {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             current_frame: MidiFrameData::new(),
             ring_buffer: HeapRb::new(512),
@@ -73,7 +73,7 @@ impl MidiHistoryData {
     }
 
     // Convert ring buffer data to shader-compatible linear array format
-    fn prepare_shader_data(&self) -> Vec<MidiShaderData> {
+    pub fn prepare_shader_data(&self) -> Vec<MidiShaderData> {
         let mut shader_data = Vec::with_capacity(512);
 
         // Add current frame first (index 0 = history 0)

@@ -9,12 +9,12 @@ use winit::dpi::PhysicalPosition;
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
-struct MouseFrameData {
+pub struct MouseFrameData {
     position: [f32; 2],
 }
 
 impl MouseFrameData {
-    fn new(x: f32, y: f32) -> Self {
+    pub fn new(x: f32, y: f32) -> Self {
         Self { position: [x, y] }
     }
 
@@ -43,8 +43,8 @@ impl MouseShaderData {
 }
 
 // History data structure using ring buffer only (optimized)
-pub(crate) struct MouseHistoryData {
-    current_frame: MouseFrameData,
+pub struct MouseHistoryData {
+    pub current_frame: MouseFrameData,
     ring_buffer: HeapRb<MouseFrameData>,
 }
 
@@ -60,7 +60,7 @@ impl MouseHistoryData {
         self.ring_buffer.push_overwrite(self.current_frame);
     }
 
-    pub(crate) fn prepare_shader_data(&self) -> Vec<MouseShaderData> {
+    pub fn prepare_shader_data(&self) -> Vec<MouseShaderData> {
         let mut shader_data = Vec::with_capacity(512);
 
         // Add current frame first (index 0)

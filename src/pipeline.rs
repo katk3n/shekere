@@ -61,13 +61,13 @@ pub fn create_pipeline_with_multipass(
         layout: Some(&render_pipeline_layout),
         vertex: wgpu::VertexState {
             module: &vertex_shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: &[Vertex::desc()],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &fragment_shader,
-            entry_point: &shader_config.entry_point,
+            entry_point: Some(&shader_config.entry_point),
             targets: &[Some(wgpu::ColorTargetState {
                 format: surface_config.format,
                 blend: Some(wgpu::BlendState::REPLACE),

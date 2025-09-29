@@ -1,17 +1,26 @@
+#import bevy_sprite::mesh2d_vertex_output::VertexOutput
+
+// === BEVY MATERIAL UNIFORMS ===
+
+struct WindowUniform {
+    resolution: vec2<f32>,
+}
+
+struct TimeUniform {
+    time: f32,
+}
+
+@group(2) @binding(0) var<uniform> Window: WindowUniform;
+@group(2) @binding(1) var<uniform> Time: TimeUniform;
+
+// === PROCESSED SHADER CODE ===
+
 // Embedded common definitions for shekere shaders
 // This file is automatically included at the beginning of every shader
 
 // === UNIFORM STRUCTURES ===
 
-struct WindowUniform {
-    // window size in physical size
-    resolution: vec2<f32>,
-}
 
-struct TimeUniform {
-    // time elapsed since the program started
-    duration: f32,
-}
 
 
 
@@ -89,24 +98,17 @@ struct VertexOutput {
 
 // === UNIFORM BINDINGS ===
 
-// Group 0: Always available uniforms (Bevy Material2d compatibility)
-@group(10) @binding(0) var<uniform> Window: WindowUniform;
-@group(10) @binding(1) var<uniform> Time: TimeUniform;
+// Group 0: Always available uniforms
 
 // Group 1: Device uniforms (conditional)
-// TODO: Uncomment when mouse input is properly implemented in Bevy
-// @group(11) @binding(0) var<storage, read> Mouse: MouseHistory;
+@group(1) @binding(0) var<storage, read> Mouse: MouseHistory;
 
-// Group 0: Sound uniforms (conditional - only bind what you use)
-// TODO: Uncomment when advanced input systems are implemented in Bevy
-// @group(12) @binding(0) var<storage, read> Osc: OscHistory;
-// @group(12) @binding(1) var<storage, read> Spectrum: SpectrumHistory;
-// @group(12) @binding(2) var<storage, read> Midi: MidiHistory;
+// Group 2: Sound uniforms (conditional - only bind what you use)
+@group(2) @binding(0) var<storage, read> Osc: OscHistory;
+@group(2) @binding(1) var<storage, read> Spectrum: SpectrumHistory;
+@group(2) @binding(2) var<storage, read> Midi: MidiHistory;
 
 // Group 3: Multi-pass textures (conditional - only available in multi-pass shaders)
-// TODO: Uncomment when multi-pass rendering is implemented in Bevy
-// @group(13) @binding(0) var previous_pass: texture_2d<f32>;
-// @group(13) @binding(1) var texture_sampler: sampler;
 
 // === UTILITY FUNCTIONS ===
 
@@ -367,12 +369,35 @@ fn MidiNoteOnHistory(note_num: u32, history: u32) -> f32 {
 }
 
 // Multi-pass texture helper functions
-fn SamplePreviousPass(uv: vec2<f32>) -> vec4<f32> {
-    // Fix Y-axis flipping for persistent textures
-    let corrected_uv = vec2<f32>(uv.x, 1.0 - uv.y);
-    return textureSample(previous_pass, texture_sampler, corrected_uv);
+
+
+// === USER SHADER CODE ===
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    let uv = NormalizedCoords(in.position.xy);
+    
+    let color = vec3(
+        sin(Time.time + uv.x) * 0.5 + 0.5,
+        cos(Time.time + uv.y) * 0.5 + 0.5,
+        sin(Time.time + length(uv)) * 0.5 + 0.5
+    );
+    
+    return vec4(ToLinearRgb(color), 1.0);
 }
 
-fn SamplePreviousPassOffset(uv: vec2<f32>, offset: vec2<f32>) -> vec4<f32> {
-    return textureSample(previous_pass, texture_sampler, uv + offset);
+// === BEVY FRAGMENT ENTRY POINT ===
+
+@fragment
+fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
+    // Set up vertex output for compatibility
+    var in: VertexOutput;
+    in.position = mesh.position;
+    in.uv = mesh.uv;
+
+    // Map to expected coordinate system
+    let tex_coords = mesh.uv;
+
+    // Call the fs_main function from processed shader
+    return fs_main(in, tex_coords);
 }
