@@ -5,6 +5,7 @@ use crate::config::OscConfig;
 use async_std::channel::{Receiver, unbounded};
 use async_std::net::{SocketAddrV4, UdpSocket};
 use async_std::task;
+use bevy::render::render_resource::ShaderType;
 use ringbuf::{
     HeapRb,
     traits::{Consumer, Observer, RingBuffer},
@@ -37,11 +38,11 @@ async fn osc_start(port: u32) -> Receiver<OscPacket> {
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
-struct OscFrameData {
-    sounds: [i32; 16],
-    ttls: [f32; 16],
-    notes: [f32; 16],
-    gains: [f32; 16],
+pub(crate) struct OscFrameData {
+    pub sounds: [i32; 16],
+    pub ttls: [f32; 16],
+    pub notes: [f32; 16],
+    pub gains: [f32; 16],
 }
 
 impl Default for OscFrameData {
@@ -57,13 +58,13 @@ impl Default for OscFrameData {
 
 // GPU-aligned data structure for storage buffer
 #[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, ShaderType)]
 pub struct OscShaderData {
     // Packed into vec4s for WebGPU alignment (16 values / 4 = 4 vec4s each)
-    sounds: [[i32; 4]; 4],
-    ttls: [[f32; 4]; 4],
-    notes: [[f32; 4]; 4],
-    gains: [[f32; 4]; 4],
+    pub sounds: [[i32; 4]; 4],
+    pub ttls: [[f32; 4]; 4],
+    pub notes: [[f32; 4]; 4],
+    pub gains: [[f32; 4]; 4],
 }
 
 impl From<OscFrameData> for OscShaderData {
@@ -95,8 +96,8 @@ impl From<OscFrameData> for OscShaderData {
 
 // History data structure using ring buffer only (optimized)
 pub(crate) struct OscHistoryData {
-    current_frame: OscFrameData,
-    ring_buffer: HeapRb<OscFrameData>,
+    pub current_frame: OscFrameData,
+    pub ring_buffer: HeapRb<OscFrameData>,
 }
 
 impl OscHistoryData {
