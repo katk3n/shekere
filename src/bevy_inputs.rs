@@ -1,13 +1,13 @@
 // Bevy-compatible input system implementations
 // This module contains thread-safe wrappers and systems for input processing
 
+use crate::config::{MidiConfig, OscConfig, SpectrumConfig};
+use crate::inputs::midi::{MidiHistoryData, MidiInputManager};
+use crate::inputs::mouse::{MouseHistoryData, MouseInputManager};
+use crate::inputs::osc::OscHistoryData;
+use crate::inputs::spectrum::SpectrumHistoryData;
 use bevy::prelude::*;
 use std::sync::{Arc, Mutex};
-use crate::config::{MidiConfig, OscConfig, SpectrumConfig};
-use crate::inputs::midi::{MidiInputManager, MidiHistoryData};
-use crate::inputs::mouse::{MouseInputManager, MouseHistoryData};
-use crate::inputs::osc::{OscHistoryData};
-use crate::inputs::spectrum::{SpectrumHistoryData};
 
 // Thread-safe wrapper for MIDI input manager
 #[derive(Resource)]
@@ -60,9 +60,7 @@ impl BevyMidiInputManager {
 }
 
 // Bevy system for updating MIDI input
-pub fn midi_input_system(
-    mut midi_manager: Option<ResMut<BevyMidiInputManager>>,
-) {
+pub fn midi_input_system(mut midi_manager: Option<ResMut<BevyMidiInputManager>>) {
     if let Some(ref mut manager) = midi_manager {
         manager.update();
     }
@@ -88,7 +86,8 @@ impl BevyMouseInputManager {
 
     pub fn update_position(&mut self, position: Vec2) {
         // Convert Bevy Vec2 to PhysicalPosition
-        let physical_position = winit::dpi::PhysicalPosition::new(position.x as f64, position.y as f64);
+        let physical_position =
+            winit::dpi::PhysicalPosition::new(position.x as f64, position.y as f64);
         if let Some(ref mut manager) = self._mouse_manager {
             manager.update(&physical_position);
             self.buffer_needs_update = true;
@@ -236,9 +235,7 @@ pub fn setup_mouse_input_system(
 }
 
 // Bevy system for updating OSC input
-pub fn osc_input_system(
-    mut osc_manager: Option<ResMut<BevyOscInputManager>>,
-) {
+pub fn osc_input_system(mut osc_manager: Option<ResMut<BevyOscInputManager>>) {
     if let Some(ref mut manager) = osc_manager {
         manager.update();
     }
@@ -265,9 +262,7 @@ pub fn setup_osc_input_system(
 }
 
 // Bevy system for updating spectrum input
-pub fn spectrum_input_system(
-    mut spectrum_manager: Option<ResMut<BevySpectrumInputManager>>,
-) {
+pub fn spectrum_input_system(mut spectrum_manager: Option<ResMut<BevySpectrumInputManager>>) {
     if let Some(ref mut manager) = spectrum_manager {
         manager.update();
     }

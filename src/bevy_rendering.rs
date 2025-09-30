@@ -1,8 +1,8 @@
 // Bevy-compatible rendering system implementation
 // This module integrates basic shader rendering with Bevy
 
-use bevy::prelude::*;
 use crate::simple_shader_renderer::SimpleShaderRenderPlugin;
+use bevy::prelude::*;
 
 // Main rendering plugin that orchestrates shader rendering
 pub struct ShekerRenderPlugin;

@@ -1,14 +1,14 @@
 // mod basic_shader_renderer; // Temporarily disabled due to Bevy 0.16.1 API changes
-mod simple_shader_renderer;
-mod bind_group_factory;
 mod bevy_inputs;
 mod bevy_rendering;
+mod bind_group_factory;
 pub mod config;
 pub mod hot_reload;
 mod inputs;
 pub mod pipeline;
 pub mod render_constants;
 mod shader_preprocessor;
+mod simple_shader_renderer;
 mod state;
 pub mod texture_manager;
 mod timer;
@@ -31,14 +31,18 @@ pub struct ShekerConfig {
 }
 
 // Import required types for resources
+use crate::bevy_inputs::{
+    midi_input_system, mouse_input_system, osc_input_system, setup_midi_input_system,
+    setup_mouse_input_system, setup_osc_input_system, setup_spectrum_input_system,
+    spectrum_input_system,
+};
+use crate::hot_reload::HotReloader;
 use crate::pipeline::MultiPassPipeline;
+use crate::simple_shader_renderer::SimpleShaderRenderPlugin;
 use crate::texture_manager::TextureManager;
 use crate::timer::Timer;
-use crate::hot_reload::HotReloader;
-use crate::uniforms::window_uniform::WindowUniform;
 use crate::uniforms::time_uniform::TimeUniform;
-use crate::bevy_inputs::{midi_input_system, setup_midi_input_system, mouse_input_system, setup_mouse_input_system, osc_input_system, setup_osc_input_system, spectrum_input_system, setup_spectrum_input_system};
-use crate::simple_shader_renderer::SimpleShaderRenderPlugin;
+use crate::uniforms::window_uniform::WindowUniform;
 
 // Bevy resource to replace State struct fields
 #[derive(Resource)]
@@ -77,24 +81,29 @@ pub struct ShekerPlugin;
 
 impl Plugin for ShekerPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_plugins(SimpleShaderRenderPlugin)
-            .add_systems(Startup, (
-                setup_sheker_state,
-                setup_midi_input_system,
-                setup_mouse_input_system,
-                setup_osc_input_system,
-                setup_spectrum_input_system,
-                debug_startup_system,
-            ))
-            .add_systems(Update, (
-                midi_input_system,
-                mouse_input_system,
-                osc_input_system,
-                spectrum_input_system,
-                update_uniforms,
-                hot_reload_system,
-            ));
+        app.add_plugins(SimpleShaderRenderPlugin)
+            .add_systems(
+                Startup,
+                (
+                    setup_sheker_state,
+                    setup_midi_input_system,
+                    setup_mouse_input_system,
+                    setup_osc_input_system,
+                    setup_spectrum_input_system,
+                    debug_startup_system,
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    midi_input_system,
+                    mouse_input_system,
+                    osc_input_system,
+                    spectrum_input_system,
+                    update_uniforms,
+                    hot_reload_system,
+                ),
+            );
     }
 }
 
@@ -110,7 +119,10 @@ fn setup_sheker_state(
     config: Res<ShekerConfig>,
     // TODO: Add RenderDevice and RenderQueue when integrating with Bevy rendering
 ) {
-    log::info!("Setting up sheker state with config: {:?}", config.config.window);
+    log::info!(
+        "Setting up sheker state with config: {:?}",
+        config.config.window
+    );
 
     // TODO: Initialize ShekerState resource
     // This will require integration with Bevy's rendering system
@@ -132,9 +144,7 @@ fn update_uniforms() {
     // This will replace state.update() functionality
 }
 
-fn hot_reload_system(
-    _config: Res<ShekerConfig>,
-) {
+fn hot_reload_system(_config: Res<ShekerConfig>) {
     // Hot reload functionality will be implemented here
 }
 

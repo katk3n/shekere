@@ -31,7 +31,7 @@ fn main() {
     App::new()
         .insert_resource(ShekerConfig {
             config: conf.clone(),
-            config_dir: conf_dir
+            config_dir: conf_dir,
         })
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins((
@@ -40,7 +40,7 @@ fn main() {
                     title: "shekere".into(),
                     resolution: WindowResolution::new(
                         conf.window.width as f32,
-                        conf.window.height as f32
+                        conf.window.height as f32,
                     ),
                     ..default()
                 }),

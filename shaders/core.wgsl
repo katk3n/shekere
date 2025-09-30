@@ -29,7 +29,16 @@ fn ToLinearRgb(col: vec3<f32>) -> vec3<f32> {
 }
 
 // Coordinate system helpers
+// Legacy: Converts pixel coordinates (0..resolution) to normalized coords (-1..1, aspect corrected)
+// Note: In Bevy, use mesh.uv instead of mesh.position.xy for correct behavior
 fn NormalizedCoords(position: vec2<f32>) -> vec2<f32> {
     let min_xy = min(Window.resolution.x, Window.resolution.y);
     return (position * 2.0 - Window.resolution) / min_xy;
+}
+
+// Bevy compatibility: Converts UV coordinates (0..1) to normalized coords (-1..1, aspect corrected)
+// Use this in Bevy shaders with: NormalizedCoordsFromUV(mesh.uv)
+fn NormalizedCoordsFromUV(uv: vec2<f32>) -> vec2<f32> {
+    let pixel_pos = uv * Window.resolution;
+    return NormalizedCoords(pixel_pos);
 }
