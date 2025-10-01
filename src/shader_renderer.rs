@@ -2,6 +2,7 @@
 // This integrates actual WGSL shaders from configuration files
 
 use crate::shader_preprocessor::ShaderPreprocessor;
+use bevy::asset::weak_handle;
 use bevy::prelude::*;
 use bevy::render::camera::{ClearColorConfig, RenderTarget};
 use bevy::render::mesh::MeshVertexBufferLayoutRef;
@@ -46,6 +47,7 @@ impl MouseFrameData {
         Self { position: [x, y] }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn to_shader_data(&self) -> MouseShaderData {
         MouseShaderData {
             position: self.position,
@@ -230,6 +232,7 @@ impl Default for SpectrumFrameData {
 }
 
 impl SpectrumFrameData {
+    #[allow(clippy::wrong_self_convention)]
     fn to_shader_data(&self) -> SpectrumShaderData {
         SpectrumShaderData {
             frequencies: self.frequencies,
@@ -309,9 +312,9 @@ pub struct SimpleShaderRenderPlugin;
 impl Plugin for SimpleShaderRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
-            Material2dPlugin::<ShekerShaderMaterial>::default(),
-            Material2dPlugin::<ShekerShaderMaterialPass0>::default(),
-            Material2dPlugin::<ShekerShaderMaterialPass1>::default(),
+            Material2dPlugin::<ShekereShaderMaterial>::default(),
+            Material2dPlugin::<ShekereShaderMaterialPass0>::default(),
+            Material2dPlugin::<ShekereShaderMaterialPass1>::default(),
         ))
         .init_resource::<MouseHistoryTracker>()
         .init_resource::<MidiHistoryTracker>()
@@ -343,8 +346,7 @@ impl Plugin for SimpleShaderRenderPlugin {
 }
 
 // Constant handle for our dynamic shader
-const DYNAMIC_SHADER_HANDLE: Handle<Shader> =
-    Handle::weak_from_u128(0x9E4B8A2F1C6D3E7F8A9B4C5D6E7F8A9B);
+const DYNAMIC_SHADER_HANDLE: Handle<Shader> = weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9b");
 
 // Resource to hold dynamic shader state
 #[derive(Resource)]
@@ -354,6 +356,7 @@ struct DynamicShaderState {
 
 // Resource to track multi-pass rendering state
 #[derive(Resource)]
+#[allow(dead_code)]
 struct MultiPassState {
     pass_count: usize,
     intermediate_textures: Vec<Handle<Image>>,
@@ -374,6 +377,7 @@ struct PersistentPassState {
 
 // Component to mark render pass entities
 #[derive(Component)]
+#[allow(dead_code)]
 struct RenderPassMarker {
     pass_index: usize,
     is_final_pass: bool,
@@ -381,7 +385,7 @@ struct RenderPassMarker {
 
 // Custom material for loading WGSL shaders
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-struct ShekerShaderMaterial {
+struct ShekereShaderMaterial {
     #[uniform(0)]
     resolution: Vec2,
     #[uniform(1)]
@@ -400,7 +404,7 @@ struct ShekerShaderMaterial {
     previous_pass_texture: Option<Handle<Image>>,
 }
 
-impl Material2d for ShekerShaderMaterial {
+impl Material2d for ShekereShaderMaterial {
     fn fragment_shader() -> ShaderRef {
         // Always return our fixed dynamic shader handle
         DYNAMIC_SHADER_HANDLE.into()
@@ -422,13 +426,11 @@ impl Material2d for ShekerShaderMaterial {
 // Pass-specific material types for multi-pass rendering
 // Each pass needs its own Material type because Material2d::fragment_shader() is static
 
-const PASS_0_SHADER_HANDLE: Handle<Shader> =
-    Handle::weak_from_u128(0x9E4B8A2F1C6D3E7F8A9B4C5D6E7F8A9C);
-const PASS_1_SHADER_HANDLE: Handle<Shader> =
-    Handle::weak_from_u128(0x9E4B8A2F1C6D3E7F8A9B4C5D6E7F8A9D);
+const PASS_0_SHADER_HANDLE: Handle<Shader> = weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9c");
+const PASS_1_SHADER_HANDLE: Handle<Shader> = weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9d");
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-struct ShekerShaderMaterialPass0 {
+struct ShekereShaderMaterialPass0 {
     #[uniform(0)]
     resolution: Vec2,
     #[uniform(1)]
@@ -446,7 +448,7 @@ struct ShekerShaderMaterialPass0 {
     previous_pass_texture: Option<Handle<Image>>,
 }
 
-impl Material2d for ShekerShaderMaterialPass0 {
+impl Material2d for ShekereShaderMaterialPass0 {
     fn fragment_shader() -> ShaderRef {
         PASS_0_SHADER_HANDLE.into()
     }
@@ -466,7 +468,7 @@ impl Material2d for ShekerShaderMaterialPass0 {
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-struct ShekerShaderMaterialPass1 {
+struct ShekereShaderMaterialPass1 {
     #[uniform(0)]
     resolution: Vec2,
     #[uniform(1)]
@@ -484,7 +486,7 @@ struct ShekerShaderMaterialPass1 {
     previous_pass_texture: Option<Handle<Image>>,
 }
 
-impl Material2d for ShekerShaderMaterialPass1 {
+impl Material2d for ShekereShaderMaterialPass1 {
     fn fragment_shader() -> ShaderRef {
         PASS_1_SHADER_HANDLE.into()
     }
@@ -508,16 +510,17 @@ impl Material2d for ShekerShaderMaterialPass1 {
 struct FullscreenQuad;
 
 // Setup dynamic shader system
+#[allow(clippy::too_many_arguments)]
 fn setup_dynamic_shader_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ShekerShaderMaterial>>,
-    mut materials_pass0: ResMut<Assets<ShekerShaderMaterialPass0>>,
-    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
+    mut materials: ResMut<Assets<ShekereShaderMaterial>>,
+    materials_pass0: ResMut<Assets<ShekereShaderMaterialPass0>>,
+    materials_pass1: ResMut<Assets<ShekereShaderMaterialPass1>>,
     mut shaders: ResMut<Assets<Shader>>,
     mut storage_buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut images: ResMut<Assets<Image>>,
-    config: Res<crate::ShekerConfig>,
+    config: Res<crate::ShekereConfig>,
     windows: Query<&Window>,
 ) {
     log::info!("Setting up dynamic WGSL shader rendering with Assets<Shader>");
@@ -571,7 +574,7 @@ fn setup_dynamic_shader_system(
             &mut shaders,
             &mut images,
             &config,
-            &window,
+            window,
             mouse_buffer_handle.clone(),
             midi_buffer_handle.clone(),
             spectrum_buffer_handle.clone(),
@@ -587,7 +590,7 @@ fn setup_dynamic_shader_system(
             &mut shaders,
             &mut images,
             &config,
-            &window,
+            window,
             mouse_buffer_handle.clone(),
             midi_buffer_handle.clone(),
             spectrum_buffer_handle.clone(),
@@ -600,7 +603,7 @@ fn setup_dynamic_shader_system(
             &mut materials,
             &mut shaders,
             &config,
-            &window,
+            window,
             mouse_buffer_handle,
             midi_buffer_handle,
             spectrum_buffer_handle,
@@ -670,9 +673,9 @@ fn create_storage_buffers(
 fn setup_singlepass_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<ShekerShaderMaterial>>,
+    materials: &mut ResMut<Assets<ShekereShaderMaterial>>,
     shaders: &mut ResMut<Assets<Shader>>,
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
     window: &Window,
     mouse_buffer_handle: Handle<ShaderStorageBuffer>,
     midi_buffer_handle: Handle<ShaderStorageBuffer>,
@@ -710,7 +713,7 @@ fn setup_singlepass_rendering(
     let mesh_handle = meshes.add(mesh);
 
     // Create material
-    let material = materials.add(ShekerShaderMaterial {
+    let material = materials.add(ShekereShaderMaterial {
         resolution: Vec2::new(window.width(), window.height()),
         duration: 0.0,
         mouse_history: mouse_buffer_handle,
@@ -745,12 +748,12 @@ fn setup_singlepass_rendering(
 fn setup_multipass_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
-    _materials: &mut ResMut<Assets<ShekerShaderMaterial>>,
-    mut materials_pass0: ResMut<Assets<ShekerShaderMaterialPass0>>,
-    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
+    _materials: &mut ResMut<Assets<ShekereShaderMaterial>>,
+    mut materials_pass0: ResMut<Assets<ShekereShaderMaterialPass0>>,
+    mut materials_pass1: ResMut<Assets<ShekereShaderMaterialPass1>>,
     shaders: &mut ResMut<Assets<Shader>>,
     images: &mut ResMut<Assets<Image>>,
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
     window: &Window,
     mouse_buffer_handle: Handle<ShaderStorageBuffer>,
     midi_buffer_handle: Handle<ShaderStorageBuffer>,
@@ -822,7 +825,7 @@ fn setup_multipass_rendering(
     let mesh_handle = meshes.add(mesh);
 
     // Create material for pass 0 (no previous texture)
-    let material_pass0 = materials_pass0.add(ShekerShaderMaterialPass0 {
+    let material_pass0 = materials_pass0.add(ShekereShaderMaterialPass0 {
         resolution: Vec2::new(window.width(), window.height()),
         duration: 0.0,
         mouse_history: mouse_buffer_handle.clone(),
@@ -833,7 +836,7 @@ fn setup_multipass_rendering(
     });
 
     // Create material for pass 1 (uses pass 0 output)
-    let material_pass1 = materials_pass1.add(ShekerShaderMaterialPass1 {
+    let material_pass1 = materials_pass1.add(ShekereShaderMaterialPass1 {
         resolution: Vec2::new(window.width(), window.height()),
         duration: 0.0,
         mouse_history: mouse_buffer_handle,
@@ -889,7 +892,7 @@ fn setup_multipass_rendering(
 
     // Camera 0: Renders pass 0 to intermediate texture
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Camera {
             order: 0,
             target: RenderTarget::Image(intermediate_texture_handle.clone().into()),
@@ -901,7 +904,7 @@ fn setup_multipass_rendering(
 
     // Camera 1: Renders pass 1 to screen
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Camera {
             order: 1,
             clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
@@ -929,12 +932,12 @@ fn setup_multipass_rendering(
 fn setup_persistent_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
-    _materials_pass0: ResMut<Assets<ShekerShaderMaterialPass0>>,
-    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
-    materials: &mut ResMut<Assets<ShekerShaderMaterial>>,
+    _materials_pass0: ResMut<Assets<ShekereShaderMaterialPass0>>,
+    mut materials_pass1: ResMut<Assets<ShekereShaderMaterialPass1>>,
+    materials: &mut ResMut<Assets<ShekereShaderMaterial>>,
     shaders: &mut ResMut<Assets<Shader>>,
     images: &mut ResMut<Assets<Image>>,
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
     window: &Window,
     mouse_buffer_handle: Handle<ShaderStorageBuffer>,
     midi_buffer_handle: Handle<ShaderStorageBuffer>,
@@ -1001,7 +1004,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let mesh_handle = meshes.add(mesh);
 
     // Create material for trail rendering (reads from texture_b initially)
-    let material_trail = materials.add(ShekerShaderMaterial {
+    let material_trail = materials.add(ShekereShaderMaterial {
         resolution: Vec2::new(window.width(), window.height()),
         duration: 0.0,
         mouse_history: mouse_buffer_handle.clone(),
@@ -1012,7 +1015,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     });
 
     // Create material for display (reads from texture_a initially)
-    let material_display = materials_pass1.add(ShekerShaderMaterialPass1 {
+    let material_display = materials_pass1.add(ShekereShaderMaterialPass1 {
         resolution: Vec2::new(window.width(), window.height()),
         duration: 0.0,
         mouse_history: mouse_buffer_handle,
@@ -1170,10 +1173,10 @@ fn create_intermediate_render_texture(width: u32, height: u32) -> Image {
 fn update_shader_uniforms(
     time: Res<Time>,
     windows: Query<&Window>,
-    mut materials: ResMut<Assets<ShekerShaderMaterial>>,
-    quad_query: Query<&MeshMaterial2d<ShekerShaderMaterial>, With<FullscreenQuad>>,
+    mut materials: ResMut<Assets<ShekereShaderMaterial>>,
+    quad_query: Query<&MeshMaterial2d<ShekereShaderMaterial>, With<FullscreenQuad>>,
 ) {
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return; // Skip update if no window
     };
     let elapsed = time.elapsed_secs();
@@ -1201,10 +1204,10 @@ fn update_shader_uniforms(
 fn update_multipass_uniforms(
     time: Res<Time>,
     windows: Query<&Window>,
-    mut materials_pass0: ResMut<Assets<ShekerShaderMaterialPass0>>,
-    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
-    query_pass0: Query<&MeshMaterial2d<ShekerShaderMaterialPass0>, With<FullscreenQuad>>,
-    query_pass1: Query<&MeshMaterial2d<ShekerShaderMaterialPass1>, With<FullscreenQuad>>,
+    mut materials_pass0: ResMut<Assets<ShekereShaderMaterialPass0>>,
+    mut materials_pass1: ResMut<Assets<ShekereShaderMaterialPass1>>,
+    query_pass0: Query<&MeshMaterial2d<ShekereShaderMaterialPass0>, With<FullscreenQuad>>,
+    query_pass1: Query<&MeshMaterial2d<ShekereShaderMaterialPass1>, With<FullscreenQuad>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
@@ -1230,15 +1233,16 @@ fn update_multipass_uniforms(
 
 // Update persistent texture shader uniforms every frame with double-buffering
 // Alternates camera activation and swaps textures for ping-pong effect
+#[allow(clippy::too_many_arguments)]
 fn update_persistent_uniforms(
     time: Res<Time>,
     windows: Query<&Window>,
     mut persistent_state: ResMut<PersistentPassState>,
-    mut materials: ResMut<Assets<ShekerShaderMaterial>>,
-    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
+    mut materials: ResMut<Assets<ShekereShaderMaterial>>,
+    mut materials_pass1: ResMut<Assets<ShekereShaderMaterialPass1>>,
     mut cameras: Query<&mut Camera>,
-    query_trail: Query<&MeshMaterial2d<ShekerShaderMaterial>>,
-    query_display: Query<&MeshMaterial2d<ShekerShaderMaterialPass1>>,
+    query_trail: Query<&MeshMaterial2d<ShekereShaderMaterial>>,
+    query_display: Query<&MeshMaterial2d<ShekereShaderMaterialPass1>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
@@ -1307,12 +1311,12 @@ fn update_persistent_uniforms(
 // Update mouse history in the materials
 fn update_mouse_history(
     windows: Query<&Window>,
-    materials: Res<Assets<ShekerShaderMaterial>>,
+    materials: Res<Assets<ShekereShaderMaterial>>,
     mut storage_buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut mouse_tracker: ResMut<MouseHistoryTracker>,
-    quad_query: Query<&MeshMaterial2d<ShekerShaderMaterial>, With<FullscreenQuad>>,
+    quad_query: Query<&MeshMaterial2d<ShekereShaderMaterial>, With<FullscreenQuad>>,
 ) {
-    let Ok(window) = windows.get_single() else {
+    let Ok(window) = windows.single() else {
         return; // Skip update if no window
     };
 
@@ -1379,7 +1383,7 @@ fn update_mouse_history(
 // Setup MIDI input system
 fn setup_midi_system(
     mut midi_tracker: ResMut<MidiHistoryTracker>,
-    config: Res<crate::ShekerConfig>,
+    config: Res<crate::ShekereConfig>,
 ) {
     // Check if MIDI is enabled in config
     let midi_enabled = config
@@ -1500,10 +1504,10 @@ fn handle_midi_message(state: &std::sync::Arc<std::sync::Mutex<MidiFrameData>>, 
 
 // Update MIDI history in the materials
 fn update_midi_system(
-    materials: Res<Assets<ShekerShaderMaterial>>,
+    materials: Res<Assets<ShekereShaderMaterial>>,
     mut storage_buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut midi_tracker: ResMut<MidiHistoryTracker>,
-    quad_query: Query<&MeshMaterial2d<ShekerShaderMaterial>, With<FullscreenQuad>>,
+    quad_query: Query<&MeshMaterial2d<ShekereShaderMaterial>, With<FullscreenQuad>>,
 ) {
     // Lock and convert current frame to shader data
     let current_shader_data = {
@@ -1563,7 +1567,7 @@ fn update_midi_system(
 // Setup Spectrum input system
 fn setup_spectrum_system(
     mut spectrum_tracker: ResMut<SpectrumHistoryTracker>,
-    config: Res<crate::ShekerConfig>,
+    config: Res<crate::ShekereConfig>,
 ) {
     // Check if spectrum is enabled in config
     let spectrum_config = match &config.config.spectrum {
@@ -1596,14 +1600,12 @@ fn setup_spectrum_system(
     }
 }
 
+// Type alias for audio stream consumer
+type AudioConsumer =
+    ringbuf::wrap::caching::Caching<std::sync::Arc<ringbuf::HeapRb<f32>>, false, true>;
+
 // Helper function to setup audio stream
-fn setup_audio_stream() -> Result<
-    (
-        cpal::Stream,
-        ringbuf::wrap::caching::Caching<std::sync::Arc<ringbuf::HeapRb<f32>>, false, true>,
-    ),
-    Box<dyn std::error::Error>,
-> {
+fn setup_audio_stream() -> Result<(cpal::Stream, AudioConsumer), Box<dyn std::error::Error>> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use ringbuf::traits::{Producer, Split};
 
@@ -1652,10 +1654,10 @@ fn setup_audio_stream() -> Result<
 
 // Update Spectrum history in the materials
 fn update_spectrum_system(
-    materials: Res<Assets<ShekerShaderMaterial>>,
+    materials: Res<Assets<ShekereShaderMaterial>>,
     mut storage_buffers: ResMut<Assets<ShaderStorageBuffer>>,
     mut spectrum_tracker: ResMut<SpectrumHistoryTracker>,
-    quad_query: Query<&MeshMaterial2d<ShekerShaderMaterial>, With<FullscreenQuad>>,
+    quad_query: Query<&MeshMaterial2d<ShekereShaderMaterial>, With<FullscreenQuad>>,
 ) {
     // Copy config values to avoid borrow conflicts
     let sampling_rate = spectrum_tracker.sampling_rate;
@@ -1759,7 +1761,7 @@ fn update_spectrum_system(
 }
 
 // Setup OSC input system
-fn setup_osc_system(mut osc_tracker: ResMut<OscHistoryTracker>, config: Res<crate::ShekerConfig>) {
+fn setup_osc_system(mut osc_tracker: ResMut<OscHistoryTracker>, config: Res<crate::ShekereConfig>) {
     // Check if OSC is configured
     let osc_config = match &config.config.osc {
         Some(cfg) => cfg,
@@ -1852,10 +1854,10 @@ fn start_osc_server(
 // Update OSC history in the materials
 fn update_osc_system(
     time: Res<Time>,
-    materials: Res<Assets<ShekerShaderMaterial>>,
+    materials: Res<Assets<ShekereShaderMaterial>>,
     mut storage_buffers: ResMut<Assets<ShaderStorageBuffer>>,
-    mut osc_tracker: ResMut<OscHistoryTracker>,
-    quad_query: Query<&MeshMaterial2d<ShekerShaderMaterial>, With<FullscreenQuad>>,
+    osc_tracker: ResMut<OscHistoryTracker>,
+    quad_query: Query<&MeshMaterial2d<ShekereShaderMaterial>, With<FullscreenQuad>>,
 ) {
     let time_delta = time.delta_secs();
 
@@ -1991,21 +1993,20 @@ fn process_osc_packet(
 }
 
 // Generate dynamic shader file using ShaderPreprocessor
+#[allow(dead_code)]
 fn generate_dynamic_shader_file(
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Generating dynamic shader file using ShaderPreprocessor");
 
     // Clean up old dynamic shaders
     let assets_dir = "assets/shaders";
     if let Ok(entries) = fs::read_dir(assets_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                if let Some(filename) = entry.file_name().to_str() {
-                    if filename.starts_with("dynamic_shader") && filename.ends_with(".wgsl") {
-                        let _ = fs::remove_file(entry.path());
-                        log::info!("Removed old shader file: {}", filename);
-                    }
+        for entry in entries.flatten() {
+            if let Some(filename) = entry.file_name().to_str() {
+                if filename.starts_with("dynamic_shader") && filename.ends_with(".wgsl") {
+                    let _ = fs::remove_file(entry.path());
+                    log::info!("Removed old shader file: {}", filename);
                 }
             }
         }
@@ -2119,7 +2120,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {{
     let output_path = "assets/shaders/dynamic_shader.wgsl";
 
     fs::create_dir_all("assets/shaders")?;
-    let mut file = fs::File::create(&output_path)?;
+    let mut file = fs::File::create(output_path)?;
     file.write_all(combined_shader.as_bytes())?;
 
     log::info!(
@@ -2130,8 +2131,9 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {{
 }
 
 // Generate shader using ShaderPreprocessor
+#[allow(dead_code)]
 fn generate_shader_with_preprocessor(
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
 ) -> Result<String, Box<dyn std::error::Error>> {
     log::info!("Generating shader with ShaderPreprocessor");
 
@@ -2154,7 +2156,7 @@ fn generate_shader_with_preprocessor(
 }
 
 // Calculate hash of configuration for change detection
-fn calculate_config_hash(config: &crate::ShekerConfig) -> u64 {
+fn calculate_config_hash(config: &crate::ShekereConfig) -> u64 {
     let mut hasher = DefaultHasher::new();
 
     // Hash the pipeline configuration
@@ -2171,8 +2173,8 @@ fn calculate_config_hash(config: &crate::ShekerConfig) -> u64 {
 
 // System to check for shader reload
 fn check_shader_reload(
-    config: Res<crate::ShekerConfig>,
-    mut shader_state: Option<ResMut<DynamicShaderState>>,
+    config: Res<crate::ShekereConfig>,
+    shader_state: Option<ResMut<DynamicShaderState>>,
     mut shaders: ResMut<Assets<Shader>>,
 ) {
     let Some(mut state) = shader_state else {
@@ -2206,7 +2208,7 @@ fn check_shader_reload(
 
 // Generate shader source for a specific pass in multi-pass rendering
 fn generate_shader_for_pass(
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
     pass_index: usize,
 ) -> Result<String, Box<dyn std::error::Error>> {
     log::info!(
@@ -2351,7 +2353,7 @@ fn generate_shader_for_pass(
 
 // Generate clean shader source with modular WGSL inclusion
 fn generate_clean_shader_source(
-    config: &crate::ShekerConfig,
+    config: &crate::ShekereConfig,
 ) -> Result<String, Box<dyn std::error::Error>> {
     log::info!("Generating shader with modular WGSL inclusion for Material2d rendering");
 

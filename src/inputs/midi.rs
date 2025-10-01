@@ -53,12 +53,6 @@ pub(crate) struct MidiHistoryData {
     ring_buffer: HeapRb<MidiFrameData>,
 }
 
-pub struct MidiInputManager {
-    pub history_data: Arc<Mutex<MidiHistoryData>>,
-    pub buffer: wgpu::Buffer,
-    _connection: Option<MidiInputConnection<()>>,
-}
-
 impl MidiHistoryData {
     pub fn new() -> Self {
         Self {
@@ -113,142 +107,6 @@ impl MidiHistoryData {
         }
 
         MidiShaderData { notes, cc, note_on }
-    }
-}
-
-impl MidiInputManager {
-    pub const BINDING_INDEX: u32 = 2;
-
-    pub fn new(device: &wgpu::Device, config: &MidiConfig) -> Self {
-        let history_data = Arc::new(Mutex::new(MidiHistoryData::new()));
-
-        // Calculate buffer size for 512 frames (768KB total)
-        let single_frame_size = std::mem::size_of::<MidiShaderData>();
-        let _total_size = single_frame_size * 512; // 768KB total
-
-        // Create initial shader data
-        let initial_shader_data = history_data.lock().unwrap().prepare_shader_data();
-
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("MIDI History Buffer"),
-            contents: bytemuck::cast_slice(&initial_shader_data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let connection = if config.enabled {
-            Self::setup_midi_input(history_data.clone())
-        } else {
-            None
-        };
-
-        Self {
-            history_data,
-            buffer,
-            _connection: connection,
-        }
-    }
-
-    fn setup_midi_input(
-        history_data: Arc<Mutex<MidiHistoryData>>,
-    ) -> Option<MidiInputConnection<()>> {
-        let midi_in = MidiInput::new("shekere MIDI Input").ok()?;
-
-        // Get available ports
-        let in_ports = midi_in.ports();
-        if in_ports.is_empty() {
-            log::warn!("No MIDI input ports available");
-            return None;
-        }
-
-        // Use the first available port (could be made configurable)
-        let in_port = &in_ports[0];
-        let port_name = midi_in
-            .port_name(in_port)
-            .unwrap_or_else(|_| "Unknown".to_string());
-        log::info!("Connecting to MIDI port: {}", port_name);
-
-        let connection = midi_in.connect(
-            in_port,
-            "shekere-midi",
-            move |_timestamp, message, _| {
-                Self::handle_midi_message(&history_data, message);
-            },
-            (),
-        );
-
-        match connection {
-            Ok(conn) => {
-                log::info!("MIDI input connected successfully");
-                Some(conn)
-            }
-            Err(e) => {
-                log::error!("Failed to connect MIDI input: {}", e);
-                None
-            }
-        }
-    }
-
-    fn handle_midi_message(history_data: &Arc<Mutex<MidiHistoryData>>, message: &[u8]) {
-        if message.len() < 2 {
-            return;
-        }
-
-        let mut history_guard = history_data.lock().unwrap();
-        let current_frame = &mut history_guard.current_frame;
-
-        match message[0] & 0xF0 {
-            // Note On (0x90)
-            0x90 => {
-                if message.len() >= 3 {
-                    let note = message[1] as usize;
-                    let velocity = message[2] as f32 / 127.0;
-                    if note < 128 {
-                        // Set sustained note
-                        current_frame.notes[note] = velocity;
-                        // Set attack detection
-                        current_frame.note_on[note] = velocity;
-                    }
-                }
-            }
-            // Note Off (0x80)
-            0x80 => {
-                if message.len() >= 3 {
-                    let note = message[1] as usize;
-                    if note < 128 {
-                        current_frame.notes[note] = 0.0;
-                    }
-                }
-            }
-            // Control Change (0xB0)
-            0xB0 => {
-                if message.len() >= 3 {
-                    let controller = message[1] as usize;
-                    let value = message[2] as f32 / 127.0;
-                    if controller < 128 {
-                        current_frame.controls[controller] = value;
-                    }
-                }
-            }
-            _ => {
-                // Ignore other message types for now
-            }
-        }
-    }
-
-    pub fn update(&mut self) {
-        let mut history_guard = self.history_data.lock().unwrap();
-
-        // Push current frame to ring buffer for history
-        history_guard.push_current_frame();
-
-        // Clear note_on array for next frame (attack detection)
-        history_guard.current_frame.clear_note_on();
-    }
-
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
-        let history_guard = self.history_data.lock().unwrap();
-        let shader_data = history_guard.prepare_shader_data();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&shader_data));
     }
 }
 
@@ -563,21 +421,20 @@ mod tests {
         use crate::config::MidiConfig;
 
         // Create a device for testing (using wgpu test utilities)
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            ..Default::default()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .unwrap();
+        let adapter =
+            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+            .unwrap();
 
-        let (device, _queue) = pollster::block_on(adapter.request_device(
+        let (device, _queue) = futures::executor::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
@@ -619,21 +476,20 @@ mod tests {
     fn test_end_to_end_note_on_detection() {
         use crate::config::MidiConfig;
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            ..Default::default()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .unwrap();
+        let adapter =
+            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+            .unwrap();
 
-        let (device, _queue) = pollster::block_on(adapter.request_device(
+        let (device, _queue) = futures::executor::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
@@ -695,21 +551,20 @@ mod tests {
     fn test_multiple_note_on_events() {
         use crate::config::MidiConfig;
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            ..Default::default()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .unwrap();
+        let adapter =
+            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+            .unwrap();
 
-        let (device, _queue) = pollster::block_on(adapter.request_device(
+        let (device, _queue) = futures::executor::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
@@ -789,21 +644,20 @@ mod tests {
     fn test_chord_detection() {
         use crate::config::MidiConfig;
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            dx12_shader_compiler: Default::default(),
-            flags: wgpu::InstanceFlags::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::Automatic,
+            ..Default::default()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .unwrap();
+        let adapter =
+            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+            .unwrap();
 
-        let (device, _queue) = pollster::block_on(adapter.request_device(
+        let (device, _queue) = futures::executor::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
@@ -841,5 +695,188 @@ mod tests {
                 );
             }
         }
+    }
+}
+
+// ============================================================================
+// Bevy Integration
+// ============================================================================
+
+use bevy::prelude::*;
+
+/// MIDI input manager with Bevy resource support
+#[derive(Resource)]
+pub struct MidiInputManager {
+    pub history_data: Arc<Mutex<MidiHistoryData>>,
+    pub buffer: wgpu::Buffer,
+    pub buffer_needs_update: bool,
+    pub enabled: bool,
+    _connection: Option<MidiInputConnection<()>>,
+}
+
+impl MidiInputManager {
+    pub const BINDING_INDEX: u32 = 2;
+
+    pub fn new(device: &wgpu::Device, config: &MidiConfig) -> Self {
+        let history_data = Arc::new(Mutex::new(MidiHistoryData::new()));
+
+        // Calculate buffer size for 512 frames (768KB total)
+        let single_frame_size = std::mem::size_of::<MidiShaderData>();
+        let _total_size = single_frame_size * 512; // 768KB total
+
+        // Create initial shader data
+        let initial_shader_data = history_data.lock().unwrap().prepare_shader_data();
+
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("MIDI History Buffer"),
+            contents: bytemuck::cast_slice(&initial_shader_data),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let connection = if config.enabled {
+            Self::setup_midi_input(history_data.clone())
+        } else {
+            None
+        };
+
+        Self {
+            history_data,
+            buffer,
+            buffer_needs_update: config.enabled,
+            enabled: config.enabled,
+            _connection: connection,
+        }
+    }
+
+    fn setup_midi_input(
+        history_data: Arc<Mutex<MidiHistoryData>>,
+    ) -> Option<MidiInputConnection<()>> {
+        let midi_in = MidiInput::new("shekere MIDI Input").ok()?;
+
+        // Get available ports
+        let in_ports = midi_in.ports();
+        if in_ports.is_empty() {
+            log::warn!("No MIDI input ports available");
+            return None;
+        }
+
+        // Use the first available port (could be made configurable)
+        let in_port = &in_ports[0];
+        let port_name = midi_in
+            .port_name(in_port)
+            .unwrap_or_else(|_| "Unknown".to_string());
+        log::info!("Connecting to MIDI port: {}", port_name);
+
+        let connection = midi_in.connect(
+            in_port,
+            "shekere-midi",
+            move |_timestamp, message, _| {
+                Self::handle_midi_message(&history_data, message);
+            },
+            (),
+        );
+
+        match connection {
+            Ok(conn) => {
+                log::info!("MIDI input connected successfully");
+                Some(conn)
+            }
+            Err(e) => {
+                log::error!("Failed to connect MIDI input: {}", e);
+                None
+            }
+        }
+    }
+
+    fn handle_midi_message(history_data: &Arc<Mutex<MidiHistoryData>>, message: &[u8]) {
+        if message.len() < 2 {
+            return;
+        }
+
+        let mut history_guard = history_data.lock().unwrap();
+        let current_frame = &mut history_guard.current_frame;
+
+        match message[0] & 0xF0 {
+            // Note On (0x90)
+            0x90 => {
+                if message.len() >= 3 {
+                    let note = message[1] as usize;
+                    let velocity = message[2] as f32 / 127.0;
+                    if note < 128 {
+                        // Set sustained note
+                        current_frame.notes[note] = velocity;
+                        // Set attack detection
+                        current_frame.note_on[note] = velocity;
+                    }
+                }
+            }
+            // Note Off (0x80)
+            0x80 => {
+                if message.len() >= 3 {
+                    let note = message[1] as usize;
+                    if note < 128 {
+                        current_frame.notes[note] = 0.0;
+                    }
+                }
+            }
+            // Control Change (0xB0)
+            0xB0 => {
+                if message.len() >= 3 {
+                    let controller = message[1] as usize;
+                    let value = message[2] as f32 / 127.0;
+                    if controller < 128 {
+                        current_frame.controls[controller] = value;
+                    }
+                }
+            }
+            _ => {
+                // Ignore other message types for now
+            }
+        }
+    }
+
+    pub fn update(&mut self) {
+        let mut history_guard = self.history_data.lock().unwrap();
+
+        // Push current frame to ring buffer for history
+        history_guard.push_current_frame();
+
+        // Clear note_on array for next frame (attack detection)
+        history_guard.current_frame.clear_note_on();
+
+        self.buffer_needs_update = true;
+    }
+
+    pub fn write_buffer(&self, queue: &wgpu::Queue) {
+        let history_guard = self.history_data.lock().unwrap();
+        let shader_data = history_guard.prepare_shader_data();
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&shader_data));
+    }
+
+    pub fn get_shader_data(&self) -> Vec<MidiShaderData> {
+        self.history_data.lock().unwrap().prepare_shader_data()
+    }
+}
+
+/// Bevy system for updating MIDI input
+pub fn midi_input_system(mut midi_manager: Option<ResMut<MidiInputManager>>) {
+    if let Some(ref mut manager) = midi_manager {
+        manager.update();
+    }
+}
+
+/// Bevy startup system for initializing MIDI input
+pub fn setup_midi_input_system(_commands: Commands, config: Res<crate::ShekereConfig>) {
+    if let Some(_midi_config) = &config.config.midi {
+        log::info!("Setting up MIDI input system");
+
+        // TODO: Create MidiInputManager with proper device
+        // For now, create a placeholder that will be properly initialized
+        // when we integrate with Bevy's rendering system
+
+        // let midi_manager = MidiInputManager::new(device, midi_config);
+        // commands.insert_resource(midi_manager);
+
+        log::info!("MIDI input system setup completed (placeholder)");
     }
 }

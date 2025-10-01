@@ -1,7 +1,3 @@
-use std::collections::HashMap;
-use std::str::FromStr;
-
-use crate::config::OscConfig;
 use async_std::channel::{Receiver, unbounded};
 use async_std::net::{SocketAddrV4, UdpSocket};
 use async_std::task;
@@ -11,6 +7,8 @@ use ringbuf::{
     traits::{Consumer, Observer, RingBuffer},
 };
 use rosc::{OscMessage, OscPacket, OscType};
+use std::collections::HashMap;
+use std::str::FromStr;
 use wgpu::util::DeviceExt;
 
 const HISTORY_SIZE: usize = 512;
@@ -158,153 +156,6 @@ impl OscHistoryData {
     }
 }
 
-// Main OSC input manager
-pub struct OscInputManager<'a> {
-    history_data: OscHistoryData,
-    storage_buffer: Option<wgpu::Buffer>,
-    sound_map: HashMap<&'a str, i32>,
-    receiver: Receiver<OscPacket>,
-}
-
-impl<'a> OscInputManager<'a> {
-    pub const STORAGE_BINDING_INDEX: u32 = 0;
-
-    pub async fn new(device: &wgpu::Device, config: &'a OscConfig) -> Self {
-        let history_data = OscHistoryData::new();
-
-        // Create storage buffer for 512 frames of OSC history
-        let initial_data = history_data.prepare_shader_data();
-        let storage_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("OSC History Storage Buffer"),
-            contents: bytemuck::cast_slice(&initial_data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let mut sound_map = HashMap::new();
-        for s in &config.sound {
-            sound_map.insert(s.name.as_str(), s.id);
-        }
-
-        let receiver = osc_start(config.port).await;
-
-        Self {
-            history_data,
-            storage_buffer: Some(storage_buffer),
-            sound_map,
-            receiver,
-        }
-    }
-
-    pub fn storage_buffer(&self) -> Option<&wgpu::Buffer> {
-        self.storage_buffer.as_ref()
-    }
-
-    pub fn update(&mut self, queue: &wgpu::Queue) {
-        // Process incoming OSC messages
-        match self.receiver.try_recv() {
-            Ok(packet) => {
-                match packet {
-                    OscPacket::Message(msg) => {
-                        self.process_osc_message(&msg);
-                    }
-                    OscPacket::Bundle(bundle) => {
-                        // Process first message in bundle (matching original behavior)
-                        if let Some(OscPacket::Message(msg)) = bundle.content.first() {
-                            self.process_osc_message(msg);
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                // No new messages, apply time decay
-                self.elapse_time();
-            }
-        }
-
-        // Push current frame to history and update GPU buffer
-        self.history_data.push_current_frame();
-
-        if let Some(buffer) = &self.storage_buffer {
-            let shader_data = self.history_data.prepare_shader_data();
-            queue.write_buffer(buffer, 0, bytemuck::cast_slice(&shader_data));
-        }
-    }
-
-    fn process_osc_message(&mut self, msg: &OscMessage) {
-        // Parse OSC message parameters
-        let mut id: usize = 0;
-        let mut ttl = 0.0;
-        let mut note = 0.0;
-        let mut gain = 0.0;
-        let mut sound = 0;
-
-        for (i, v) in msg.args.iter().enumerate() {
-            if let OscType::String(val) = v {
-                match val.as_str() {
-                    "orbit" => {
-                        if let Some(OscType::Int(orbit)) = msg.args.get(i + 1) {
-                            id = *orbit as usize;
-                        }
-                    }
-                    "delta" => {
-                        if let Some(OscType::Float(delta)) = msg.args.get(i + 1) {
-                            ttl = *delta;
-                        }
-                    }
-                    "note" | "n" => {
-                        if let Some(OscType::Float(n)) = msg.args.get(i + 1) {
-                            note = *n;
-                        }
-                    }
-                    "gain" => {
-                        if let Some(OscType::Float(g)) = msg.args.get(i + 1) {
-                            gain = *g;
-                        }
-                    }
-                    "sound" | "s" => {
-                        if let Some(OscType::String(s)) = msg.args.get(i + 1) {
-                            if let Some(&sound_id) = self.sound_map.get(s.as_str()) {
-                                sound = sound_id;
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        // Update values if id is within bounds
-        if id < 16 {
-            self.history_data.update_sound(id, sound);
-            self.history_data.update_ttl(id, ttl);
-            self.history_data.update_note(id, note);
-            self.history_data.update_gain(id, gain);
-        }
-    }
-
-    fn elapse_time(&mut self) {
-        // Apply time decay to TTL values and clear expired entries
-        // Note: We don't have time_delta here, so we'll use a fixed small decay
-        let time_delta = 1.0 / 60.0; // Assuming 60 FPS
-
-        for i in 0..16 {
-            let current_ttl = self.history_data.current_frame.ttls[i];
-            let new_ttl = (current_ttl - time_delta).max(0.0);
-
-            if new_ttl <= 0.0 {
-                // Clear expired entry
-                self.history_data.update_sound(i, 0);
-                self.history_data.update_ttl(i, 0.0);
-                self.history_data.update_note(i, 0.0);
-                self.history_data.update_gain(i, 0.0);
-            } else {
-                // Update TTL
-                self.history_data.update_ttl(i, new_ttl);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +177,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn test_osc_frame_to_shader_data_conversion() {
         let mut frame = OscFrameData::default();
         frame.sounds[5] = 42;
@@ -539,5 +391,206 @@ mod tests {
                 self.history_data.update_gain(id, gain);
             }
         }
+    }
+}
+
+// ============================================================================
+// Bevy Integration
+// ============================================================================
+
+use bevy::prelude::*;
+
+/// OSC input manager with Bevy resource support (lifetime-free version)
+#[derive(Resource)]
+pub struct OscInputManager {
+    pub history_data: OscHistoryData,
+    pub storage_buffer: Option<wgpu::Buffer>,
+    pub buffer_needs_update: bool,
+    pub enabled: bool,
+    sound_map: HashMap<String, i32>,
+    receiver: Option<Receiver<OscPacket>>,
+}
+
+impl OscInputManager {
+    pub const STORAGE_BINDING_INDEX: u32 = 0;
+
+    pub fn new(device: &wgpu::Device, config: &crate::config::OscConfig) -> Self {
+        let history_data = OscHistoryData::new();
+
+        // Create storage buffer for 512 frames of OSC history
+        let initial_data = history_data.prepare_shader_data();
+        let storage_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("OSC History Storage Buffer"),
+            contents: bytemuck::cast_slice(&initial_data),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let mut sound_map = HashMap::new();
+        for s in &config.sound {
+            sound_map.insert(s.name.clone(), s.id);
+        }
+
+        // For Bevy, we'll handle async initialization differently
+        // For now, create without receiver
+        let receiver = None;
+
+        Self {
+            history_data,
+            storage_buffer: Some(storage_buffer),
+            buffer_needs_update: true,
+            enabled: true, // Always enabled if config exists
+            sound_map,
+            receiver,
+        }
+    }
+
+    pub fn storage_buffer(&self) -> Option<&wgpu::Buffer> {
+        self.storage_buffer.as_ref()
+    }
+
+    pub fn update(&mut self, queue: Option<&wgpu::Queue>) {
+        // Process incoming OSC messages
+        if let Some(ref receiver) = self.receiver {
+            match receiver.try_recv() {
+                Ok(packet) => {
+                    match packet {
+                        OscPacket::Message(msg) => {
+                            self.process_osc_message(&msg);
+                        }
+                        OscPacket::Bundle(bundle) => {
+                            // Process first message in bundle (matching original behavior)
+                            if let Some(OscPacket::Message(msg)) = bundle.content.first() {
+                                self.process_osc_message(msg);
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // No new messages, apply time decay
+                    self.elapse_time();
+                }
+            }
+        } else {
+            // No receiver, just apply time decay
+            self.elapse_time();
+        }
+
+        // Push current frame to history
+        self.history_data.push_current_frame();
+        self.buffer_needs_update = true;
+
+        // Update GPU buffer if queue is available
+        if let (Some(buffer), Some(q)) = (&self.storage_buffer, queue) {
+            let shader_data = self.history_data.prepare_shader_data();
+            q.write_buffer(buffer, 0, bytemuck::cast_slice(&shader_data));
+        }
+    }
+
+    fn process_osc_message(&mut self, msg: &OscMessage) {
+        // Parse OSC message parameters
+        let mut id: usize = 0;
+        let mut ttl = 0.0;
+        let mut note = 0.0;
+        let mut gain = 0.0;
+        let mut sound = 0;
+
+        for (i, v) in msg.args.iter().enumerate() {
+            if let OscType::String(val) = v {
+                match val.as_str() {
+                    "orbit" => {
+                        if let Some(OscType::Int(orbit)) = msg.args.get(i + 1) {
+                            id = *orbit as usize;
+                        }
+                    }
+                    "delta" => {
+                        if let Some(OscType::Float(delta)) = msg.args.get(i + 1) {
+                            ttl = *delta;
+                        }
+                    }
+                    "note" | "n" => {
+                        if let Some(OscType::Float(n)) = msg.args.get(i + 1) {
+                            note = *n;
+                        }
+                    }
+                    "gain" => {
+                        if let Some(OscType::Float(g)) = msg.args.get(i + 1) {
+                            gain = *g;
+                        }
+                    }
+                    "sound" | "s" => {
+                        if let Some(OscType::String(s)) = msg.args.get(i + 1) {
+                            if let Some(&sound_id) = self.sound_map.get(s.as_str()) {
+                                sound = sound_id;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Update values if id is within bounds
+        if id < 16 {
+            self.history_data.update_sound(id, sound);
+            self.history_data.update_ttl(id, ttl);
+            self.history_data.update_note(id, note);
+            self.history_data.update_gain(id, gain);
+        }
+    }
+
+    fn elapse_time(&mut self) {
+        // Apply time decay to TTL values and clear expired entries
+        // Note: We don't have time_delta here, so we'll use a fixed small decay
+        let time_delta = 1.0 / 60.0; // Assuming 60 FPS
+
+        for i in 0..16 {
+            let current_ttl = self.history_data.current_frame.ttls[i];
+            let new_ttl = (current_ttl - time_delta).max(0.0);
+
+            if new_ttl <= 0.0 {
+                // Clear expired entry
+                self.history_data.update_sound(i, 0);
+                self.history_data.update_ttl(i, 0.0);
+                self.history_data.update_note(i, 0.0);
+                self.history_data.update_gain(i, 0.0);
+            } else {
+                // Update TTL
+                self.history_data.update_ttl(i, new_ttl);
+            }
+        }
+    }
+
+    pub fn write_buffer(&self, queue: &wgpu::Queue) {
+        if let Some(buffer) = &self.storage_buffer {
+            let shader_data = self.history_data.prepare_shader_data();
+            queue.write_buffer(buffer, 0, bytemuck::cast_slice(&shader_data));
+        }
+    }
+
+    pub fn get_shader_data(&self) -> Vec<OscShaderData> {
+        self.history_data.prepare_shader_data()
+    }
+}
+
+/// Bevy system for updating OSC input
+pub fn osc_input_system(mut osc_manager: Option<ResMut<OscInputManager>>) {
+    if let Some(ref mut manager) = osc_manager {
+        manager.update(None);
+    }
+}
+
+/// Bevy startup system for initializing OSC input
+pub fn setup_osc_input_system(_commands: Commands, config: Res<crate::ShekereConfig>) {
+    if let Some(_osc_config) = &config.config.osc {
+        log::info!("Setting up OSC input system");
+
+        // TODO: Create OscInputManager with proper device
+        // For now, create a placeholder that will be properly initialized
+        // when we integrate with Bevy's rendering system
+
+        // let osc_manager = OscInputManager::new(device, osc_config);
+        // commands.insert_resource(osc_manager);
+
+        log::info!("OSC input system setup completed (placeholder)");
     }
 }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use clap::Parser;
-use shekere::{Config, ShekerConfig, ShekerPlugin};
+use shekere::{Config, ShekereConfig, ShekerePlugin};
 use std::path::Path;
 
 #[derive(Debug, Parser)]
@@ -29,7 +29,7 @@ fn main() {
     println!("Creating Bevy app...");
 
     App::new()
-        .insert_resource(ShekerConfig {
+        .insert_resource(ShekereConfig {
             config: conf.clone(),
             config_dir: conf_dir,
         })
@@ -46,7 +46,7 @@ fn main() {
                 }),
                 ..default()
             }),
-            ShekerPlugin,
+            ShekerePlugin,
         ))
         .run();
 
