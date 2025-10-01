@@ -418,34 +418,11 @@ mod tests {
     #[test]
     fn test_note_on_frame_clearing() {
         use crate::config::MidiConfig;
+        use bevy::render::storage::ShaderStorageBuffer;
 
-        // Create a device for testing (using wgpu test utilities)
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter =
-            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-            .unwrap();
-
-        let (device, _queue) = futures::executor::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        ))
-        .unwrap();
-
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
         let config = MidiConfig { enabled: false };
-        let mut midi_input_manager = MidiInputManager::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(buffer_handle, &config);
 
         // Set note_on value directly
         {
@@ -474,33 +451,12 @@ mod tests {
     #[test]
     fn test_end_to_end_note_on_detection() {
         use crate::config::MidiConfig;
+        use bevy::render::storage::ShaderStorageBuffer;
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter =
-            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-            .unwrap();
-
-        let (device, _queue) = futures::executor::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        ))
-        .unwrap();
-
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
         let config = MidiConfig { enabled: false };
-        let mut midi_input_manager = MidiInputManager::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(buffer_handle, &config);
 
         // Simulate Note On message processing
         let note_on_message = [0x90, 60, 100]; // Channel 1, Middle C, Velocity 100
@@ -549,33 +505,12 @@ mod tests {
     #[test]
     fn test_multiple_note_on_events() {
         use crate::config::MidiConfig;
+        use bevy::render::storage::ShaderStorageBuffer;
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter =
-            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-            .unwrap();
-
-        let (device, _queue) = futures::executor::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        ))
-        .unwrap();
-
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
         let config = MidiConfig { enabled: false };
-        let mut midi_input_manager = MidiInputManager::new(&device, &config);
+        let mut midi_input_manager = MidiInputManager::new(buffer_handle, &config);
 
         // Send multiple Note On messages
         let notes = [
@@ -642,33 +577,12 @@ mod tests {
     #[test]
     fn test_chord_detection() {
         use crate::config::MidiConfig;
+        use bevy::render::storage::ShaderStorageBuffer;
 
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..Default::default()
-        });
-
-        let adapter =
-            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-            .unwrap();
-
-        let (device, _queue) = futures::executor::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: wgpu::MemoryHints::default(),
-            },
-            None,
-        ))
-        .unwrap();
-
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
         let config = MidiConfig { enabled: false };
-        let midi_input_manager = MidiInputManager::new(&device, &config);
+        let midi_input_manager = MidiInputManager::new(buffer_handle, &config);
 
         // Send a C major chord simultaneously (C-E-G)
         let chord_notes = [60, 64, 67]; // C, E, G

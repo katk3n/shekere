@@ -225,8 +225,11 @@ mod tests {
     // MouseInputManager tests
     #[test]
     fn test_mouse_input_manager_creation() {
-        let device = create_test_device();
-        let manager = MouseInputManager::new(&device);
+        use bevy::render::storage::ShaderStorageBuffer;
+
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
+        let manager = MouseInputManager::new(buffer_handle);
 
         // Verify history data is initialized
         if let Ok(history) = manager.history_data.lock() {
@@ -237,8 +240,11 @@ mod tests {
 
     #[test]
     fn test_mouse_input_manager_update() {
-        let device = create_test_device();
-        let mut manager = MouseInputManager::new(&device);
+        use bevy::render::storage::ShaderStorageBuffer;
+
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
+        let mut manager = MouseInputManager::new(buffer_handle);
 
         let position = bevy::math::Vec2::new(100.0, 200.0);
         manager.update_position(position);
