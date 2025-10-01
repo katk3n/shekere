@@ -620,7 +620,7 @@ use bevy::prelude::*;
 /// MIDI input manager with Bevy resource support
 #[derive(Resource)]
 pub struct MidiInputManager {
-    pub history_data: Arc<Mutex<MidiHistoryData>>,
+    pub(crate) history_data: Arc<Mutex<MidiHistoryData>>,
     pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub enabled: bool,

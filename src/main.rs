@@ -15,18 +15,10 @@ struct Args {
 fn main() {
     env_logger::init();
 
-    println!("Starting shekere...");
     let args = Args::parse();
-    println!("Parsed args: {:?}", args);
-
     let conf_str = std::fs::read_to_string(&args.config_file).unwrap();
     let conf: Config = toml::from_str(&conf_str).unwrap();
     let conf_dir = Path::new(&args.config_file).parent().unwrap().to_path_buf();
-
-    println!("Configuration loaded successfully");
-    println!("Window size: {}x{}", conf.window.width, conf.window.height);
-
-    println!("Creating Bevy app...");
 
     App::new()
         .insert_resource(ShekereConfig {
@@ -49,6 +41,4 @@ fn main() {
             ShekerePlugin,
         ))
         .run();
-
-    println!("App finished.");
 }

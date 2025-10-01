@@ -16,7 +16,6 @@ bevy = { version = "0.16.1", default-features = false, features = [
     "bevy_sprite",          # 2D sprite rendering
     "x11"                   # Platform support
 ] }
-winit = { version = "0.29", features = ["rwh_05"] }  # Temporary - will be removed after migration
 env_logger = "0.10"
 log = "0.4"
 wgpu = "24.0"

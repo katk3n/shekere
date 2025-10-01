@@ -5,7 +5,6 @@ use ringbuf::{
     traits::{Consumer, RingBuffer},
 };
 use std::sync::{Arc, Mutex};
-use winit::dpi::PhysicalPosition;
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
@@ -16,12 +15,6 @@ pub struct MouseFrameData {
 impl MouseFrameData {
     pub fn new(x: f32, y: f32) -> Self {
         Self { position: [x, y] }
-    }
-
-    fn from_physical_position(position: &PhysicalPosition<f64>) -> Self {
-        Self {
-            position: [position.x as f32, position.y as f32],
-        }
     }
 }
 
@@ -98,9 +91,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mouse_frame_data_from_physical_position() {
-        let physical_pos = PhysicalPosition::new(150.0, 250.0);
-        let frame = MouseFrameData::from_physical_position(&physical_pos);
+    fn test_mouse_frame_data_from_values() {
+        let frame = MouseFrameData::new(150.0, 250.0);
         assert_eq!(frame.position, [150.0, 250.0]);
     }
 
@@ -328,8 +320,7 @@ impl MouseInputManager {
             // Push the previous frame to history
             history.push_current_frame();
             // Update current frame with new position
-            let physical_position = PhysicalPosition::new(position.x as f64, position.y as f64);
-            history.current_frame = MouseFrameData::from_physical_position(&physical_position);
+            history.current_frame = MouseFrameData::new(position.x, position.y);
             self.buffer_needs_update = true;
         }
     }

@@ -352,7 +352,7 @@ use bevy::prelude::*;
 /// Note: Stream and Consumer are not Send+Sync, so we need unsafe impl
 #[derive(Resource)]
 pub struct SpectrumInputManager {
-    pub history_data: SpectrumHistoryData,
+    pub(crate) history_data: SpectrumHistoryData,
     pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub consumer: Caching<Arc<HeapRb<f32>>, false, true>,

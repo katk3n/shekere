@@ -19,7 +19,7 @@ async fn osc_start(port: u32) -> Receiver<OscPacket> {
         Err(_) => panic!("Error"),
     };
     let sock = UdpSocket::bind(addr).await.unwrap();
-    println!("[OSC] Listening to {}", addr);
+    log::info!("[OSC] Listening to {}", addr);
     let mut buf = [0u8; rosc::decoder::MTU];
     let (sender, receiver) = unbounded();
     task::spawn(async move {
@@ -402,7 +402,7 @@ use bevy::prelude::*;
 /// OSC input manager with Bevy resource support (lifetime-free version)
 #[derive(Resource)]
 pub struct OscInputManager {
-    pub history_data: OscHistoryData,
+    pub(crate) history_data: OscHistoryData,
     pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub enabled: bool,
@@ -439,7 +439,7 @@ impl OscInputManager {
         }
     }
 
-    pub fn update(&mut self, queue: Option<&wgpu::Queue>) {
+    pub fn update(&mut self, _queue: Option<&wgpu::Queue>) {
         // Process incoming OSC messages
         if let Some(ref receiver) = self.receiver {
             match receiver.try_recv() {

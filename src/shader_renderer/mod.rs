@@ -14,17 +14,19 @@ use materials::{ShekereShaderMaterial, ShekereShaderMaterialPass0, ShekereShader
 use setup::setup_dynamic_shader_system;
 use state::{MultiPassState, PersistentPassState};
 
-// Re-export for external use
-pub use generation::{
+// Re-export for internal use only
+pub(crate) use generation::{
     check_multipass_shader_reload, check_persistent_shader_reload, check_shader_reload,
 };
-pub use setup::{update_multipass_uniforms, update_persistent_uniforms, update_shader_uniforms};
+pub(crate) use setup::{
+    update_multipass_uniforms, update_persistent_uniforms, update_shader_uniforms,
+};
 pub use state::InputBufferHandles;
 
 /// Plugin for shader rendering with dynamic loading and multi-pass support
-pub struct SimpleShaderRenderPlugin;
+pub struct ShaderRenderPlugin;
 
-impl Plugin for SimpleShaderRenderPlugin {
+impl Plugin for ShaderRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             Material2dPlugin::<ShekereShaderMaterial>::default(),
