@@ -330,7 +330,8 @@ impl Plugin for SimpleShaderRenderPlugin {
             Update,
             (
                 update_shader_uniforms,
-                update_multipass_uniforms,
+                update_multipass_uniforms.run_if(resource_exists::<MultiPassState>),
+                update_persistent_uniforms.run_if(resource_exists::<PersistentPassState>),
                 update_mouse_history,
                 update_midi_system,
                 update_spectrum_system,
@@ -358,6 +359,17 @@ struct MultiPassState {
     intermediate_textures: Vec<Handle<Image>>,
     pass_shader_handles: Vec<Handle<Shader>>,
     pass_entities: Vec<Entity>,
+}
+
+// Resource to track persistent texture rendering state (trail effects)
+#[derive(Resource)]
+struct PersistentPassState {
+    frame_count: u64,
+    textures: [Handle<Image>; 2], // Double-buffered textures for ping-pong
+    entity: Entity,               // Trail rendering entity
+    camera_a: Entity,             // Camera A: renders to texture_a
+    camera_b: Entity,             // Camera B: renders to texture_b
+    display_entity: Entity,       // Display entity showing the result
 }
 
 // Component to mark render pass entities
@@ -392,6 +404,19 @@ impl Material2d for ShekerShaderMaterial {
     fn fragment_shader() -> ShaderRef {
         // Always return our fixed dynamic shader handle
         DYNAMIC_SHADER_HANDLE.into()
+    }
+
+    fn specialize(
+        descriptor: &mut RenderPipelineDescriptor,
+        _layout: &MeshVertexBufferLayoutRef,
+        _key: Material2dKey<Self>,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        // Set custom entry point name to match generated shader
+        // Note: generate_clean_shader_source replaces "fs_main" with "fragment"
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.entry_point = "fragment".into();
+        }
+        Ok(())
     }
 }
 // Pass-specific material types for multi-pass rendering
@@ -431,7 +456,8 @@ impl Material2d for ShekerShaderMaterialPass0 {
         _layout: &MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // Set custom entry point name to match user shader
+        // Set custom entry point name to match generated shader
+        // Note: generate_shader_for_pass does NOT replace "fs_main"
         if let Some(fragment) = descriptor.fragment.as_mut() {
             fragment.entry_point = "fs_main".into();
         }
@@ -468,7 +494,8 @@ impl Material2d for ShekerShaderMaterialPass1 {
         _layout: &MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        // Set custom entry point name to match user shader
+        // Set custom entry point name to match generated shader
+        // Note: generate_shader_for_pass does NOT replace "fs_main"
         if let Some(fragment) = descriptor.fragment.as_mut() {
             fragment.entry_point = "fs_main".into();
         }
@@ -504,11 +531,17 @@ fn setup_dynamic_shader_system(
 
     let pass_count = config.config.pipeline.len();
     let is_multipass = pass_count > 1;
+    let is_persistent = pass_count == 1 && config.config.pipeline[0].persistent.unwrap_or(false);
+    let is_ping_pong = pass_count == 1 && config.config.pipeline[0].ping_pong.unwrap_or(false);
 
     log::info!(
         "Rendering mode: {} ({} passes)",
         if is_multipass {
             "Multi-pass"
+        } else if is_persistent {
+            "Persistent (trail effect)"
+        } else if is_ping_pong {
+            "Ping-pong (feedback effect)"
         } else {
             "Single-pass"
         },
@@ -535,6 +568,22 @@ fn setup_dynamic_shader_system(
             &mut materials,
             materials_pass0,
             materials_pass1,
+            &mut shaders,
+            &mut images,
+            &config,
+            &window,
+            mouse_buffer_handle.clone(),
+            midi_buffer_handle.clone(),
+            spectrum_buffer_handle.clone(),
+            osc_buffer_handle.clone(),
+        );
+    } else if is_persistent || is_ping_pong {
+        setup_persistent_rendering(
+            &mut commands,
+            &mut meshes,
+            materials_pass0,
+            materials_pass1,
+            &mut materials, // Add single-pass material
             &mut shaders,
             &mut images,
             &config,
@@ -874,6 +923,193 @@ fn setup_multipass_rendering(
     log::info!("Multi-pass rendering setup completed with 2 cameras and RenderLayers");
 }
 
+// Setup persistent texture rendering (trail effects with double-buffering)
+// Uses two cameras alternating activation for ping-pong buffering
+#[allow(clippy::too_many_arguments)]
+fn setup_persistent_rendering(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    _materials_pass0: ResMut<Assets<ShekerShaderMaterialPass0>>,
+    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
+    materials: &mut ResMut<Assets<ShekerShaderMaterial>>,
+    shaders: &mut ResMut<Assets<Shader>>,
+    images: &mut ResMut<Assets<Image>>,
+    config: &crate::ShekerConfig,
+    window: &Window,
+    mouse_buffer_handle: Handle<ShaderStorageBuffer>,
+    midi_buffer_handle: Handle<ShaderStorageBuffer>,
+    spectrum_buffer_handle: Handle<ShaderStorageBuffer>,
+    osc_buffer_handle: Handle<ShaderStorageBuffer>,
+) {
+    log::info!("Setting up persistent texture rendering with alternating cameras");
+
+    // Create TWO textures for ping-pong buffering
+    let texture_a =
+        create_intermediate_render_texture(window.width() as u32, window.height() as u32);
+    let texture_b =
+        create_intermediate_render_texture(window.width() as u32, window.height() as u32);
+    let handle_a = images.add(texture_a);
+    let handle_b = images.add(texture_b);
+    log::info!("Created two textures for ping-pong buffering");
+
+    // Generate trail shader
+    let shader_source = match generate_clean_shader_source(config) {
+        Ok(source) => {
+            log::info!(
+                "Successfully generated persistent shader ({} chars)",
+                source.len()
+            );
+            source
+        }
+        Err(e) => {
+            log::error!("Failed to generate persistent shader: {}", e);
+            return;
+        }
+    };
+
+    let shader = Shader::from_wgsl(shader_source, "persistent_shader.wgsl");
+    shaders.insert(&DYNAMIC_SHADER_HANDLE, shader);
+    log::info!("Created persistent shader");
+
+    // Create simple pass-through shader for display
+    let display_shader_source = r#"
+#import bevy_sprite::mesh2d_vertex_output::VertexOutput
+
+@group(2) @binding(0) var<uniform> resolution: vec2<f32>;
+@group(2) @binding(1) var<uniform> duration: f32;
+@group(2) @binding(2) var<storage, read> mouse_history: array<vec4<f32>>;
+@group(2) @binding(3) var<storage, read> spectrum_history: array<vec4<f32>>;
+@group(2) @binding(4) var<storage, read> osc_history: array<vec4<f32>>;
+@group(2) @binding(5) var<storage, read> midi_history: array<vec4<f32>>;
+@group(2) @binding(6) var previous_pass: texture_2d<f32>;
+@group(2) @binding(7) var texture_sampler: sampler;
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Simple pass-through: display the texture
+    return textureSample(previous_pass, texture_sampler, in.uv);
+}
+"#;
+
+    let display_shader =
+        Shader::from_wgsl(display_shader_source.to_string(), "persistent_display.wgsl");
+    shaders.insert(&PASS_1_SHADER_HANDLE, display_shader);
+    log::info!("Created pass-through display shader");
+
+    // Create fullscreen quad mesh
+    let mesh = create_fullscreen_quad_mesh();
+    let mesh_handle = meshes.add(mesh);
+
+    // Create material for trail rendering (reads from texture_b initially)
+    let material_trail = materials.add(ShekerShaderMaterial {
+        resolution: Vec2::new(window.width(), window.height()),
+        duration: 0.0,
+        mouse_history: mouse_buffer_handle.clone(),
+        spectrum_history: spectrum_buffer_handle.clone(),
+        osc_history: osc_buffer_handle.clone(),
+        midi_history: midi_buffer_handle.clone(),
+        previous_pass_texture: Some(handle_b.clone()),
+    });
+
+    // Create material for display (reads from texture_a initially)
+    let material_display = materials_pass1.add(ShekerShaderMaterialPass1 {
+        resolution: Vec2::new(window.width(), window.height()),
+        duration: 0.0,
+        mouse_history: mouse_buffer_handle,
+        spectrum_history: spectrum_buffer_handle,
+        osc_history: osc_buffer_handle,
+        midi_history: midi_buffer_handle,
+        previous_pass_texture: Some(handle_a.clone()),
+    });
+
+    // Spawn trail entity (visible to cameras A and B)
+    let entity_trail = commands
+        .spawn((
+            Mesh2d(mesh_handle.clone()),
+            MeshMaterial2d(material_trail),
+            Transform::from_xyz(0.0, 0.0, 0.0).with_scale(Vec3::new(
+                window.width(),
+                window.height(),
+                1.0,
+            )),
+            FullscreenQuad,
+            RenderLayers::layer(1), // Visible to render cameras
+        ))
+        .id();
+
+    // Spawn display entity (visible to display camera only) - uses Pass1 material
+    let entity_display = commands
+        .spawn((
+            Mesh2d(mesh_handle),
+            MeshMaterial2d(material_display),
+            Transform::from_xyz(0.0, 0.0, 0.0).with_scale(Vec3::new(
+                window.width(),
+                window.height(),
+                1.0,
+            )),
+            FullscreenQuad,
+            RenderLayers::layer(2), // Visible to display camera
+        ))
+        .id();
+
+    log::info!("Spawned trail entity and display entity");
+
+    // Camera A: Renders trail entity to texture_a (initially active)
+    let camera_a = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                order: 0,
+                is_active: true, // Start active
+                target: RenderTarget::Image(handle_a.clone().into()),
+                clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+                ..default()
+            },
+            RenderLayers::layer(1),
+        ))
+        .id();
+
+    // Camera B: Renders trail entity to texture_b (initially inactive)
+    let camera_b = commands
+        .spawn((
+            Camera2d,
+            Camera {
+                order: 0,
+                is_active: false, // Start inactive
+                target: RenderTarget::Image(handle_b.clone().into()),
+                clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+                ..default()
+            },
+            RenderLayers::layer(1),
+        ))
+        .id();
+
+    // Display Camera: Renders display entity to screen
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+            ..default()
+        },
+        RenderLayers::layer(2),
+    ));
+
+    log::info!("Created alternating cameras A & B, and display camera");
+
+    // Store state
+    commands.insert_resource(PersistentPassState {
+        frame_count: 0,
+        textures: [handle_a, handle_b],
+        entity: entity_trail,
+        camera_a,
+        camera_b,
+        display_entity: entity_display,
+    });
+
+    log::info!("Persistent rendering setup completed with alternating camera architecture");
+}
+
 // Create fullscreen quad mesh
 fn create_fullscreen_quad_mesh() -> Mesh {
     let mut mesh = Mesh::new(
@@ -988,6 +1224,82 @@ fn update_multipass_uniforms(
         if let Some(material) = materials_pass1.get_mut(&material_handle.0) {
             material.resolution = Vec2::new(window.width(), window.height());
             material.duration = elapsed;
+        }
+    }
+}
+
+// Update persistent texture shader uniforms every frame with double-buffering
+// Alternates camera activation and swaps textures for ping-pong effect
+fn update_persistent_uniforms(
+    time: Res<Time>,
+    windows: Query<&Window>,
+    mut persistent_state: ResMut<PersistentPassState>,
+    mut materials: ResMut<Assets<ShekerShaderMaterial>>,
+    mut materials_pass1: ResMut<Assets<ShekerShaderMaterialPass1>>,
+    mut cameras: Query<&mut Camera>,
+    query_trail: Query<&MeshMaterial2d<ShekerShaderMaterial>>,
+    query_display: Query<&MeshMaterial2d<ShekerShaderMaterialPass1>>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    let elapsed = time.elapsed_secs();
+
+    // Update frame count
+    persistent_state.frame_count += 1;
+    let frame = persistent_state.frame_count;
+
+    // Determine which camera should be active this frame
+    // Even frames: Camera A active (writes to texture_a, reads from texture_b)
+    // Odd frames: Camera B active (writes to texture_b, reads from texture_a)
+    let use_camera_a = frame % 2 == 0;
+
+    if frame <= 3 {
+        log::info!(
+            "Persistent frame {}: using camera {}",
+            frame,
+            if use_camera_a { "A" } else { "B" }
+        );
+    }
+
+    // Toggle camera activation
+    if let Ok(mut cam_a) = cameras.get_mut(persistent_state.camera_a) {
+        cam_a.is_active = use_camera_a;
+    }
+    if let Ok(mut cam_b) = cameras.get_mut(persistent_state.camera_b) {
+        cam_b.is_active = !use_camera_a;
+    }
+
+    // Determine texture indices
+    let (write_index, read_index) = if use_camera_a {
+        (0, 1) // Camera A writes to texture_a (0), reads from texture_b (1)
+    } else {
+        (1, 0) // Camera B writes to texture_b (1), reads from texture_a (0)
+    };
+
+    // Update trail entity material (reads from the texture NOT being written to)
+    if let Ok(material_handle) = query_trail.get(persistent_state.entity) {
+        if let Some(material) = materials.get_mut(&material_handle.0) {
+            material.resolution = Vec2::new(window.width(), window.height());
+            material.duration = elapsed;
+            material.previous_pass_texture = Some(persistent_state.textures[read_index].clone());
+
+            if frame <= 3 {
+                log::info!("Trail entity: reading from texture {}", read_index);
+            }
+        }
+    }
+
+    // Update display entity material (reads from the texture being written to)
+    if let Ok(material_handle) = query_display.get(persistent_state.display_entity) {
+        if let Some(material) = materials_pass1.get_mut(&material_handle.0) {
+            material.resolution = Vec2::new(window.width(), window.height());
+            material.duration = elapsed;
+            material.previous_pass_texture = Some(persistent_state.textures[write_index].clone());
+
+            if frame <= 3 {
+                log::info!("Display entity: reading from texture {}", write_index);
+            }
         }
     }
 }
@@ -1932,15 +2244,19 @@ fn generate_shader_for_pass(
         fragment_source.contains("SamplePreviousPass") || fragment_source.contains("previous_pass");
 
     // For multi-pass: passes after the first always have access to previous_pass texture
+    // For persistent: the single pass always has access to previous_pass texture (for trail effects)
     let is_multipass = config.config.pipeline.len() > 1;
-    let enable_texture_sampling = is_multipass && pass_index > 0;
+    let is_persistent =
+        config.config.pipeline.len() == 1 && shader_config.persistent.unwrap_or(false);
+    let enable_texture_sampling = (is_multipass && pass_index > 0) || is_persistent;
 
     log::info!(
-        "Pass {}: uses_texture={}, enable_texture_sampling={}, is_multipass={}",
+        "Pass {}: uses_texture={}, enable_texture_sampling={}, is_multipass={}, is_persistent={}",
         pass_index,
         uses_texture,
         enable_texture_sampling,
-        is_multipass
+        is_multipass,
+        is_persistent
     );
 
     // Start with Bevy import
@@ -2114,7 +2430,9 @@ fn generate_clean_shader_source(
     let processed_shader = fragment_source
         .replace("fn fs_main(", "fn fragment(")
         .replace("in.position.xy", "(in.uv * Window.resolution)")
-        .replace("mesh.position.xy", "(mesh.uv * Window.resolution)");
+        .replace("mesh.position.xy", "(mesh.uv * Window.resolution)")
+        .replace("in.tex_coords", "in.uv")
+        .replace(".tex_coords", ".uv");
 
     shader_parts.push(processed_shader);
 

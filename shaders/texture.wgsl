@@ -10,9 +10,7 @@
 
 // Multi-pass texture helper functions
 fn SamplePreviousPass(uv: vec2<f32>) -> vec4<f32> {
-    // Fix Y-axis flipping for persistent textures
-    let corrected_uv = vec2<f32>(uv.x, 1.0 - uv.y);
-    return textureSample(previous_pass, texture_sampler, corrected_uv);
+    return textureSample(previous_pass, texture_sampler, uv);
 }
 
 fn SamplePreviousPassOffset(uv: vec2<f32>, offset: vec2<f32>) -> vec4<f32> {
