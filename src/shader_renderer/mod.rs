@@ -15,7 +15,9 @@ use setup::setup_dynamic_shader_system;
 use state::{MultiPassState, PersistentPassState};
 
 // Re-export for external use
-pub use generation::check_shader_reload;
+pub use generation::{
+    check_multipass_shader_reload, check_persistent_shader_reload, check_shader_reload,
+};
 pub use setup::{update_multipass_uniforms, update_persistent_uniforms, update_shader_uniforms};
 pub use state::InputBufferHandles;
 
@@ -37,6 +39,8 @@ impl Plugin for SimpleShaderRenderPlugin {
                 update_multipass_uniforms.run_if(resource_exists::<MultiPassState>),
                 update_persistent_uniforms.run_if(resource_exists::<PersistentPassState>),
                 check_shader_reload,
+                check_multipass_shader_reload.run_if(resource_exists::<MultiPassState>),
+                check_persistent_shader_reload.run_if(resource_exists::<PersistentPassState>),
             ),
         );
     }

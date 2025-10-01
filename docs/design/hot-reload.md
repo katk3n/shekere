@@ -12,9 +12,10 @@ The hot reload system enables live coding and development workflows by automatic
 - Supports multiple shader files simultaneously
 
 ### Error Safety
-- WGSL compilation errors are caught using `std::panic::catch_unwind()`
-- Pipeline creation errors are handled gracefully
-- Error handling ensures the application never crashes due to shader issues
+- **Shader validation** performed before compilation (syntax checks)
+- **Existing shader protection**: Failed reloads keep the current working shader
+- **Pipeline creation errors** are handled gracefully
+- Error handling ensures the application **never crashes** and **never shows a black screen** due to shader issues
 
 ### Graceful Degradation
 - On compilation error, the existing render pipeline is maintained
@@ -63,18 +64,60 @@ Or simply omit the `[hot_reload]` section entirely (defaults to disabled).
 
 ## Implementation Details
 
+### Bevy ECS Architecture (v0.13.0+)
+
+The hot reload system is fully integrated with Bevy's ECS architecture:
+
+#### Resource-Based Management
+- **`HotReloaderResource`**: Single-pass hot reload state
+- **`MultiPassState`**: Multi-pass hot reload with per-pass shader tracking
+- **`PersistentPassState`**: Persistent/ping-pong rendering hot reload
+
+#### System Integration
+Three dedicated systems run in Bevy's Update schedule:
+1. **`check_shader_reload()`**: Single-pass shader hot reload
+2. **`check_multipass_shader_reload()`**: Multi-pass shader hot reload (runs conditionally)
+3. **`check_persistent_shader_reload()`**: Persistent/ping-pong shader hot reload (runs conditionally)
+
+#### File Watching
+- Uses `notify` crate with `HotReloader` struct
+- Separate `HotReloader` instance for each rendering mode
+- File changes detected via `check_for_changes()` method
+
+#### Shader Regeneration with Validation
+- **Single-pass**:
+  - Regenerates via `generate_clean_shader_source()`
+  - Validates before applying
+  - Checks existing shader exists before overwriting
+- **Multi-pass**:
+  - Regenerates all passes via `generate_shader_for_pass()`
+  - Validates ALL passes before updating ANY (atomic operation)
+  - Maintains pipeline consistency
+- **Persistent**:
+  - Regenerates via `generate_clean_shader_source()`
+  - Validates before applying
+  - Preserves texture buffer state on errors
+
+#### Validation Checks
+The `validate_shader_source()` function performs:
+1. **Empty source check**: Ensures shader has content
+2. **Fragment function check**: Verifies `fn fragment()` or `fn fs_main()` exists
+3. **Brace balance check**: Validates matching `{` and `}` counts
+4. **Required imports check**: Ensures `VertexOutput` is present
+
 ### Thread Safety
-- File watching runs on separate threads
+- File watching runs on separate threads (via `notify` crate)
 - Shader compilation is isolated from render thread
-- Thread-safe communication between file watcher and render loop
+- Thread-safe communication between file watcher and Bevy systems
 
 ### Memory Management
-- Old pipelines are properly cleaned up after successful recompilation
+- Old shader assets replaced via `shaders.insert(&handle, new_shader)`
+- Bevy's asset system handles cleanup automatically
 - Resource management prevents memory leaks during development cycles
 
 ### Integration with State Management
-- Hot reload integrates with the central State management system
-- Pipeline updates are coordinated with uniform updates
+- Hot reload integrates with Bevy's resource system
+- Pipeline updates coordinated with uniform updates via Update schedule
 - Maintains consistency between shader and uniform data
 
 ## Multi-Pass Hot Reload Support

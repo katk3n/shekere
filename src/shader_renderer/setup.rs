@@ -252,6 +252,34 @@ fn setup_singlepass_rendering(
     commands.spawn(Camera2d);
 
     log::info!("Spawned standard 2D camera");
+
+    // Initialize hot reloader if enabled
+    let hot_reloader = if config
+        .config
+        .hot_reload
+        .as_ref()
+        .map_or(false, |hr| hr.enabled)
+    {
+        let shader_path = config.config_dir.join(&config.config.pipeline[0].file);
+        match crate::hot_reload::HotReloader::new(&shader_path) {
+            Ok(reloader) => {
+                log::info!("✅ Hot reload enabled for: {:?}", shader_path);
+                Some(reloader)
+            }
+            Err(e) => {
+                log::warn!("❌ Failed to initialize hot reload: {}", e);
+                None
+            }
+        }
+    } else {
+        log::info!("Hot reload disabled in configuration");
+        None
+    };
+
+    commands.insert_resource(super::state::HotReloaderResource {
+        reloader: hot_reloader,
+        shader_paths: vec![config.config_dir.join(&config.config.pipeline[0].file)],
+    });
 }
 
 // Setup multi-pass rendering with intermediate textures
@@ -426,12 +454,46 @@ fn setup_multipass_rendering(
 
     log::info!("Created 2 cameras: Pass 0 (renders to texture) -> Pass 1 (renders to screen)");
 
+    // Initialize hot reloader for multi-pass if enabled
+    let shader_paths: Vec<std::path::PathBuf> = config
+        .config
+        .pipeline
+        .iter()
+        .map(|p| config.config_dir.join(&p.file))
+        .collect();
+
+    let hot_reloader = if config
+        .config
+        .hot_reload
+        .as_ref()
+        .map_or(false, |hr| hr.enabled)
+    {
+        match crate::hot_reload::HotReloader::new_multi_file(shader_paths.clone()) {
+            Ok(reloader) => {
+                log::info!(
+                    "✅ Hot reload enabled for {} shader files",
+                    shader_paths.len()
+                );
+                Some(reloader)
+            }
+            Err(e) => {
+                log::warn!("❌ Failed to initialize multi-pass hot reload: {}", e);
+                None
+            }
+        }
+    } else {
+        log::info!("Hot reload disabled in configuration");
+        None
+    };
+
     // Store multi-pass state
     commands.insert_resource(MultiPassState {
         pass_count: 2,
         intermediate_textures: vec![intermediate_texture_handle],
         pass_shader_handles: vec![PASS_0_SHADER_HANDLE, PASS_1_SHADER_HANDLE],
         pass_entities: vec![entity_pass0, entity_pass1],
+        hot_reloader,
+        shader_paths,
     });
 
     log::info!("Multi-pass rendering setup completed with 2 cameras and RenderLayers");
@@ -611,6 +673,32 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     log::info!("Created alternating cameras A & B, and display camera");
 
+    // Initialize hot reloader for persistent if enabled
+    let shader_path = config.config_dir.join(&config.config.pipeline[0].file);
+    let hot_reloader = if config
+        .config
+        .hot_reload
+        .as_ref()
+        .map_or(false, |hr| hr.enabled)
+    {
+        match crate::hot_reload::HotReloader::new(&shader_path) {
+            Ok(reloader) => {
+                log::info!(
+                    "✅ Hot reload enabled for persistent shader: {:?}",
+                    shader_path
+                );
+                Some(reloader)
+            }
+            Err(e) => {
+                log::warn!("❌ Failed to initialize persistent hot reload: {}", e);
+                None
+            }
+        }
+    } else {
+        log::info!("Hot reload disabled in configuration");
+        None
+    };
+
     // Store state
     commands.insert_resource(PersistentPassState {
         frame_count: 0,
@@ -619,6 +707,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         camera_a,
         camera_b,
         display_entity: entity_display,
+        hot_reloader,
+        shader_path,
     });
 
     log::info!("Persistent rendering setup completed with alternating camera architecture");

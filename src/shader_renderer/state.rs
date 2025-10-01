@@ -12,6 +12,13 @@ pub struct InputBufferHandles {
     pub osc_buffer: Handle<ShaderStorageBuffer>,
 }
 
+/// Resource to hold hot reload state (for single-pass mode)
+#[derive(Resource)]
+pub(super) struct HotReloaderResource {
+    pub reloader: Option<crate::hot_reload::HotReloader>,
+    pub shader_paths: Vec<std::path::PathBuf>,
+}
+
 /// Resource to hold dynamic shader state
 #[derive(Resource)]
 pub(super) struct DynamicShaderState {
@@ -26,6 +33,8 @@ pub(super) struct MultiPassState {
     pub intermediate_textures: Vec<Handle<Image>>,
     pub pass_shader_handles: Vec<Handle<Shader>>,
     pub pass_entities: Vec<Entity>,
+    pub hot_reloader: Option<crate::hot_reload::HotReloader>,
+    pub shader_paths: Vec<std::path::PathBuf>,
 }
 
 /// Resource to track persistent texture rendering state (trail effects)
@@ -37,6 +46,8 @@ pub(super) struct PersistentPassState {
     pub camera_a: Entity,             // Camera A: renders to texture_a
     pub camera_b: Entity,             // Camera B: renders to texture_b
     pub display_entity: Entity,       // Display entity showing the result
+    pub hot_reloader: Option<crate::hot_reload::HotReloader>,
+    pub shader_path: std::path::PathBuf,
 }
 
 /// Component to mark render pass entities
