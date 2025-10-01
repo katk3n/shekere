@@ -6,7 +6,6 @@ use ringbuf::{
     traits::{Consumer, RingBuffer},
 };
 use std::sync::{Arc, Mutex};
-use wgpu::util::DeviceExt;
 
 use crate::config::MidiConfig;
 
@@ -708,7 +707,7 @@ use bevy::prelude::*;
 #[derive(Resource)]
 pub struct MidiInputManager {
     pub history_data: Arc<Mutex<MidiHistoryData>>,
-    pub buffer: wgpu::Buffer,
+    pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub enabled: bool,
     _connection: Option<MidiInputConnection<()>>,
@@ -717,21 +716,11 @@ pub struct MidiInputManager {
 impl MidiInputManager {
     pub const BINDING_INDEX: u32 = 2;
 
-    pub fn new(device: &wgpu::Device, config: &MidiConfig) -> Self {
+    pub fn new(
+        buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+        config: &MidiConfig,
+    ) -> Self {
         let history_data = Arc::new(Mutex::new(MidiHistoryData::new()));
-
-        // Calculate buffer size for 512 frames (768KB total)
-        let single_frame_size = std::mem::size_of::<MidiShaderData>();
-        let _total_size = single_frame_size * 512; // 768KB total
-
-        // Create initial shader data
-        let initial_shader_data = history_data.lock().unwrap().prepare_shader_data();
-
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("MIDI History Buffer"),
-            contents: bytemuck::cast_slice(&initial_shader_data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
 
         let connection = if config.enabled {
             Self::setup_midi_input(history_data.clone())
@@ -741,7 +730,7 @@ impl MidiInputManager {
 
         Self {
             history_data,
-            buffer,
+            buffer_handle,
             buffer_needs_update: config.enabled,
             enabled: config.enabled,
             _connection: connection,
@@ -847,10 +836,17 @@ impl MidiInputManager {
         self.buffer_needs_update = true;
     }
 
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
+    pub fn write_buffer(
+        &self,
+        storage_buffers: &mut ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+    ) {
         let history_guard = self.history_data.lock().unwrap();
         let shader_data = history_guard.prepare_shader_data();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&shader_data));
+        let data_bytes = bytemuck::cast_slice(&shader_data);
+
+        if let Some(buffer) = storage_buffers.get_mut(&self.buffer_handle) {
+            buffer.data = Some(data_bytes.to_vec());
+        }
     }
 
     pub fn get_shader_data(&self) -> Vec<MidiShaderData> {
@@ -859,24 +855,38 @@ impl MidiInputManager {
 }
 
 /// Bevy system for updating MIDI input
-pub fn midi_input_system(mut midi_manager: Option<ResMut<MidiInputManager>>) {
+pub fn midi_input_system(
+    mut midi_manager: Option<ResMut<MidiInputManager>>,
+    mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+) {
     if let Some(ref mut manager) = midi_manager {
+        // Write current data to storage buffer BEFORE updating
+        // This ensures note_on data is sent to GPU before being cleared
+        if manager.buffer_needs_update {
+            manager.write_buffer(&mut storage_buffers);
+            manager.buffer_needs_update = false;
+        }
+
+        // Update after writing - this clears note_on for next frame
         manager.update();
     }
 }
 
 /// Bevy startup system for initializing MIDI input
-pub fn setup_midi_input_system(_commands: Commands, config: Res<crate::ShekereConfig>) {
-    if let Some(_midi_config) = &config.config.midi {
+pub fn setup_midi_input_system(
+    mut commands: Commands,
+    config: Res<crate::ShekereConfig>,
+    buffer_handles: Option<Res<crate::shader_renderer::InputBufferHandles>>,
+) {
+    if let Some(midi_config) = &config.config.midi {
         log::info!("Setting up MIDI input system");
 
-        // TODO: Create MidiInputManager with proper device
-        // For now, create a placeholder that will be properly initialized
-        // when we integrate with Bevy's rendering system
-
-        // let midi_manager = MidiInputManager::new(device, midi_config);
-        // commands.insert_resource(midi_manager);
-
-        log::info!("MIDI input system setup completed (placeholder)");
+        if let Some(handles) = buffer_handles {
+            let midi_manager = MidiInputManager::new(handles.midi_buffer.clone(), midi_config);
+            commands.insert_resource(midi_manager);
+            log::info!("MIDI input system setup completed with ShaderStorageBuffer");
+        } else {
+            log::warn!("InputBufferHandles not available, MIDI input will not work");
+        }
     }
 }

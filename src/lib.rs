@@ -33,15 +33,15 @@ pub struct ShekerePlugin;
 impl Plugin for ShekerePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(SimpleShaderRenderPlugin)
+            .add_systems(Startup, (setup_shekere_state, debug_startup_system))
+            // Input systems must run after SimpleShaderRenderPlugin setup in PostStartup
             .add_systems(
-                Startup,
+                bevy::app::PostStartup,
                 (
-                    setup_shekere_state,
                     setup_midi_input_system,
                     setup_mouse_input_system,
                     setup_osc_input_system,
                     setup_spectrum_input_system,
-                    debug_startup_system,
                 ),
             )
             .add_systems(

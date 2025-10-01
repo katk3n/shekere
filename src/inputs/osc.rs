@@ -9,7 +9,6 @@ use ringbuf::{
 use rosc::{OscMessage, OscPacket, OscType};
 use std::collections::HashMap;
 use std::str::FromStr;
-use wgpu::util::DeviceExt;
 
 const HISTORY_SIZE: usize = 512;
 
@@ -404,7 +403,7 @@ use bevy::prelude::*;
 #[derive(Resource)]
 pub struct OscInputManager {
     pub history_data: OscHistoryData,
-    pub storage_buffer: Option<wgpu::Buffer>,
+    pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub enabled: bool,
     sound_map: HashMap<String, i32>,
@@ -414,38 +413,30 @@ pub struct OscInputManager {
 impl OscInputManager {
     pub const STORAGE_BINDING_INDEX: u32 = 0;
 
-    pub fn new(device: &wgpu::Device, config: &crate::config::OscConfig) -> Self {
+    pub fn new(
+        buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+        config: &crate::config::OscConfig,
+    ) -> Self {
         let history_data = OscHistoryData::new();
-
-        // Create storage buffer for 512 frames of OSC history
-        let initial_data = history_data.prepare_shader_data();
-        let storage_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("OSC History Storage Buffer"),
-            contents: bytemuck::cast_slice(&initial_data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-        });
 
         let mut sound_map = HashMap::new();
         for s in &config.sound {
             sound_map.insert(s.name.clone(), s.id);
         }
 
-        // For Bevy, we'll handle async initialization differently
-        // For now, create without receiver
-        let receiver = None;
+        // Start OSC server
+        let port = config.port;
+        let receiver = Some(async_std::task::block_on(osc_start(port)));
+        log::info!("OSC server started on port {}", port);
 
         Self {
             history_data,
-            storage_buffer: Some(storage_buffer),
+            buffer_handle,
             buffer_needs_update: true,
             enabled: true, // Always enabled if config exists
             sound_map,
             receiver,
         }
-    }
-
-    pub fn storage_buffer(&self) -> Option<&wgpu::Buffer> {
-        self.storage_buffer.as_ref()
     }
 
     pub fn update(&mut self, queue: Option<&wgpu::Queue>) {
@@ -478,12 +469,6 @@ impl OscInputManager {
         // Push current frame to history
         self.history_data.push_current_frame();
         self.buffer_needs_update = true;
-
-        // Update GPU buffer if queue is available
-        if let (Some(buffer), Some(q)) = (&self.storage_buffer, queue) {
-            let shader_data = self.history_data.prepare_shader_data();
-            q.write_buffer(buffer, 0, bytemuck::cast_slice(&shader_data));
-        }
     }
 
     fn process_osc_message(&mut self, msg: &OscMessage) {
@@ -560,10 +545,15 @@ impl OscInputManager {
         }
     }
 
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
-        if let Some(buffer) = &self.storage_buffer {
-            let shader_data = self.history_data.prepare_shader_data();
-            queue.write_buffer(buffer, 0, bytemuck::cast_slice(&shader_data));
+    pub fn write_buffer(
+        &self,
+        storage_buffers: &mut ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+    ) {
+        let shader_data = self.history_data.prepare_shader_data();
+        let data_bytes = bytemuck::cast_slice(&shader_data);
+
+        if let Some(buffer) = storage_buffers.get_mut(&self.buffer_handle) {
+            buffer.data = Some(data_bytes.to_vec());
         }
     }
 
@@ -573,24 +563,36 @@ impl OscInputManager {
 }
 
 /// Bevy system for updating OSC input
-pub fn osc_input_system(mut osc_manager: Option<ResMut<OscInputManager>>) {
+pub fn osc_input_system(
+    mut osc_manager: Option<ResMut<OscInputManager>>,
+    mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+) {
     if let Some(ref mut manager) = osc_manager {
         manager.update(None);
+
+        // Write updated data to storage buffer
+        if manager.buffer_needs_update {
+            manager.write_buffer(&mut storage_buffers);
+            manager.buffer_needs_update = false;
+        }
     }
 }
 
 /// Bevy startup system for initializing OSC input
-pub fn setup_osc_input_system(_commands: Commands, config: Res<crate::ShekereConfig>) {
-    if let Some(_osc_config) = &config.config.osc {
+pub fn setup_osc_input_system(
+    mut commands: Commands,
+    config: Res<crate::ShekereConfig>,
+    buffer_handles: Option<Res<crate::shader_renderer::InputBufferHandles>>,
+) {
+    if let Some(osc_config) = &config.config.osc {
         log::info!("Setting up OSC input system");
 
-        // TODO: Create OscInputManager with proper device
-        // For now, create a placeholder that will be properly initialized
-        // when we integrate with Bevy's rendering system
-
-        // let osc_manager = OscInputManager::new(device, osc_config);
-        // commands.insert_resource(osc_manager);
-
-        log::info!("OSC input system setup completed (placeholder)");
+        if let Some(handles) = buffer_handles {
+            let osc_manager = OscInputManager::new(handles.osc_buffer.clone(), osc_config);
+            commands.insert_resource(osc_manager);
+            log::info!("OSC input system setup completed with ShaderStorageBuffer");
+        } else {
+            log::warn!("InputBufferHandles not available, OSC input will not work");
+        }
     }
 }

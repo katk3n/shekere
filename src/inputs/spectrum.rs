@@ -353,7 +353,7 @@ use bevy::prelude::*;
 #[derive(Resource)]
 pub struct SpectrumInputManager {
     pub history_data: SpectrumHistoryData,
-    pub buffer: wgpu::Buffer,
+    pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
     pub buffer_needs_update: bool,
     pub consumer: Caching<Arc<HeapRb<f32>>, false, true>,
     min_frequency: f32,
@@ -370,22 +370,17 @@ unsafe impl Sync for SpectrumInputManager {}
 impl SpectrumInputManager {
     pub const STORAGE_BINDING_INDEX: u32 = 1;
 
-    pub fn new(device: &wgpu::Device, config: &SpectrumConfig) -> Self {
+    pub fn new(
+        buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+        config: &SpectrumConfig,
+    ) -> Self {
         let history_data = SpectrumHistoryData::new();
-        let initial_data = history_data.prepare_shader_data();
-
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Spectrum History Storage Buffer"),
-            size: (initial_data.len() * std::mem::size_of::<SpectrumShaderData>()) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
 
         let (stream, consumer) = setup_audio_stream();
 
         Self {
             history_data,
-            buffer,
+            buffer_handle,
             buffer_needs_update: true,
             consumer,
             min_frequency: config.min_frequency,
@@ -442,9 +437,16 @@ impl SpectrumInputManager {
         self.buffer_needs_update = true;
     }
 
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
+    pub fn write_buffer(
+        &self,
+        storage_buffers: &mut ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+    ) {
         let data = self.history_data.prepare_shader_data();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&data));
+        let data_bytes = bytemuck::cast_slice(&data);
+
+        if let Some(buffer) = storage_buffers.get_mut(&self.buffer_handle) {
+            buffer.data = Some(data_bytes.to_vec());
+        }
     }
 
     pub fn get_shader_data(&self) -> Vec<SpectrumShaderData> {
@@ -453,24 +455,37 @@ impl SpectrumInputManager {
 }
 
 /// Bevy system for updating spectrum input
-pub fn spectrum_input_system(mut spectrum_manager: Option<ResMut<SpectrumInputManager>>) {
+pub fn spectrum_input_system(
+    mut spectrum_manager: Option<ResMut<SpectrumInputManager>>,
+    mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+) {
     if let Some(ref mut manager) = spectrum_manager {
         manager.update();
+
+        // Write updated data to storage buffer
+        if manager.buffer_needs_update {
+            manager.write_buffer(&mut storage_buffers);
+            manager.buffer_needs_update = false;
+        }
     }
 }
 
 /// Bevy startup system for initializing spectrum input
-pub fn setup_spectrum_input_system(_commands: Commands, config: Res<crate::ShekereConfig>) {
-    if let Some(_spectrum_config) = &config.config.spectrum {
+pub fn setup_spectrum_input_system(
+    mut commands: Commands,
+    config: Res<crate::ShekereConfig>,
+    buffer_handles: Option<Res<crate::shader_renderer::InputBufferHandles>>,
+) {
+    if let Some(spectrum_config) = &config.config.spectrum {
         log::info!("Setting up Spectrum input system");
 
-        // TODO: Create SpectrumInputManager with proper device and audio stream
-        // For now, create a placeholder that will be properly initialized
-        // when we integrate with Bevy's rendering system
-
-        // let spectrum_manager = SpectrumInputManager::new(device, spectrum_config);
-        // commands.insert_resource(spectrum_manager);
-
-        log::info!("Spectrum input system setup completed (placeholder)");
+        if let Some(handles) = buffer_handles {
+            let spectrum_manager =
+                SpectrumInputManager::new(handles.spectrum_buffer.clone(), spectrum_config);
+            commands.insert_resource(spectrum_manager);
+            log::info!("Spectrum input system setup completed with ShaderStorageBuffer");
+        } else {
+            log::warn!("InputBufferHandles not available, spectrum input will not work");
+        }
     }
 }
