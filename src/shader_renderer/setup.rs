@@ -858,7 +858,7 @@ pub fn update_persistent_uniforms(
     // Determine which camera should be active this frame
     // Even frames: Camera A active (writes to texture_a, reads from texture_b)
     // Odd frames: Camera B active (writes to texture_b, reads from texture_a)
-    let use_camera_a = frame % 2 == 0;
+    let use_camera_a = frame.is_multiple_of(2);
 
     if frame <= 3 {
         log::info!(
@@ -897,6 +897,7 @@ pub fn update_persistent_uniforms(
     }
 
     // Update display entity material (reads from the texture being written to)
+    #[allow(clippy::collapsible_if)]
     if let Ok(material_handle) = query_display.get(persistent_state.display_entity) {
         if let Some(material) = materials_pass1.get_mut(&material_handle.0) {
             material.resolution = Vec2::new(window.width(), window.height());
