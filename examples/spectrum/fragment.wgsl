@@ -21,8 +21,10 @@ fn hue_to_rgb(hue: f32) -> vec3<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Convert UV (0-1) to pixel coordinates, then normalize
+    let pixel_pos = in.uv * Window.resolution;
     let min_xy = min(Window.resolution.x, Window.resolution.y);
-    let uv = vec2(in.position.x / min_xy,(1.0 - in.position.y / min_xy) * 2.0 - 1.0);
+    let uv = vec2(pixel_pos.x / min_xy, (1.0 - pixel_pos.y / min_xy) * 2.0 - 1.0);
 
     let num_steps = SpectrumNumPoints();
     let width = 1.0 / f32(num_steps) / 2.0;

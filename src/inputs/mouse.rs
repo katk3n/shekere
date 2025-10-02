@@ -5,23 +5,16 @@ use ringbuf::{
     traits::{Consumer, RingBuffer},
 };
 use std::sync::{Arc, Mutex};
-use winit::dpi::PhysicalPosition;
 
 // Individual frame data for ring buffer storage
 #[derive(Debug, Clone, Copy)]
-struct MouseFrameData {
+pub struct MouseFrameData {
     position: [f32; 2],
 }
 
 impl MouseFrameData {
-    fn new(x: f32, y: f32) -> Self {
+    pub fn new(x: f32, y: f32) -> Self {
         Self { position: [x, y] }
-    }
-
-    fn from_physical_position(position: &PhysicalPosition<f64>) -> Self {
-        Self {
-            position: [position.x as f32, position.y as f32],
-        }
     }
 }
 
@@ -43,8 +36,8 @@ impl MouseShaderData {
 }
 
 // History data structure using ring buffer only (optimized)
-pub(crate) struct MouseHistoryData {
-    current_frame: MouseFrameData,
+pub struct MouseHistoryData {
+    pub current_frame: MouseFrameData,
     ring_buffer: HeapRb<MouseFrameData>,
 }
 
@@ -60,7 +53,7 @@ impl MouseHistoryData {
         self.ring_buffer.push_overwrite(self.current_frame);
     }
 
-    pub(crate) fn prepare_shader_data(&self) -> Vec<MouseShaderData> {
+    pub fn prepare_shader_data(&self) -> Vec<MouseShaderData> {
         let mut shader_data = Vec::with_capacity(512);
 
         // Add current frame first (index 0)
@@ -86,51 +79,6 @@ impl MouseHistoryData {
     }
 }
 
-pub struct MouseInputManager {
-    pub history_data: Arc<Mutex<MouseHistoryData>>,
-    pub buffer: wgpu::Buffer,
-}
-
-impl MouseInputManager {
-    pub const BINDING_INDEX: u32 = 0;
-
-    pub fn new(device: &wgpu::Device) -> Self {
-        let history_data = Arc::new(Mutex::new(MouseHistoryData::new()));
-
-        // Create storage buffer for 512 frames of history
-        let history_size = std::mem::size_of::<MouseShaderData>() * 512;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Mouse History Storage Buffer"),
-            size: history_size as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        Self {
-            history_data,
-            buffer,
-        }
-    }
-
-    pub fn update(&mut self, position: &PhysicalPosition<f64>) {
-        // Update history data
-        if let Ok(mut history) = self.history_data.lock() {
-            // Push the previous frame to history
-            history.push_current_frame();
-            // Update current frame with new position
-            history.current_frame = MouseFrameData::from_physical_position(position);
-        }
-    }
-
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
-        // Write storage buffer with history data
-        if let Ok(history) = self.history_data.lock() {
-            let shader_data = history.prepare_shader_data();
-            queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&shader_data));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,9 +91,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mouse_frame_data_from_physical_position() {
-        let physical_pos = PhysicalPosition::new(150.0, 250.0);
-        let frame = MouseFrameData::from_physical_position(&physical_pos);
+    fn test_mouse_frame_data_from_values() {
+        let frame = MouseFrameData::new(150.0, 250.0);
         assert_eq!(frame.position, [150.0, 250.0]);
     }
 
@@ -153,7 +100,7 @@ mod tests {
     fn test_mouse_frame_data_debug_clone_copy() {
         let frame1 = MouseFrameData::new(10.0, 20.0);
         let frame2 = frame1; // Copy
-        let frame3 = frame1.clone(); // Clone
+        let frame3 = frame1; // Copy (no need to clone for Copy types)
 
         assert_eq!(frame1.position, frame2.position);
         assert_eq!(frame1.position, frame3.position);
@@ -270,8 +217,11 @@ mod tests {
     // MouseInputManager tests
     #[test]
     fn test_mouse_input_manager_creation() {
-        let device = create_test_device();
-        let manager = MouseInputManager::new(&device);
+        use bevy::render::storage::ShaderStorageBuffer;
+
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
+        let manager = MouseInputManager::new(buffer_handle);
 
         // Verify history data is initialized
         if let Ok(history) = manager.history_data.lock() {
@@ -282,11 +232,14 @@ mod tests {
 
     #[test]
     fn test_mouse_input_manager_update() {
-        let device = create_test_device();
-        let mut manager = MouseInputManager::new(&device);
+        use bevy::render::storage::ShaderStorageBuffer;
 
-        let position = PhysicalPosition::new(100.0, 200.0);
-        manager.update(&position);
+        // Create a mock buffer handle for testing
+        let buffer_handle = Handle::<ShaderStorageBuffer>::default();
+        let mut manager = MouseInputManager::new(buffer_handle);
+
+        let position = bevy::math::Vec2::new(100.0, 200.0);
+        manager.update_position(position);
 
         // Check that current frame was updated
         if let Ok(history) = manager.history_data.lock() {
@@ -297,6 +250,7 @@ mod tests {
     }
 
     // Helper function to create a test device
+    #[allow(dead_code)] // Kept for future GPU-related tests
     fn create_test_device() -> wgpu::Device {
         use std::sync::Once;
         static INIT: Once = Once::new();
@@ -305,19 +259,20 @@ mod tests {
             env_logger::init();
         });
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
 
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .unwrap();
+        let adapter =
+            futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            }))
+            .unwrap();
 
-        let (device, _queue) = pollster::block_on(adapter.request_device(
+        let (device, _queue) = futures::executor::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 required_features: wgpu::Features::empty(),
                 required_limits: wgpu::Limits::default(),
@@ -329,5 +284,106 @@ mod tests {
         .unwrap();
 
         device
+    }
+}
+
+// ============================================================================
+// Bevy Integration
+// ============================================================================
+
+use bevy::prelude::*;
+use bevy::window::CursorMoved;
+
+/// Mouse input manager with Bevy resource support
+#[derive(Resource)]
+pub struct MouseInputManager {
+    pub history_data: Arc<Mutex<MouseHistoryData>>,
+    pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+    pub buffer_needs_update: bool,
+}
+
+impl MouseInputManager {
+    pub const BINDING_INDEX: u32 = 0;
+
+    pub fn new(buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>) -> Self {
+        let history_data = Arc::new(Mutex::new(MouseHistoryData::new()));
+
+        Self {
+            history_data,
+            buffer_handle,
+            buffer_needs_update: true,
+        }
+    }
+
+    pub fn update_position(&mut self, position: Vec2) {
+        // Update history data
+        if let Ok(mut history) = self.history_data.lock() {
+            // Push the previous frame to history
+            history.push_current_frame();
+            // Update current frame with new position
+            history.current_frame = MouseFrameData::new(position.x, position.y);
+            self.buffer_needs_update = true;
+        }
+    }
+
+    pub fn update(&mut self) {
+        // Mouse update only happens when position changes
+        if self.buffer_needs_update {
+            self.buffer_needs_update = false;
+        }
+    }
+
+    pub fn write_buffer(
+        &self,
+        storage_buffers: &mut ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+    ) {
+        // Write storage buffer with history data
+        if let Ok(history) = self.history_data.lock() {
+            let shader_data = history.prepare_shader_data();
+            let data_bytes = bytemuck::cast_slice(&shader_data);
+
+            if let Some(buffer) = storage_buffers.get_mut(&self.buffer_handle) {
+                buffer.data = Some(data_bytes.to_vec());
+            }
+        }
+    }
+
+    pub fn get_shader_data(&self) -> Vec<MouseShaderData> {
+        self.history_data.lock().unwrap().prepare_shader_data()
+    }
+}
+
+/// Bevy system for updating mouse input
+pub fn mouse_input_system(
+    mut cursor_moved_events: MessageReader<CursorMoved>,
+    mut mouse_manager: Option<ResMut<MouseInputManager>>,
+    mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+) {
+    if let Some(ref mut manager) = mouse_manager {
+        for event in cursor_moved_events.read() {
+            manager.update_position(event.position);
+        }
+
+        // Write updated data to storage buffer
+        if manager.buffer_needs_update {
+            manager.write_buffer(&mut storage_buffers);
+            manager.buffer_needs_update = false;
+        }
+    }
+}
+
+/// Bevy startup system for initializing mouse input
+pub fn setup_mouse_input_system(
+    mut commands: Commands,
+    buffer_handles: Option<Res<crate::shader_renderer::InputBufferHandles>>,
+) {
+    log::info!("Setting up Mouse input system");
+
+    if let Some(handles) = buffer_handles {
+        let mouse_manager = MouseInputManager::new(handles.mouse_buffer.clone());
+        commands.insert_resource(mouse_manager);
+        log::info!("Mouse input system setup completed with ShaderStorageBuffer");
+    } else {
+        log::warn!("InputBufferHandles not available, mouse input will not work");
     }
 }

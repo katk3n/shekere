@@ -7,6 +7,14 @@ use std::time::Duration;
 pub struct HotReloader {
     _watcher: RecommendedWatcher,
     shader_modified: Arc<Mutex<bool>>,
+    /// List of files being watched for changes.
+    ///
+    /// Future uses:
+    /// - Debug info: Display which files are being watched
+    /// - Error messages: Show detailed context when reload fails
+    /// - Validation: Verify expected files are being monitored
+    /// - Logging: Output watched file list at startup
+    /// - GUI: Display monitoring status in future UI (Phase 2)
     #[allow(dead_code)]
     watched_files: Vec<PathBuf>,
 }

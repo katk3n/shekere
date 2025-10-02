@@ -3,8 +3,8 @@ use wgpu::{Device, Queue, SurfaceConfiguration, TextureFormat};
 
 /// Creates a WebGPU device and queue for testing purposes
 pub fn create_test_device_and_queue() -> (Device, Queue) {
-    pollster::block_on(async {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    futures::executor::block_on(async {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });

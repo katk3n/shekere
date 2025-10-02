@@ -1,6 +1,7 @@
+use bevy::prelude::*;
+use bevy::window::WindowResolution;
 use clap::Parser;
-use shekere::Config;
-use shekere::run;
+use shekere::{Config, ShekereConfig, ShekerePlugin};
 use std::path::Path;
 
 #[derive(Debug, Parser)]
@@ -12,9 +13,29 @@ struct Args {
 }
 
 fn main() {
+    env_logger::init();
+
     let args = Args::parse();
     let conf_str = std::fs::read_to_string(&args.config_file).unwrap();
     let conf: Config = toml::from_str(&conf_str).unwrap();
-    let conf_dir = Path::new(&args.config_file).parent().unwrap();
-    pollster::block_on(run(&conf, conf_dir));
+    let conf_dir = Path::new(&args.config_file).parent().unwrap().to_path_buf();
+
+    App::new()
+        .insert_resource(ShekereConfig {
+            config: conf.clone(),
+            config_dir: conf_dir,
+        })
+        .insert_resource(ClearColor(Color::BLACK))
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: "shekere".into(),
+                    resolution: WindowResolution::new(conf.window.width, conf.window.height),
+                    ..default()
+                }),
+                ..default()
+            }),
+            ShekerePlugin,
+        ))
+        .run();
 }

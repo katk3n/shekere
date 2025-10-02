@@ -13,7 +13,7 @@ jobs:
   test:
     name: Test
     runs-on: macos-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,6 +24,7 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          components: rustfmt, clippy
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v3
@@ -79,7 +80,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build
         uses: actions-rs/cargo@v1

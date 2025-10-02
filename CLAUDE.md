@@ -61,8 +61,12 @@ Example configuration files are in the `examples/` directory.
 **MANDATORY**: When creating or modifying shaders,
  see [docs/guide.md](docs/guide.md) and [docs/api-reference.md](docs/api-reference.md).
 
-**Always check `shaders/common.wgsl` first** and
-DO NOT redefine structures, uniforms, or functions that already exist in `common.wgsl`
+**Shader modules are organized in `shaders/` directory**:
+- `core.wgsl` - Core uniforms and utility functions
+- `osc.wgsl`, `midi.wgsl`, `spectrum.wgsl`, `mouse.wgsl` - Input-specific modules
+- `texture.wgsl` - Texture sampling utilities
+
+DO NOT redefine structures, uniforms, or functions that already exist in these modules.
 
 ## Audio Integration
 

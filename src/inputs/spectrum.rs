@@ -148,95 +148,6 @@ impl SpectrumHistoryData {
     }
 }
 
-pub struct SpectrumInputManager {
-    history_data: SpectrumHistoryData,
-    pub buffer: wgpu::Buffer,
-    pub consumer: Caching<Arc<HeapRb<f32>>, false, true>,
-    min_frequency: f32,
-    max_frequency: f32,
-    sampling_rate: u32,
-    _stream: Stream,
-}
-
-impl SpectrumInputManager {
-    pub const STORAGE_BINDING_INDEX: u32 = 1;
-
-    pub fn new(device: &wgpu::Device, config: &SpectrumConfig) -> Self {
-        let history_data = SpectrumHistoryData::new();
-        let initial_data = history_data.prepare_shader_data();
-
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Spectrum History Storage Buffer"),
-            size: (initial_data.len() * std::mem::size_of::<SpectrumShaderData>()) as u64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        let (stream, consumer) = setup_audio_stream();
-
-        Self {
-            history_data,
-            buffer,
-            consumer,
-            min_frequency: config.min_frequency,
-            max_frequency: config.max_frequency,
-            sampling_rate: config.sampling_rate,
-            _stream: stream,
-        }
-    }
-
-    pub fn update(&mut self) {
-        if self.consumer.occupied_len() < NUM_SAMPLES {
-            return;
-        }
-
-        let mut samples: [f32; NUM_SAMPLES] = [0.0; NUM_SAMPLES];
-        for sample_slot in samples.iter_mut() {
-            let sample = self.consumer.try_pop().unwrap();
-            *sample_slot = sample;
-        }
-
-        let hann_window = hann_window(&samples);
-        let spectrum = samples_fft_to_spectrum(
-            &hann_window,
-            self.sampling_rate,
-            FrequencyLimit::Range(self.min_frequency, self.max_frequency),
-            Some(&divide_by_N_sqrt),
-        )
-        .unwrap();
-
-        let mut frequencies = [[0.0; 4]; NUM_SAMPLES / 4];
-        let mut amplitudes = [[0.0; 4]; NUM_SAMPLES / 4];
-
-        for (i, f) in spectrum.data().iter().enumerate() {
-            let vec4_index = i / 4;
-            let element_index = i % 4;
-            frequencies[vec4_index][element_index] = f.0.val();
-            amplitudes[vec4_index][element_index] = f.1.val();
-        }
-
-        let (max_fr, max_amp) = spectrum.max();
-
-        let frame_data = SpectrumFrameData {
-            frequencies,
-            amplitudes,
-            num_points: spectrum.data().len() as u32,
-            max_frequency: max_fr.val(),
-            max_amplitude: max_amp.val(),
-        };
-
-        // First push current frame to history
-        self.history_data.push_current_frame();
-        // Then set new current frame
-        self.history_data.set_current_frame(frame_data);
-    }
-
-    pub fn write_buffer(&self, queue: &wgpu::Queue) {
-        let data = self.history_data.prepare_shader_data();
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&data));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -424,9 +335,158 @@ mod tests {
         assert_eq!(data[3].max_frequency, 1000.0);
 
         // Remaining entries should be defaults
+        #[allow(clippy::needless_range_loop)]
         for i in 4..512 {
             assert_eq!(data[i].num_points, 0);
             assert_eq!(data[i].max_frequency, 0.0);
+        }
+    }
+}
+
+// ============================================================================
+// Bevy Integration
+// ============================================================================
+
+use bevy::prelude::*;
+
+/// Spectrum input manager with Bevy resource support
+/// Note: Stream and Consumer are not Send+Sync, so we need unsafe impl
+#[derive(Resource)]
+pub struct SpectrumInputManager {
+    pub(crate) history_data: SpectrumHistoryData,
+    pub buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+    pub buffer_needs_update: bool,
+    pub consumer: Caching<Arc<HeapRb<f32>>, false, true>,
+    min_frequency: f32,
+    max_frequency: f32,
+    sampling_rate: u32,
+    _stream: Stream,
+}
+
+// SAFETY: SpectrumInputManager is only used from the main thread in Bevy
+// The Stream and consumer are thread-local by nature
+unsafe impl Send for SpectrumInputManager {}
+unsafe impl Sync for SpectrumInputManager {}
+
+impl SpectrumInputManager {
+    pub const STORAGE_BINDING_INDEX: u32 = 1;
+
+    pub fn new(
+        buffer_handle: Handle<bevy::render::storage::ShaderStorageBuffer>,
+        config: &SpectrumConfig,
+    ) -> Self {
+        let history_data = SpectrumHistoryData::new();
+
+        let (stream, consumer) = setup_audio_stream();
+
+        Self {
+            history_data,
+            buffer_handle,
+            buffer_needs_update: true,
+            consumer,
+            min_frequency: config.min_frequency,
+            max_frequency: config.max_frequency,
+            sampling_rate: config.sampling_rate,
+            _stream: stream,
+        }
+    }
+
+    pub fn update(&mut self) {
+        if self.consumer.occupied_len() < NUM_SAMPLES {
+            return;
+        }
+
+        let mut samples: [f32; NUM_SAMPLES] = [0.0; NUM_SAMPLES];
+        for sample_slot in samples.iter_mut() {
+            let sample = self.consumer.try_pop().unwrap();
+            *sample_slot = sample;
+        }
+
+        let hann_window = hann_window(&samples);
+        let spectrum = samples_fft_to_spectrum(
+            &hann_window,
+            self.sampling_rate,
+            FrequencyLimit::Range(self.min_frequency, self.max_frequency),
+            Some(&divide_by_N_sqrt),
+        )
+        .unwrap();
+
+        let mut frequencies = [[0.0; 4]; NUM_SAMPLES / 4];
+        let mut amplitudes = [[0.0; 4]; NUM_SAMPLES / 4];
+
+        for (i, f) in spectrum.data().iter().enumerate() {
+            let vec4_index = i / 4;
+            let element_index = i % 4;
+            frequencies[vec4_index][element_index] = f.0.val();
+            amplitudes[vec4_index][element_index] = f.1.val();
+        }
+
+        let (max_fr, max_amp) = spectrum.max();
+
+        let frame_data = SpectrumFrameData {
+            frequencies,
+            amplitudes,
+            num_points: spectrum.data().len() as u32,
+            max_frequency: max_fr.val(),
+            max_amplitude: max_amp.val(),
+        };
+
+        // First push current frame to history
+        self.history_data.push_current_frame();
+        // Then set new current frame
+        self.history_data.set_current_frame(frame_data);
+        self.buffer_needs_update = true;
+    }
+
+    pub fn write_buffer(
+        &self,
+        storage_buffers: &mut ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+    ) {
+        let data = self.history_data.prepare_shader_data();
+        let data_bytes = bytemuck::cast_slice(&data);
+
+        if let Some(buffer) = storage_buffers.get_mut(&self.buffer_handle) {
+            buffer.data = Some(data_bytes.to_vec());
+        }
+    }
+
+    pub fn get_shader_data(&self) -> Vec<SpectrumShaderData> {
+        self.history_data.prepare_shader_data()
+    }
+}
+
+/// Bevy system for updating spectrum input
+pub fn spectrum_input_system(
+    mut spectrum_manager: Option<ResMut<SpectrumInputManager>>,
+    mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
+) {
+    if let Some(ref mut manager) = spectrum_manager {
+        manager.update();
+
+        // Write updated data to storage buffer
+        if manager.buffer_needs_update {
+            manager.write_buffer(&mut storage_buffers);
+            manager.buffer_needs_update = false;
+        }
+    }
+}
+
+/// Bevy startup system for initializing spectrum input
+pub fn setup_spectrum_input_system(
+    mut commands: Commands,
+    config: Res<crate::ShekereConfig>,
+    buffer_handles: Option<Res<crate::shader_renderer::InputBufferHandles>>,
+) {
+    if let Some(spectrum_config) = &config.config.spectrum {
+        log::info!("Setting up Spectrum input system");
+
+        if let Some(handles) = buffer_handles {
+            let spectrum_manager =
+                SpectrumInputManager::new(handles.spectrum_buffer.clone(), spectrum_config);
+            commands.insert_resource(spectrum_manager);
+            log::info!("Spectrum input system setup completed with ShaderStorageBuffer");
+        } else {
+            log::warn!("InputBufferHandles not available, spectrum input will not work");
         }
     }
 }

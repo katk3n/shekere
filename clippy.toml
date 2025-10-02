@@ -1,0 +1,6 @@
+# Clippy configuration for shekere project
+
+# Allow functions with many arguments (common in Bevy systems)
+too-many-arguments-threshold = 15
+
+# Other configurations can be added here as needed
