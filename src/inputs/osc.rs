@@ -269,6 +269,7 @@ mod tests {
         assert_eq!(shader_data[1].sounds[0][0], 10);
 
         // Remaining frames should be default (0)
+        #[allow(clippy::needless_range_loop)]
         for i in 2..HISTORY_SIZE {
             assert_eq!(shader_data[i].sounds[0][0], 0);
         }

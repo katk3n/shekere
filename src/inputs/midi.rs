@@ -254,6 +254,7 @@ mod tests {
         assert_eq!(fourth_frame.notes[note_vec4_index][note_element_index], 0.0); // First frame (index 0)
 
         // Remaining frames should be zeros
+        #[allow(clippy::needless_range_loop)]
         for i in 4..512 {
             let frame = &shader_data[i];
             assert!(

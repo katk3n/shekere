@@ -516,7 +516,7 @@ file = "blur.wgsl"
         };
 
         // Now we can access ping_pong field
-        assert_eq!(config.ping_pong.unwrap_or(false), false);
+        assert!(!config.ping_pong.unwrap_or(false));
         assert_eq!(config.shader_type, "fragment");
     }
 
@@ -533,7 +533,7 @@ file = "blur.wgsl"
         };
 
         // Now we can access persistent field
-        assert_eq!(config.persistent.unwrap_or(false), false);
+        assert!(!config.persistent.unwrap_or(false));
         assert_eq!(config.shader_type, "fragment");
     }
 

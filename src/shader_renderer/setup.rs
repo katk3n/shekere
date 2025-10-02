@@ -16,6 +16,7 @@ use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::view::RenderLayers;
 
+#[allow(clippy::too_many_arguments)] // Bevy system requires all these parameters
 pub(super) fn setup_dynamic_shader_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -792,7 +793,7 @@ pub fn update_shader_uniforms(
     }
 
     // Log every 60 frames (approximately once per second at 60fps)
-    if (elapsed * 60.0) as u32 % 60 == 0 && updated_count > 0 {
+    if ((elapsed * 60.0) as u32).is_multiple_of(60) && updated_count > 0 {
         log::info!(
             "Updated {} materials - time: {:.2}s",
             updated_count,

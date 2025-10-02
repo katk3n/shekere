@@ -335,6 +335,7 @@ mod tests {
         assert_eq!(data[3].max_frequency, 1000.0);
 
         // Remaining entries should be defaults
+        #[allow(clippy::needless_range_loop)]
         for i in 4..512 {
             assert_eq!(data[i].num_points, 0);
             assert_eq!(data[i].max_frequency, 0.0);

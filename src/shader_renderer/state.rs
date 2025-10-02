@@ -14,7 +14,7 @@ pub struct InputBufferHandles {
 
 /// Resource to hold hot reload state (for single-pass mode)
 #[derive(Resource)]
-pub(super) struct HotReloaderResource {
+pub(crate) struct HotReloaderResource {
     pub reloader: Option<crate::hot_reload::HotReloader>,
     /// Paths to shader files being monitored.
     ///
@@ -29,13 +29,13 @@ pub(super) struct HotReloaderResource {
 
 /// Resource to hold dynamic shader state
 #[derive(Resource)]
-pub(super) struct DynamicShaderState {
+pub(crate) struct DynamicShaderState {
     pub last_config_hash: u64,
 }
 
 /// Resource to track multi-pass rendering state
 #[derive(Resource)]
-pub(super) struct MultiPassState {
+pub(crate) struct MultiPassState {
     pub pass_count: usize,
     /// Handles to intermediate render textures for each pass.
     ///
@@ -70,7 +70,7 @@ pub(super) struct MultiPassState {
 
 /// Resource to track persistent texture rendering state (trail effects)
 #[derive(Resource)]
-pub(super) struct PersistentPassState {
+pub(crate) struct PersistentPassState {
     pub frame_count: u64,
     pub textures: [Handle<Image>; 2], // Double-buffered textures for ping-pong
     pub entity: Entity,               // Trail rendering entity
@@ -91,7 +91,7 @@ pub(super) struct PersistentPassState {
 
 /// Component to mark render pass entities
 #[derive(Component)]
-pub(super) struct RenderPassMarker {
+pub(crate) struct RenderPassMarker {
     /// Index of this rendering pass (0-based).
     ///
     /// Future uses:

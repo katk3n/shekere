@@ -19,7 +19,7 @@ pub(super) const PASS_1_SHADER_HANDLE: Handle<Shader> =
 
 /// Custom material for loading WGSL shaders (main/single-pass)
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(super) struct ShekereShaderMaterial {
+pub(crate) struct ShekereShaderMaterial {
     #[uniform(0)]
     pub resolution: Vec2,
     #[uniform(1)]
@@ -63,7 +63,7 @@ impl Material2d for ShekereShaderMaterial {
 
 /// Material for pass 0 in multi-pass rendering
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(super) struct ShekereShaderMaterialPass0 {
+pub(crate) struct ShekereShaderMaterialPass0 {
     #[uniform(0)]
     pub resolution: Vec2,
     #[uniform(1)]
@@ -102,7 +102,7 @@ impl Material2d for ShekereShaderMaterialPass0 {
 
 /// Material for pass 1 in multi-pass rendering
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
-pub(super) struct ShekereShaderMaterialPass1 {
+pub(crate) struct ShekereShaderMaterialPass1 {
     #[uniform(0)]
     pub resolution: Vec2,
     #[uniform(1)]
@@ -141,4 +141,4 @@ impl Material2d for ShekereShaderMaterialPass1 {
 
 /// Component to mark our fullscreen quad
 #[derive(Component)]
-pub(super) struct FullscreenQuad;
+pub(crate) struct FullscreenQuad;

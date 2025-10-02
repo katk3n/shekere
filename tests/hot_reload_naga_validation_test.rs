@@ -49,7 +49,10 @@ struct VertexOutput {
         let error_msg = format!("{}", e);
         println!("Caught naga error: {}", error_msg);
         // Should contain information about the syntax error
-        assert!(error_msg.len() > 0, "Error message should provide details");
+        assert!(
+            !error_msg.is_empty(),
+            "Error message should provide details"
+        );
     }
 }
 
