@@ -16,7 +16,6 @@ use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::storage::ShaderStorageBuffer;
 use bevy::render::view::RenderLayers;
 
-#[allow(clippy::too_many_arguments)] // Bevy system requires all these parameters
 pub(super) fn setup_dynamic_shader_system(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -181,7 +180,6 @@ fn create_storage_buffers(
 }
 
 // Setup single-pass rendering (existing behavior)
-#[allow(clippy::too_many_arguments)]
 fn setup_singlepass_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -284,7 +282,6 @@ fn setup_singlepass_rendering(
 }
 
 // Setup multi-pass rendering with intermediate textures
-#[allow(clippy::too_many_arguments)]
 fn setup_multipass_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -502,7 +499,6 @@ fn setup_multipass_rendering(
 
 // Setup persistent texture rendering (trail effects with double-buffering)
 // Uses two cameras alternating activation for ping-pong buffering
-#[allow(clippy::too_many_arguments)]
 fn setup_persistent_rendering(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -835,7 +831,6 @@ pub fn update_multipass_uniforms(
 
 // Update persistent texture shader uniforms every frame with double-buffering
 // Alternates camera activation and swaps textures for ping-pong effect
-#[allow(clippy::too_many_arguments)]
 pub fn update_persistent_uniforms(
     time: Res<Time>,
     windows: Query<&Window>,
