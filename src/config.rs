@@ -301,8 +301,8 @@ enabled = true
 "#;
 
         let config = Config::from_toml(toml_str).unwrap();
-        assert_eq!(config.hot_reload.is_some(), true);
-        assert_eq!(config.hot_reload.unwrap().enabled, true);
+        assert!(config.hot_reload.is_some());
+        assert!(config.hot_reload.unwrap().enabled);
     }
 
     #[test]
@@ -323,8 +323,8 @@ enabled = false
 "#;
 
         let config = Config::from_toml(toml_str).unwrap();
-        assert_eq!(config.hot_reload.is_some(), true);
-        assert_eq!(config.hot_reload.unwrap().enabled, false);
+        assert!(config.hot_reload.is_some());
+        assert!(!config.hot_reload.unwrap().enabled);
     }
 
     #[test]
@@ -374,7 +374,7 @@ enabled = true
 
         let config = Config::from_toml(toml_str).unwrap();
         let midi = config.midi.unwrap();
-        assert_eq!(midi.enabled, true);
+        assert!(midi.enabled);
     }
 
     #[test]
@@ -418,8 +418,8 @@ enabled = true
         assert!(config.spectrum.is_some());
         assert!(config.midi.is_some());
         assert!(config.hot_reload.is_some());
-        assert_eq!(config.hot_reload.unwrap().enabled, true);
-        assert_eq!(config.midi.unwrap().enabled, true);
+        assert!(config.hot_reload.unwrap().enabled);
+        assert!(config.midi.unwrap().enabled);
     }
 
     #[test]

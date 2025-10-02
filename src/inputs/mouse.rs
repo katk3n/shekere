@@ -100,7 +100,7 @@ mod tests {
     fn test_mouse_frame_data_debug_clone_copy() {
         let frame1 = MouseFrameData::new(10.0, 20.0);
         let frame2 = frame1; // Copy
-        let frame3 = frame1.clone(); // Clone
+        let frame3 = frame1; // Copy (no need to clone for Copy types)
 
         assert_eq!(frame1.position, frame2.position);
         assert_eq!(frame1.position, frame3.position);
@@ -250,6 +250,7 @@ mod tests {
     }
 
     // Helper function to create a test device
+    #[allow(dead_code)] // Kept for future GPU-related tests
     fn create_test_device() -> wgpu::Device {
         use std::sync::Once;
         static INIT: Once = Once::new();

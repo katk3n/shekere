@@ -258,7 +258,7 @@ fn setup_singlepass_rendering(
         .config
         .hot_reload
         .as_ref()
-        .map_or(false, |hr| hr.enabled)
+        .is_some_and(|hr| hr.enabled)
     {
         let shader_path = config.config_dir.join(&config.config.pipeline[0].file);
         match crate::hot_reload::HotReloader::new(&shader_path) {
@@ -466,7 +466,7 @@ fn setup_multipass_rendering(
         .config
         .hot_reload
         .as_ref()
-        .map_or(false, |hr| hr.enabled)
+        .is_some_and(|hr| hr.enabled)
     {
         match crate::hot_reload::HotReloader::new_multi_file(shader_paths.clone()) {
             Ok(reloader) => {
@@ -679,7 +679,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         .config
         .hot_reload
         .as_ref()
-        .map_or(false, |hr| hr.enabled)
+        .is_some_and(|hr| hr.enabled)
     {
         match crate::hot_reload::HotReloader::new(&shader_path) {
             Ok(reloader) => {
