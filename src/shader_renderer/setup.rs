@@ -9,12 +9,12 @@ use crate::inputs::midi::MidiShaderData;
 use crate::inputs::mouse::MouseShaderData;
 use crate::inputs::osc::OscShaderData;
 use crate::inputs::spectrum::SpectrumShaderData;
+use bevy::asset::RenderAssetUsages;
+use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{Camera, RenderTarget};
 use bevy::prelude::*;
-use bevy::render::camera::{ClearColorConfig, RenderTarget};
-use bevy::render::mesh::PrimitiveTopology;
-use bevy::render::render_asset::RenderAssetUsages;
 use bevy::render::storage::ShaderStorageBuffer;
-use bevy::render::view::RenderLayers;
+use bevy::sprite_render::MeshMaterial2d;
 
 pub(super) fn setup_dynamic_shader_system(
     mut commands: Commands,
@@ -713,11 +713,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 // Create fullscreen quad mesh
 fn create_fullscreen_quad_mesh() -> Mesh {
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
-    );
-
     // Fullscreen quad vertices in unit space (will be scaled by Transform)
     let vertices = vec![
         [-0.5, -0.5, 0.0], // bottom left
@@ -736,11 +731,13 @@ fn create_fullscreen_quad_mesh() -> Mesh {
 
     let indices = vec![0u32, 1, 2, 2, 3, 0];
 
-    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vertices);
-    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-    mesh.insert_indices(bevy::render::mesh::Indices::U32(indices));
-
-    mesh
+    Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        Default::default(),
+    )
+    .with_inserted_indices(bevy::mesh::Indices::U32(indices))
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
 }
 
 // Create intermediate render texture

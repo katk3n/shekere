@@ -64,7 +64,7 @@ Or simply omit the `[hot_reload]` section entirely (defaults to disabled).
 
 ## Implementation Details
 
-### Bevy ECS Architecture (v0.13.0+)
+### Bevy ECS Architecture (v0.17.0+)
 
 The hot reload system is fully integrated with Bevy's ECS architecture:
 

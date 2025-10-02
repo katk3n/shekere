@@ -30,10 +30,7 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "shekere".into(),
-                    resolution: WindowResolution::new(
-                        conf.window.width as f32,
-                        conf.window.height as f32,
-                    ),
+                    resolution: WindowResolution::new(conf.window.width, conf.window.height),
                     ..default()
                 }),
                 ..default()

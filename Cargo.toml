@@ -8,12 +8,15 @@ license = "MIT"
 repository = "https://github.com/katk3n/shekere"
 
 [dependencies]
-bevy = { version = "0.16.1", default-features = false, features = [
+bevy = { version = "0.17", default-features = false, features = [
     "bevy_winit",           # Window management
     "bevy_render",          # Rendering system
     "bevy_core_pipeline",   # Basic rendering pipeline
     "bevy_asset",           # Asset management
     "bevy_sprite",          # 2D sprite rendering
+    "bevy_sprite_render",   # 2D material rendering
+    "bevy_camera",          # Camera system
+    "bevy_mesh",            # Mesh system
     "x11"                   # Platform support
 ] }
 env_logger = "0.10"

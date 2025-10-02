@@ -1,21 +1,21 @@
 //! Bevy Material2d implementations for shader rendering
 
-use bevy::asset::weak_handle;
+use bevy::asset::uuid_handle;
 use bevy::prelude::*;
-use bevy::render::mesh::MeshVertexBufferLayoutRef;
 use bevy::render::render_resource::{
-    AsBindGroup, RenderPipelineDescriptor, ShaderRef, SpecializedMeshPipelineError,
+    AsBindGroup, RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
 use bevy::render::storage::ShaderStorageBuffer;
-use bevy::sprite::{Material2d, Material2dKey};
+use bevy::shader::ShaderRef;
+use bevy::sprite_render::{Material2d, Material2dKey};
 
 // Shader handles
 pub(super) const DYNAMIC_SHADER_HANDLE: Handle<Shader> =
-    weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9b");
+    uuid_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9b");
 pub(super) const PASS_0_SHADER_HANDLE: Handle<Shader> =
-    weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9c");
+    uuid_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9c");
 pub(super) const PASS_1_SHADER_HANDLE: Handle<Shader> =
-    weak_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9d");
+    uuid_handle!("9e4b8a2f-1c6d-4e7f-8a9b-4c5d6e7f8a9d");
 
 /// Custom material for loading WGSL shaders (main/single-pass)
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
@@ -46,13 +46,14 @@ impl Material2d for ShekereShaderMaterial {
 
     fn specialize(
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        let _ = layout; // Suppress unused variable warning
         // Set custom entry point name to match generated shader
         // Note: generate_clean_shader_source replaces "fs_main" with "fragment"
         if let Some(fragment) = descriptor.fragment.as_mut() {
-            fragment.entry_point = "fragment".into();
+            fragment.entry_point = Some("fragment".into());
         }
         Ok(())
     }
@@ -88,13 +89,14 @@ impl Material2d for ShekereShaderMaterialPass0 {
 
     fn specialize(
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        let _ = layout; // Suppress unused variable warning
         // Set custom entry point name to match generated shader
         // Note: generate_shader_for_pass does NOT replace "fs_main"
         if let Some(fragment) = descriptor.fragment.as_mut() {
-            fragment.entry_point = "fs_main".into();
+            fragment.entry_point = Some("fs_main".into());
         }
         Ok(())
     }
@@ -127,13 +129,14 @@ impl Material2d for ShekereShaderMaterialPass1 {
 
     fn specialize(
         descriptor: &mut RenderPipelineDescriptor,
-        _layout: &MeshVertexBufferLayoutRef,
+        layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _key: Material2dKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
+        let _ = layout; // Suppress unused variable warning
         // Set custom entry point name to match generated shader
         // Note: generate_shader_for_pass does NOT replace "fs_main"
         if let Some(fragment) = descriptor.fragment.as_mut() {
-            fragment.entry_point = "fs_main".into()
+            fragment.entry_point = Some("fs_main".into());
         }
         Ok(())
     }

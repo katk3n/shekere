@@ -9,7 +9,7 @@ mod setup;
 mod state;
 
 use bevy::prelude::*;
-use bevy::sprite::Material2dPlugin;
+use bevy::sprite_render::Material2dPlugin;
 use materials::{ShekereShaderMaterial, ShekereShaderMaterialPass0, ShekereShaderMaterialPass1};
 use setup::setup_dynamic_shader_system;
 use state::{MultiPassState, PersistentPassState};

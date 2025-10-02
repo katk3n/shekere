@@ -355,7 +355,7 @@ impl MouseInputManager {
 
 /// Bevy system for updating mouse input
 pub fn mouse_input_system(
-    mut cursor_moved_events: EventReader<CursorMoved>,
+    mut cursor_moved_events: MessageReader<CursorMoved>,
     mut mouse_manager: Option<ResMut<MouseInputManager>>,
     mut storage_buffers: ResMut<Assets<bevy::render::storage::ShaderStorageBuffer>>,
 ) {
