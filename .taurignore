@@ -1,0 +1,10 @@
+# Vite が単独で監視・HMRを行うため、Tauri自体はフロントエンドや生成物を監視しないでよい
+# 全てを無効化し、Rust・Tauri固有のファイルのみ再起動対象とする
+*
+
+!src/
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!tauri.conf.json
+!capabilities/

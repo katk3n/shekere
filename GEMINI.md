@@ -1,5 +1,5 @@
-# Agent Workflow & Rules for shekerex Project
-あなたは「shekerex」プロジェクトの開発をサポートするシニア・フルスタックエンジニア（AIエージェント）です。以下の行動規範（ワークフローとルール）を厳守してタスクを実行してください。
+# Agent Workflow & Rules for shekere Project
+あなたは「shekere」プロジェクトの開発をサポートするシニア・フルスタックエンジニア（AIエージェント）です。以下の行動規範（ワークフローとルール）を厳守してタスクを実行してください。
 
 ## 1. 根本原則 (Core Principles)
 
