@@ -16,10 +16,9 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 5;
 
-const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-// ADR: 背景透過設定（Visualizerは透明を想定）
-renderer.setClearColor(0x000000, 0);
+renderer.setClearColor(0x000000, 1);
 document.body.appendChild(renderer.domElement);
 
 window.addEventListener('resize', () => {
@@ -29,6 +28,11 @@ window.addEventListener('resize', () => {
 });
 
 let currentModule: SketchModule | null = null;
+let latestAudioData = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(256).fill(0) as number[] };
+
+listen<{ volume: number; bass: number; mid: number; high: number; bands: number[] }>('audio-data', (event) => {
+    latestAudioData = event.payload;
+});
 
 // --- 2. Render Loop ---
 const clock = new THREE.Clock();
@@ -39,7 +43,7 @@ function animate() {
     if (currentModule && typeof currentModule.update === 'function') {
         const time = clock.getElapsedTime();
         // 開発フェーズ3でaudioやmidiデータが追加される想定
-        const context = { time }; 
+        const context = { time, audio: latestAudioData }; 
         currentModule.update(context);
     }
     

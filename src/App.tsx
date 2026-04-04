@@ -2,11 +2,18 @@ import { useState, useEffect } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
 import { emit } from "@tauri-apps/api/event";
-import { FileCode, AlertCircle, FileAudio, Settings } from "lucide-react";
+import { FileCode, AlertCircle, FileAudio, Settings, Mic, MicOff } from "lucide-react";
+import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 
 export default function App() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { isActive: isAudioActive, start: startAudio, stop: stopAudio, error: audioError } = useAudioAnalyzer();
+
+  const handleToggleAudio = () => {
+    if (isAudioActive) stopAudio();
+    else startAudio();
+  };
 
   useEffect(() => {
     if (!filePath) return;
@@ -85,13 +92,35 @@ export default function App() {
         </div>
 
         <div className="p-8 flex flex-col items-center gap-6">
-          <button
-            onClick={handleOpenFile}
-            className="w-full flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-6 py-3.5 rounded-xl font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
-          >
-            <FileCode className="w-5 h-5" />
-            Select JS File
-          </button>
+          <div className="w-full flex gap-3">
+            <button
+              onClick={handleOpenFile}
+              className="flex-1 flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-3.5 rounded-xl font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
+            >
+              <FileCode className="w-5 h-5" />
+              Select JS File
+            </button>
+            <button
+              onClick={handleToggleAudio}
+              className={`flex-1 flex justify-center items-center gap-2 ${
+                isAudioActive
+                  ? "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white"
+                  : "bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white"
+              } px-4 py-3.5 rounded-xl font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-neutral-800`}
+            >
+              {isAudioActive ? (
+                <>
+                  <MicOff className="w-5 h-5" />
+                  Stop Mic
+                </>
+              ) : (
+                <>
+                  <Mic className="w-5 h-5" />
+                  Enable Mic
+                </>
+              )}
+            </button>
+          </div>
 
           <div className="w-full flex flex-col gap-2">
             <h2 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
@@ -103,10 +132,13 @@ export default function App() {
             </div>
           </div>
 
-          {error && (
+          {(error || audioError) && (
             <div className="w-full flex items-start gap-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl text-sm border border-red-200 dark:border-red-900/50">
               <AlertCircle className="w-5 h-5 shrink-0" />
-              <p>{error}</p>
+              <div className="flex flex-col gap-1">
+                {error && <p>{error}</p>}
+                {audioError && <p>{audioError}</p>}
+              </div>
             </div>
           )}
         </div>
