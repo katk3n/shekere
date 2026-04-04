@@ -1,11 +1,23 @@
-// spectrum.js — オーディオスペクトラムビジュアライザー
-// 256バンドの FFT データを使い、周波数ごとに高さが変わる棒グラフを描画します。
-//
-// context.audio.bands: number[256]  各バンドの強度 (0.0~1.0, 27.5Hz~4186Hz をカバー)
-// context.audio.bass:  number       27.5~250 Hz 平均 (ピアノ低音域)
-// context.audio.mid:   number       250Hz~2kHz 平均  (ピアノ中音域)
-// context.audio.high:  number       2kHz~4186Hz 平均 (ピアノ高音域)
-// context.audio.volume: number      全体音量   (0.0 ~ 1.0)
+/**
+ * spectrum.js — 256-band Audio Spectrum Visualizer
+ *
+ * Renders a full-frequency bar chart using FFT data from the microphone.
+ * Bars grow upward from the bottom of the screen; color shifts from blue
+ * (low frequencies, left) to red (high frequencies, right).
+ *
+ * Frequency range: 27.5 Hz (piano A0) to 4,186 Hz (piano C8)
+ * Divided into 256 linear bands — one bar per band.
+ *
+ * Audio data used:
+ *   context.audio.bands[256]  per-band intensity  (0.0 – 1.0)
+ *   context.audio.bass        27.5 – 250 Hz avg   (0.0 – 1.0)
+ *   context.audio.mid         250 Hz – 2 kHz avg  (0.0 – 1.0)
+ *   context.audio.high        2 – 4.2 kHz avg     (0.0 – 1.0)
+ *   context.audio.volume      overall loudness    (0.0 – 1.0)
+ *
+ * Camera assumptions: PerspectiveCamera at z=5, FOV=75°.
+ * Adjust VISIBLE_WIDTH and BOTTOM_Y if you change the camera.
+ */
 
 const BAND_COUNT = 256;
 const MAX_HEIGHT = 7.5; // 画面のほぼ高さ全体

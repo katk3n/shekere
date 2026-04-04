@@ -1,3 +1,21 @@
+/**
+ * audio_reactive_knot.js — Audio-Reactive TorusKnot
+ *
+ * A minimal example showing how to combine time-based animation with
+ * real-time microphone data.
+ *
+ * Behavior:
+ *   - The knot rotates continuously over time.
+ *   - Its scale grows with bass energy (low frequencies).
+ *   - Wireframe mode activates when high-frequency energy exceeds 0.3.
+ *
+ * Audio data used:
+ *   context.audio.bass   low-frequency energy  (0.0 – 1.0)
+ *   context.audio.high   high-frequency energy (0.0 – 1.0)
+ *
+ * Enable the microphone in the Control Panel to hear it react to sound.
+ */
+
 export function setup(scene) {
   const geometry = new THREE.TorusKnotGeometry(1, 0.3, 100, 16);
   // MeshNormalMaterial is nice because it doesn't need lights
