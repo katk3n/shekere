@@ -8,35 +8,32 @@
 // context.audio.volume: number      全体音量   (0.0 ~ 1.0)
 
 const BAND_COUNT = 256;
-const MAX_HEIGHT = 8.0;
-// カメラ(z=5, FOV=75°)の可視幅 ≈ 2 × tan(37.5°) × 5 ≈ 7.7 ユニット
-// 256バンドが収まるよう各スロット幅を逆算する
-const VISIBLE_WIDTH = 7.2;
-const BAR_SLOT   = VISIBLE_WIDTH / BAND_COUNT;  // ≈ 0.028 /バンド
-const BAR_WIDTH  = BAR_SLOT * 0.7;              // ≈ 0.020
-const BAR_SPACING = BAR_SLOT * 0.3;             // ≈ 0.008
-const TOTAL_WIDTH = BAND_COUNT * BAR_SLOT;      //   7.2
+const MAX_HEIGHT = 7.5; // 画面のほぼ高さ全体
+// 画面下端の座標 (z=5, FOV=75° の場合 約 -3.8)
+const BOTTOM_Y = -3.8;
+// 画面の横幅いっぱいに広げる (アスペクト比を考慮して大きめに設定)
+const VISIBLE_WIDTH = 13.0; 
+const BAR_SLOT   = VISIBLE_WIDTH / BAND_COUNT;
+const BAR_WIDTH  = BAR_SLOT * 0.8;
+const BAR_SPACING = BAR_SLOT * 0.2;
+const TOTAL_WIDTH = BAND_COUNT * BAR_SLOT;
 
 export function setup(scene) {
-  // カメラがデフォルト位置(z=5)なので、スペクトラム全体が入るよう調整
-  // ユーザーがカメラを持っていないため scene に直接メタデータを補足する
   this.bars = [];
-
-  const geometry = new THREE.BoxGeometry(BAR_WIDTH, 1, BAR_WIDTH);
+  this.geometry = new THREE.BoxGeometry(BAR_WIDTH, 1, BAR_WIDTH);
 
   for (let i = 0; i < BAND_COUNT; i++) {
-    // 低音が左、高音が右に並ぶ
-    const x = (i * (BAR_WIDTH + BAR_SPACING)) - TOTAL_WIDTH / 2 + BAR_WIDTH / 2;
+    const x = i * BAR_SLOT - TOTAL_WIDTH / 2 + BAR_WIDTH / 2;
 
     // 周波数に応じてグラデーションカラー（低音=青、中音=緑、高音=赤）
     const t = i / (BAND_COUNT - 1);
     const color = new THREE.Color().setHSL(0.66 - t * 0.66, 1.0, 0.55);
 
     const material = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.3 });
-    const bar = new THREE.Mesh(geometry, material);
+    const bar = new THREE.Mesh(this.geometry, material);
 
-    bar.position.set(x, 0, 0);
-    bar.scale.set(1, 0.01, 1); // 初期状態は高さほぼゼロ
+    bar.position.set(x, BOTTOM_Y, 0);
+    bar.scale.set(1, 0.01, 1);
     scene.add(bar);
     this.bars.push(bar);
   }
@@ -46,7 +43,7 @@ export function setup(scene) {
   scene.add(this.ambientLight);
 
   this.pointLight = new THREE.PointLight(0xffffff, 60, 50);
-  this.pointLight.position.set(0, 10, 10);
+  this.pointLight.position.set(0, 5, 5); // ライトの位置も少し調整
   scene.add(this.pointLight);
 }
 
@@ -60,8 +57,8 @@ export function update({ time, audio }) {
     // 滑らかに追従（lerp）
     bar.scale.y += (targetHeight - bar.scale.y) * 0.25;
 
-    // バーの底辺を揃えるため、スケールに合わせてY座標を補正
-    bar.position.y = bar.scale.y / 2;
+    // バーの底辺を BOTTOM_Y に揃えるため、Y座標を補正
+    bar.position.y = BOTTOM_Y + bar.scale.y / 2;
 
     // 音量に合わせてほんのり明るさが変わる
     bar.material.emissiveIntensity = volume * 0.5;
@@ -75,9 +72,9 @@ export function update({ time, audio }) {
 export function cleanup(scene) {
   for (const bar of this.bars) {
     scene.remove(bar);
-    bar.geometry.dispose();
-    bar.material.dispose();
+    bar.material.dispose(); // material は各バーで独立しているので個別に破棄
   }
+  this.geometry.dispose(); // geometry は共有なので1回だけ破棄
   scene.remove(this.ambientLight);
   scene.remove(this.pointLight);
 }
