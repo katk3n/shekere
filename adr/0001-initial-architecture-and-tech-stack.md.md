@@ -10,7 +10,7 @@ Accepted (承認済)
 
 既存の「shekere (v1)」はRustとWGSLを用いた環境であったが、ユーザーの学習コストおよびホストアプリの開発・保守コストが高い課題があった。
 本プロジェクト「shekere (v2)」は、以下の実現を目的とする。
-- 参考 (既存のshekere(v1)のリポジトリ): https://github.com/katk3n/shekere
+- 参考 (既存のshekere(v1)のリポジトリ): https://github.com/katk3n/shekere-legacy
 
 1. ターゲット層の拡張: 高度なシェーダー言語(WGSL)から、Web標準の JavaScript / Three.js へと記述言語をピボットし、学習コストを極限まで下げる。
 2. 開発の高速化と安定化: 複雑なシステムプログラミングを避け、Web標準API と Tauri v2のプラグイン を最大限活用したモダンなハイブリッドアーキテクチャを採用する。
