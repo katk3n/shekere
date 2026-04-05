@@ -6,148 +6,104 @@
 
 **Shekere** is a live-coding environment for creating interactive audio-visual art with JavaScript and [Three.js](https://threejs.org/).
 
-Write a JS file, select it in the Control Panel, and it renders instantly in the Visualizer. Every time you save the file, it hot-reloads automatically.
+Whether you're performing live or sketching new visual concepts, Shekere provides a seamless bridge between sound analysis and 3D graphics. Write your sketch in any text editor, and see the results instantly.
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
-### 1. Launch
+### 1. Download & Launch
+Download the latest version of Shekere for macOS from the [GitHub Releases](https://github.com/katk3n/shekere/releases) page.
+- Open the `.dmg` file and drag Shekere to your Applications folder.
+- **First Launch**: Since the app is currently unsigned, macOS will block it by default. To open it:
+  1. Open the app and click **OK** on the warning dialog.
+  2. Go to **System Settings** > **Privacy & Security**.
+  3. Scroll down to the **Security** section and click **"Open Anyway"** for Shekere.
 
-```bash
-npm install
-npm run tauri dev
-```
-
-Two windows will open:
-- **Control Panel** — file selection, mic toggle, and other controls
-- **Visualizer** — the black canvas where your art renders
-
-### 2. Create a sketch file
-
-Create a `.js` file anywhere on your machine:
+### 2. Prepare a Sketch File
+Create a new `.js` file anywhere on your computer. Here is a minimal "Hello World" template:
 
 ```js
 // my_art.js
 
 export function setup(scene) {
-  // Called once on load. Add objects to the scene here.
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  // One-time setup: Add objects to the scene
+  const geometry = new THREE.SphereGeometry(1, 32, 32);
   const material = new THREE.MeshNormalMaterial();
-  this.cube = new THREE.Mesh(geometry, material);
-  scene.add(this.cube);
+  this.sphere = new THREE.Mesh(geometry, material);
+  scene.add(this.sphere);
 }
 
 export function update({ time, audio }) {
-  // Called every frame. Drive animations here.
-  this.cube.rotation.y = time;
+  // Every frame: Animate based on time or audio
+  this.sphere.position.y = Math.sin(time) * 2;
+  
+  // React to bass volume
+  const s = 1 + audio.bass;
+  this.sphere.scale.set(s, s, s);
 }
 
 export function cleanup(scene) {
-  // Called when switching to another file.
-  // Always remove and dispose objects to prevent memory leaks.
-  scene.remove(this.cube);
-  this.cube.geometry.dispose();
-  this.cube.material.dispose();
+  // Cleanup: Remove objects when switching sketches
+  scene.remove(this.sphere);
+  this.sphere.geometry.dispose();
+  this.sphere.material.dispose();
 }
 ```
 
-### 3. Select the file in the Control Panel
-
-Click **"Select JS File"** and choose your `.js` file. The Visualizer updates immediately. From then on, saving the file triggers an automatic hot-reload.
+### 3. Load & Live-Edit
+1. Launch Shekere. Two windows will appear: **Control Panel** and **Visualizer**.
+2. In the **Control Panel**, click **"Select JS File"** and choose your `.js` file.
+3. Click **"Enable Mic"** to start the audio analysis.
+4. Open the `.js` file in your favorite text editor (e.g., VS Code). Every time you **save** the file, the Visualizer will hot-reload your changes instantly!
 
 ---
 
-## Sketch API Reference
+## 🎨 Sketch API Reference
 
 ### Lifecycle Functions
+Export these functions to define your sketch behavior:
 
 | Function | When called | Argument |
 |---|---|---|
-| `setup(scene)` | Once on load | `scene` — Three.js `Scene` |
-| `update(context)` | Every frame | `context` — see below |
-| `cleanup(scene)` | Before switching files | `scene` — Three.js `Scene` |
+| `setup(scene)` | Once when the file is loaded | `scene` — Three.js `Scene` object |
+| `update(context)` | Every frame (~60fps) | `context` — Data object (see below) |
+| `cleanup(scene)` | Just before the sketch is replaced | `scene` — Three.js `Scene` object |
 
-All three functions are optional — only `export` what you need.
-
-### The `context` Object (`update` argument)
+### The `context` Object
+The `update` function receives a context object containing time and real-time audio data:
 
 ```js
 export function update({ time, audio }) {
-  // time  : elapsed seconds since launch (number)
-  // audio : microphone analysis data (see below)
+  // time  : elapsed seconds since the app started (number)
+  // audio : real-time microphone analysis (see below)
 }
 ```
 
-### `context.audio`
-
-Audio data derived from microphone input via the Web Audio API.
+### `audio` Data
+Shekere analyzes your microphone input and provides categorized frequency data:
 
 | Property | Type | Description |
 |---|---|---|
-| `audio.volume` | `number` (0–1) | Overall loudness |
-| `audio.bass` | `number` (0–1) | Low-frequency energy (27.5–250 Hz) |
-| `audio.mid` | `number` (0–1) | Mid-frequency energy (250 Hz–2 kHz) |
-| `audio.high` | `number` (0–1) | High-frequency energy (2–4.2 kHz) |
-| `audio.bands` | `number[256]` (each 0–1) | Full spectrum (27.5 Hz–4,186 Hz divided into 256 bands) |
+| `audio.volume` | `0.0 – 1.0` | Overall loudness |
+| `audio.bass` | `0.0 – 1.0` | Low-frequency energy (27.5 – 250 Hz) |
+| `audio.mid` | `0.0 – 1.0` | Mid-frequency energy (250 Hz – 2 kHz) |
+| `audio.high` | `0.0 – 1.0` | High-frequency energy (2 – 4.2 kHz) |
+| `audio.bands` | `Array(256)` | Full spectrum (256 linear bands from 27.5 Hz to 4.18 kHz) |
 
-> **To use audio data**: click **"Enable Mic"** in the Control Panel. The OS will prompt for microphone permission.
-
-### Three.js
-
-`THREE` is available as a global — no import needed.
-
-```js
-const geo = new THREE.SphereGeometry(1, 32, 32);
-const mat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
-```
+### Three.js Integration
+The `THREE` library is globally available in your sketches—no imports required. Simply use `new THREE.BoxGeometry(...)`, `new THREE.MeshStandardMaterial(...)`, etc.
 
 ---
 
-## Hot Reload
-
-Every time you **save** your file, the Visualizer automatically:
-
-1. Calls `cleanup()` to tear down the current scene
-2. Imports your updated code and calls `setup()` again
-
-> **Important**: if you forget to call `scene.remove()` and `.dispose()` in `cleanup()`, memory will grow with every reload. Always clean up everything you create in `setup()`.
+## 💡 Pro Tips
+- **Performance**: While Shekere handles reloading, always implement the `cleanup()` function to dispose of geometries and materials. This prevents memory usage from creeping up during long sessions.
+- **Lighting**: By default, the scene is dark. Use `THREE.AmbientLight` or `THREE.PointLight` in your `setup()` to illuminate your objects, or use `MeshNormalMaterial` for a quick unlit look.
+- **Spectrum**: Use `audio.bands` to create detailed frequency visualizers. Each index in the 256-length array corresponds to a specific pitch from low (index 0) to high (index 255).
 
 ---
 
-## Examples
-
-| File | Description |
-|---|---|
-| `examples/audio_reactive_knot.js` | Audio-reactive TorusKnot — scales with bass, goes wireframe on highs |
-| `examples/spectrum.js` | 256-band audio spectrum visualizer with a blue-to-red gradient |
-
-See the comment block at the top of each file for usage details.
-
----
-
-## Project Structure
-
-```
-shekere/
-├── examples/                        # Example sketches
-│   ├── my_sketch.js
-│   └── spectrum.js
-├── src/
-│   ├── hooks/useAudioAnalyzer.ts    # Mic input & FFT analysis
-│   ├── visualizer.ts                # Three.js host environment
-│   └── App.tsx                      # Control Panel UI
-└── adr/                             # Architecture Decision Records
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Desktop shell | [Tauri v2](https://tauri.app/) (Rust) |
-| Control Panel | React + Tailwind CSS |
-| Visualizer | Vanilla TypeScript + Three.js |
-| Audio analysis | Web Audio API (`AnalyserNode`, fftSize = 4096) |
-| IPC | Tauri Events |
+## 📜 Examples
+Check the `examples/` directory in this repository for reference scripts:
+- `audio_reactive_knot.js`: A simple reactivity demo.
+- `spectrum.js`: A high-resolution 256-band spectrum bars implementation.
