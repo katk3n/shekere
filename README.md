@@ -74,9 +74,10 @@ Export these functions to define your sketch behavior:
 The `update` function receives a context object containing time and real-time audio data:
 
 ```js
-export function update({ time, audio }) {
+export function update({ time, audio, midi }) {
   // time  : elapsed seconds since the app started (number)
   // audio : real-time microphone analysis (see below)
+  // midi  : real-time MIDI input (see below)
 }
 ```
 
@@ -90,6 +91,16 @@ Shekere analyzes your microphone input and provides categorized frequency data:
 | `audio.mid` | `0.0 – 1.0` | Mid-frequency energy (250 Hz – 2 kHz) |
 | `audio.high` | `0.0 – 1.0` | High-frequency energy (2 – 4.2 kHz) |
 | `audio.bands` | `Array(256)` | Full spectrum (256 linear bands from 27.5 Hz to 4.18 kHz) |
+
+### `midi` Data
+Shekere automatically connects to all available MIDI input devices. MIDI values are normalized from `0–127` to `0.0–1.0`.
+
+| Property | Type | Description |
+|---|---|---|
+| `midi.notes` | `Array(128)` | Velocity of currently pressed notes (index 0-127) |
+| `midi.cc` | `Array(128)` | Values of Control Change messages (knobs, sliders, etc.) |
+
+Example: `const volume = midi.cc[7];` or `if (midi.notes[60] > 0) { ... }`
 
 ### Three.js Integration
 The `THREE` library is globally available in your sketches—no imports required. Simply use `new THREE.BoxGeometry(...)`, `new THREE.MeshStandardMaterial(...)`, etc.

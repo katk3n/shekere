@@ -29,9 +29,26 @@ window.addEventListener('resize', () => {
 
 let currentModule: SketchModule | null = null;
 let latestAudioData = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(256).fill(0) as number[] };
+let latestMidiData = {
+    notes: new Array(128).fill(0) as number[],
+    cc: new Array(128).fill(0) as number[]
+};
 
 listen<{ volume: number; bass: number; mid: number; high: number; bands: number[] }>('audio-data', (event) => {
     latestAudioData = event.payload;
+});
+
+listen<{ status: number; data1: number; data2: number }>('midi-event', (event) => {
+    const { status, data1, data2 } = event.payload;
+    const type = status & 0xF0;
+    
+    if (type === 0x90) { // Note On
+        latestMidiData.notes[data1] = data2 / 127.0;
+    } else if (type === 0x80) { // Note Off
+        latestMidiData.notes[data1] = 0;
+    } else if (type === 0xB0) { // CC
+        latestMidiData.cc[data1] = data2 / 127.0;
+    }
 });
 
 // --- 2. Render Loop ---
@@ -42,8 +59,11 @@ function animate() {
     // Call user's update function if it exists
     if (currentModule && typeof currentModule.update === 'function') {
         const time = clock.getElapsedTime();
-        // 開発フェーズ3でaudioやmidiデータが追加される想定
-        const context = { time, audio: latestAudioData }; 
+        const context = { 
+            time, 
+            audio: latestAudioData,
+            midi: latestMidiData 
+        }; 
         currentModule.update(context);
     }
     
