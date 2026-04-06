@@ -8,22 +8,15 @@
  * Frequency range: 27.5 Hz (piano A0) to 4,186 Hz (piano C8)
  * Divided into 256 linear bands — one bar per band.
  *
- * Audio data used:
- *   context.audio.bands[256]  per-band intensity  (0.0 – 1.0)
- *   context.audio.bass        27.5 – 250 Hz avg   (0.0 – 1.0)
- *   context.audio.mid         250 Hz – 2 kHz avg  (0.0 – 1.0)
- *   context.audio.high        2 – 4.2 kHz avg     (0.0 – 1.0)
- *   context.audio.volume      overall loudness    (0.0 – 1.0)
- *
  * Camera assumptions: PerspectiveCamera at z=5, FOV=75°.
  * Adjust VISIBLE_WIDTH and BOTTOM_Y if you change the camera.
  */
 
 const BAND_COUNT = 256;
-const MAX_HEIGHT = 7.5; // 画面のほぼ高さ全体
-// 画面下端の座標 (z=5, FOV=75° の場合 約 -3.8)
+const MAX_HEIGHT = 7.5; // Almost the full screen height
+// Bottom Y coordinate (Assuming z=5, FOV=75°, is approx. -3.8)
 const BOTTOM_Y = -3.8;
-// 画面の横幅いっぱいに広げる (アスペクト比を考慮して大きめに設定)
+// Spread across the full width (Slightly larger than actual visible width)
 const VISIBLE_WIDTH = 13.0; 
 const BAR_SLOT   = VISIBLE_WIDTH / BAND_COUNT;
 const BAR_WIDTH  = BAR_SLOT * 0.8;
@@ -37,7 +30,7 @@ export function setup(scene) {
   for (let i = 0; i < BAND_COUNT; i++) {
     const x = i * BAR_SLOT - TOTAL_WIDTH / 2 + BAR_WIDTH / 2;
 
-    // 周波数に応じてグラデーションカラー（低音=青、中音=緑、高音=赤）
+    // Gradient based on frequency (Low: Blue, Mid: Green, High: Red)
     const t = i / (BAND_COUNT - 1);
     const color = new THREE.Color().setHSL(0.66 - t * 0.66, 1.0, 0.55);
 
@@ -50,12 +43,12 @@ export function setup(scene) {
     this.bars.push(bar);
   }
 
-  // ライト
+  // Lights
   this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
   scene.add(this.ambientLight);
 
   this.pointLight = new THREE.PointLight(0xffffff, 60, 50);
-  this.pointLight.position.set(0, 5, 5); // ライトの位置も少し調整
+  this.pointLight.position.set(0, 5, 5); // Adjust position
   scene.add(this.pointLight);
 }
 
@@ -66,27 +59,27 @@ export function update({ time, audio }) {
     const bar = this.bars[i];
     const targetHeight = Math.max(0.01, bands[i] * MAX_HEIGHT);
 
-    // 滑らかに追従（lerp）
+    // Smoothly follow (lerp)
     bar.scale.y += (targetHeight - bar.scale.y) * 0.25;
 
-    // バーの底辺を BOTTOM_Y に揃えるため、Y座標を補正
+    // Align base of bars with BOTTOM_Y
     bar.position.y = BOTTOM_Y + bar.scale.y / 2;
 
-    // 音量に合わせてほんのり明るさが変わる
+    // Brightness changes with overall volume
     bar.material.emissiveIntensity = volume * 0.5;
     bar.material.emissive = bar.material.color;
   }
 
-  // ポイントライトを時間でゆっくり動かす
+  // Slowly move point light over time
   this.pointLight.position.x = Math.sin(time * 0.3) * 15;
 }
 
 export function cleanup(scene) {
   for (const bar of this.bars) {
     scene.remove(bar);
-    bar.material.dispose(); // material は各バーで独立しているので個別に破棄
+    bar.material.dispose(); // Material is unique to each bar
   }
-  this.geometry.dispose(); // geometry は共有なので1回だけ破棄
+  this.geometry.dispose(); // Geometry is shared
   scene.remove(this.ambientLight);
   scene.remove(this.pointLight);
 }

@@ -33,6 +33,8 @@ let latestMidiData = {
     notes: new Array(128).fill(0) as number[],
     cc: new Array(128).fill(0) as number[]
 };
+let latestOscData: Record<string, any> = {};
+let oscEvents: { address: string; data: any }[] = [];
 
 listen<{ volume: number; bass: number; mid: number; high: number; bands: number[] }>('audio-data', (event) => {
     latestAudioData = event.payload;
@@ -51,6 +53,25 @@ listen<{ status: number; data1: number; data2: number }>('midi-event', (event) =
     }
 });
 
+listen<{ address: string; args: any[] }>('osc-event', (event) => {
+    const { address, args } = event.payload;
+    
+    let data: any = args;
+    // Automatically convert key-value pairs into an object if it's /dirt/play or similar
+    // tidal (superdirt) sends [key, val, key, val, ...]
+    if (address === '/dirt/play' && args.length % 2 === 0) {
+        const obj: Record<string, any> = {};
+        for (let i = 0; i < args.length; i += 2) {
+            const key = String(args[i]);
+            obj[key] = args[i+1];
+        }
+        data = obj;
+    }
+    
+    latestOscData[address] = data;
+    oscEvents.push({ address, data });
+});
+
 // --- 2. Render Loop ---
 const clock = new THREE.Clock();
 function animate() {
@@ -62,9 +83,18 @@ function animate() {
         const context = { 
             time, 
             audio: latestAudioData,
-            midi: latestMidiData 
+            midi: latestMidiData,
+            osc: latestOscData,
+            oscEvents: [...oscEvents]
         }; 
-        currentModule.update(context);
+        try {
+            currentModule.update(context);
+        } catch (e) {
+            console.error("Error in update:", e);
+        }
+        
+        // Clear events after the frame has processed them
+        oscEvents.length = 0;
     }
     
     renderer.render(scene, camera);
@@ -81,7 +111,11 @@ listen<{ code: string }>('user-code-update', async (event) => {
         
         // Cleanup old module objects from the scene to prevent memory leaks
         if (currentModule && typeof currentModule.cleanup === 'function') {
-            currentModule.cleanup(scene);
+            try {
+                currentModule.cleanup(scene);
+            } catch (e) {
+                console.warn("Cleanup failed:", e);
+            }
         }
         
         // Dynamically import the user module

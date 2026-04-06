@@ -13,6 +13,12 @@ struct MidiEvent {
     data2: u8,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct OscEvent {
+    address: String,
+    args: Vec<serde_json::Value>,
+}
+
 fn setup_midi(app_handle: tauri::AppHandle) -> anyhow::Result<()> {
     let midi_in = midir::MidiInput::new("shekere-midi-scan")?;
     let ports = midi_in.ports();
@@ -50,6 +56,59 @@ fn setup_midi(app_handle: tauri::AppHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn setup_osc(app_handle: tauri::AppHandle) -> anyhow::Result<()> {
+    use std::net::{UdpSocket, Ipv4Addr};
+
+    let addr = (Ipv4Addr::UNSPECIFIED, 2020);
+    let socket = UdpSocket::bind(addr)?;
+    println!("OSC listening on port 2020");
+
+    let mut buf = [0u8; 16384];
+
+    loop {
+        match socket.recv_from(&mut buf) {
+            Ok((size, _addr)) => {
+                let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
+                handle_packet(packet, &app_handle);
+            }
+            Err(e) => {
+                eprintln!("Error receiving UDP packet: {}", e);
+            }
+        }
+    }
+}
+
+fn handle_packet(packet: rosc::OscPacket, app_handle: &tauri::AppHandle) {
+    use rosc::{OscPacket, OscType};
+
+    match packet {
+        OscPacket::Message(msg) => {
+            let args = msg.args.into_iter().map(|arg| match arg {
+                OscType::Float(f) => serde_json::json!(f),
+                OscType::Double(d) => serde_json::json!(d),
+                OscType::Int(i) => serde_json::json!(i),
+                OscType::Long(l) => serde_json::json!(l),
+                OscType::String(s) => serde_json::json!(s),
+                OscType::Bool(b) => serde_json::json!(b),
+                OscType::Nil => serde_json::Value::Null,
+                OscType::Blob(b) => serde_json::json!(b),
+                _ => serde_json::Value::Null,
+            }).collect();
+
+            let event = OscEvent {
+                address: msg.addr,
+                args,
+            };
+            let _ = app_handle.emit("osc-event", event);
+        }
+        OscPacket::Bundle(bundle) => {
+            for packet in bundle.content {
+                handle_packet(packet, app_handle);
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -58,9 +117,20 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                if let Err(e) = setup_midi(handle) {
-                    eprintln!("MIDI setup error: {}", e);
+            std::thread::spawn({
+                let handle = handle.clone();
+                move || {
+                    if let Err(e) = setup_midi(handle) {
+                        eprintln!("MIDI setup error: {}", e);
+                    }
+                }
+            });
+            std::thread::spawn({
+                let handle = handle.clone();
+                move || {
+                    if let Err(e) = setup_osc(handle) {
+                        eprintln!("OSC setup error: {}", e);
+                    }
                 }
             });
             Ok(())
