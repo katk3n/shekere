@@ -57,14 +57,36 @@ export function cleanup(scene) {
 ### Lifecycle Functions
 Export these functions to define your sketch behavior:
 
-| Function | When called | Argument |
-|---|---|---|
-| `setup(scene)` | Once when the file is loaded | `scene` — Three.js `Scene` object |
-| `update(context)` | Every frame (~60fps) | `context` — Data object (see below) |
-| `cleanup(scene)` | Just before the sketch is replaced | `scene` — Three.js `Scene` object |
+| Function | When called | Argument | Return Value |
+|---|---|---|---|
+| `setup(scene)` | Once when the file is loaded | `scene` (Three.js `Scene`) | `config` object (Optional) |
+| `update(context)` | Every frame (~60fps) | `context` — Data object | `void` |
+| `cleanup(scene)` | Just before the sketch is replaced | `scene` (Three.js `Scene`) | `void` |
+
+### Sketch Configuration
+The `setup()` function can return an optional configuration object to tune the analysis engine for your specific sketch:
+
+```js
+export function setup(scene) {
+  // ... setup your meshes
+  
+  return {
+    audio: {
+      minFreqHz: 80,   // Lowest frequency to analyze
+      maxFreqHz: 2000  // Highest frequency to analyze
+    }
+  };
+}
+```
+
+#### Configuration Options (`config.audio`)
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `minFreqHz` | `number` | `27.5` | The lowest frequency (A0) mapped to `bands[0]`. |
+| `maxFreqHz` | `number` | `4186.0` | The highest frequency (C8) mapped to `bands[255]`. |
 
 ### The `context` Object
-The `update` function receives real-time data:
+The `update` function receives real-time data on every frame:
 
 ```js
 export function update({ time, audio, midi, osc, oscEvents }) {
@@ -77,8 +99,20 @@ export function update({ time, audio, midi, osc, oscEvents }) {
 ```
 
 ### 🔊 Audio Data
-- `audio.volume`, `audio.bass`, `audio.mid`, `audio.high` (0.0 – 1.0)
-- `audio.bands`: Array(256) of raw FFT frequency values.
+The audio analyzer uses logarithmic frequency scaling to match human hearing and musical octaves.
+
+#### Data Properties (`context.audio`)
+| Property | Type | Range | Description |
+|---|---|---|---|
+| `volume` | `number` | 0.0 – 1.0 | Root-mean-square average of all 256 bands. |
+| `bass` | `number` | 0.0 – 1.0 | Average intensity from `minFreqHz` to **250 Hz**. |
+| `mid` | `number` | 0.0 – 1.0 | Average intensity from **250 Hz** to **2000 Hz**. |
+| `high` | `number` | 0.0 – 1.0 | Average intensity from **2000 Hz** to `maxFreqHz`. |
+| `bands` | `number[]` | 0.0 – 1.0 | Array of 256 intensities for logarithmic frequency bins. |
+
+**Processing Details**:
+- **Tilt EQ**: Higher frequencies receive a linear gain boost (1.0x to 1.8x) to compensate for natural energy drop-off.
+- **Power Scaling**: A 1.5x power curve is applied to increase visual contrast and suppress noise.
 
 ### ⌨️ MIDI Data
 - `midi.notes`: Array(128) of velocity (0.0 – 1.0).
