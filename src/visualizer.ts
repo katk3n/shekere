@@ -1,12 +1,19 @@
 import * as THREE from 'three';
-import { listen } from '@tauri-apps/api/event';
+import { listen, emit } from '@tauri-apps/api/event';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
 
-// ユーザーが提供するスケッチモジュールの型定義
+interface SketchConfig {
+    audio?: {
+        minFreqHz?: number;
+        maxFreqHz?: number;
+    }
+}
+
+// Type definition for user-provided sketch modules
 interface SketchModule {
-    setup?: (scene: THREE.Scene) => void;
+    setup?: (scene: THREE.Scene) => SketchConfig | void;
     update?: (context: any) => void;
     cleanup?: (scene: THREE.Scene) => void;
 }
@@ -121,16 +128,19 @@ listen<{ code: string }>('user-code-update', async (event) => {
         // Dynamically import the user module
         const userModule = await import(/* @vite-ignore */ blobUrl);
         
-        // ADRで 'this.mesh = ...' のように this を利用するため、
-        // 独立した State オブジェクトを this として bind して呼び出す
+        // To use 'this' like 'this.mesh = ...' as per ADR,
+        // bind and call using an independent State object as 'this'
         const sketchContext = {};
         
         // Run setup and add meshes to the scene
         if (typeof userModule.setup === 'function') {
-            userModule.setup.call(sketchContext, scene);
+            const config = userModule.setup.call(sketchContext, scene);
+            if (config && config.audio) {
+                emit('audio-config-update', config.audio);
+            }
         }
         
-        // 毎フレームのループ用インターフェースオブジェクトを作成
+        // Create an interface object for the per-frame loop
         currentModule = {
             update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
             cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)

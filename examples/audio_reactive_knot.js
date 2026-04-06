@@ -1,5 +1,5 @@
 /**
- * audio_reactive_knot.js — Audio-Reactive TorusKnot
+ * audio_reactive_knot.js - Audio-Reactive TorusKnot
  *
  * A minimal example showing how to combine time-based animation with
  * real-time microphone data.
@@ -10,8 +10,8 @@
  *   - Wireframe mode activates when high-frequency energy exceeds 0.3.
  *
  * Audio data used:
- *   context.audio.bass   low-frequency energy  (0.0 – 1.0)
- *   context.audio.high   high-frequency energy (0.0 – 1.0)
+ *   context.audio.bass   low-frequency energy  (0.0 - 1.0)
+ *   context.audio.high   high-frequency energy (0.0 - 1.0)
  *
  * Enable the microphone in the Control Panel to hear it react to sound.
  */

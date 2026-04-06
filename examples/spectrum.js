@@ -1,20 +1,20 @@
 /**
- * spectrum.js — 256-band Audio Spectrum Visualizer
+ * spectrum.js - 256-band Audio Spectrum Visualizer
  *
  * Renders a full-frequency bar chart using FFT data from the microphone.
  * Bars grow upward from the bottom of the screen; color shifts from blue
  * (low frequencies, left) to red (high frequencies, right).
  *
- * Frequency range: 27.5 Hz (piano A0) to 4,186 Hz (piano C8)
- * Divided into 256 linear bands — one bar per band.
+ * Frequency range: 80 Hz (Human voice low) to 2,000 Hz (Human voice high)
+ * Divided into 256 logarithmic bands - one bar per band.
  *
- * Camera assumptions: PerspectiveCamera at z=5, FOV=75°.
+ * Camera assumptions: PerspectiveCamera at z=5, FOV=75.
  * Adjust VISIBLE_WIDTH and BOTTOM_Y if you change the camera.
  */
 
 const BAND_COUNT = 256;
 const MAX_HEIGHT = 7.5; // Almost the full screen height
-// Bottom Y coordinate (Assuming z=5, FOV=75°, is approx. -3.8)
+// Bottom Y coordinate (Assuming z=5, FOV=75, is approx. -3.8)
 const BOTTOM_Y = -3.8;
 // Spread across the full width (Slightly larger than actual visible width)
 const VISIBLE_WIDTH = 13.0; 
@@ -50,6 +50,14 @@ export function setup(scene) {
   this.pointLight = new THREE.PointLight(0xffffff, 60, 50);
   this.pointLight.position.set(0, 5, 5); // Adjust position
   scene.add(this.pointLight);
+
+  // Return audio analysis configuration (for human voice: 80Hz - 2000Hz)
+  return {
+    audio: {
+      minFreqHz: 80,
+      maxFreqHz: 2000,
+    }
+  };
 }
 
 export function update({ time, audio }) {

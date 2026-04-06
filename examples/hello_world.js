@@ -1,5 +1,5 @@
 /**
- * hello_world.js — Minimal Starting Template
+ * hello_world.js - Minimal Starting Template
  * 
  * A basic example showing the core lifecycle functions: 
  * setup, update, and cleanup.
