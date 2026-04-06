@@ -26,7 +26,6 @@ export default function App() {
       try {
         const code = await readTextFile(filePath);
         await emit("user-code-update", { code });
-        console.log("Emitted user code update."); console.log("Web MIDI API Support:", typeof navigator.requestMIDIAccess);
         setError(null);
       } catch (err: any) {
         console.error("Failed to read or emit file:", err);
