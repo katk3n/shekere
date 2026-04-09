@@ -80,7 +80,7 @@ const DEFAULT_MAX_FREQ = 4186;
 
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
-let audioDataArray: Uint8Array<ArrayBuffer> | null = null;
+let audioDataArray: Uint8Array | null = null;
 let audioStream: MediaStream | null = null;
 let audioActive = false;
 let audioMinFreq = DEFAULT_MIN_FREQ;
