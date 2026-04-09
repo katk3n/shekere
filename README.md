@@ -1,7 +1,7 @@
 # Shekere
 
 <p align="center">
-  <img src="shekere-logo.png" width="400" alt="Shekere logo">
+  <img src="src/assets/shekere-logo.png" width="400" alt="Shekere logo">
 </p>
 
 **Shekere** is a live-coding environment for creating interactive audio-visual art with JavaScript and [Three.js](https://threejs.org/).
