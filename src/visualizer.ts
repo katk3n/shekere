@@ -45,7 +45,7 @@ const DEFAULT_MAX_FREQ = 4186;
 
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
-let audioDataArray: Uint8Array | null = null;
+let audioDataArray: Uint8Array<ArrayBuffer> | null = null;
 let audioStream: MediaStream | null = null;
 let audioActive = false;
 let audioMinFreq = DEFAULT_MIN_FREQ;
@@ -109,9 +109,9 @@ function computeAudioData() {
     const bands: number[] = new Array(BAND_COUNT);
     for (let b = 0; b < BAND_COUNT; b++) {
         const freqStart = minFreq * Math.pow(logRatio, b);
-        const freqEnd   = minFreq * Math.pow(logRatio, b + 1);
-        const binStart  = Math.floor(freqStart / binResolution);
-        const binEnd    = Math.max(binStart + 1, Math.floor(freqEnd / binResolution));
+        const freqEnd = minFreq * Math.pow(logRatio, b + 1);
+        const binStart = Math.floor(freqStart / binResolution);
+        const binEnd = Math.max(binStart + 1, Math.floor(freqEnd / binResolution));
 
         let sum = 0, count = 0;
         for (let i = binStart; i < binEnd && i < audioDataArray.length; i++) {
@@ -133,7 +133,7 @@ function computeAudioData() {
     };
 
     const bassEnd = getIdx(BASS_MAX_HZ);
-    const midEnd  = getIdx(MID_MAX_HZ);
+    const midEnd = getIdx(MID_MAX_HZ);
 
     const avgRange = (arr: number[], from: number, to: number) => {
         const s = Math.max(0, from);
@@ -146,16 +146,16 @@ function computeAudioData() {
 
     return {
         volume: bands.reduce((a, b) => a + b, 0) / BAND_COUNT,
-        bass:   avgRange(bands, 0, bassEnd),
-        mid:    avgRange(bands, bassEnd, midEnd),
-        high:   avgRange(bands, midEnd, BAND_COUNT),
+        bass: avgRange(bands, 0, bassEnd),
+        mid: avgRange(bands, bassEnd, midEnd),
+        high: avgRange(bands, midEnd, BAND_COUNT),
         bands,
     };
 }
 
 // Listen for start/stop commands from the Control Panel
 listen<void>('start-audio', () => { startAudio(); });
-listen<void>('stop-audio',  () => { stopAudio(); });
+listen<void>('stop-audio', () => { stopAudio(); });
 
 // --- 3. Shared state ---
 let currentModule: SketchModule | null = null;
@@ -247,8 +247,8 @@ listen<{ code: string }>('user-code-update', async (event) => {
         }
 
         currentModule = {
-            update:  (ctx: any) => userModule.update?.call(sketchContext, ctx),
-            cleanup: (s: any)   => userModule.cleanup?.call(sketchContext, s)
+            update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
+            cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
         };
 
         console.log('Successfully hot-reloaded user code.');
