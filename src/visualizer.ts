@@ -373,8 +373,20 @@ function syncToHost() {
             vignette: { offset: currentValues.vignetteOffset, darkness: currentValues.vignetteDarkness }
         });
         lastSyncedValues = { ...currentValues };
-        lastSyncTime = now;
     }
+
+    // Always emit audio activity if active (throttled to 10fps by this function)
+    if (audioActive && latestAudioData) {
+        emit('audio-activity', {
+            volume: latestAudioData.volume || 0,
+            bass: latestAudioData.bass || 0,
+            mid: latestAudioData.mid || 0,
+            high: latestAudioData.high || 0,
+            bands: latestAudioData.bands || []
+        }).catch(err => console.error("Audio activity emit error:", err));
+    }
+
+    lastSyncTime = now;
 }
 
 animate();
