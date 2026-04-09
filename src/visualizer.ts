@@ -133,7 +133,7 @@ function computeAudioData() {
         return { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[] };
     }
 
-    analyserNode.getByteFrequencyData(audioDataArray);
+    analyserNode.getByteFrequencyData(audioDataArray as any);
 
     const sampleRate = audioContext?.sampleRate ?? 44100;
     const binResolution = sampleRate / FFT_SIZE;

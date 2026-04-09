@@ -4,7 +4,7 @@
 
 ## 1. Status
 
-Accepted (承認済)
+Implemented (v0.4.0)
 
 ## 2. Context & Goals (背景と目的)
 
@@ -108,24 +108,24 @@ export function cleanup(scene) {
 
 AIエージェントは以下のフェーズに従って段階的に実装・確認を進めること。
 
-#### Phase 1: Bootstrapping
+#### Phase 1: Bootstrapping [Completed in v0.1.0]
 
 - `create-tauri-app` 等を用いたTauri v2 + Vite + TS基盤の構築。
 - Control PanelとVisualizerの2つのウィンドウが起動する設定 (`tauri.conf.json` 等) の実装。
 
-#### Phase 2: File Watching & Dynamic Loading
+#### Phase 2: File Watching & Dynamic Loading [Completed in v0.2.0]
 
 - `@tauri-apps/plugin-fs` を用いたJSファイルの監視機構の実装。
 - Visualizer側での Three.js 基盤構築と、Blob URLを用いたJSファイルの動的実行機能の実装。
 
-#### Phase 3: Data Pipeline (Audio, MIDI & OSC)
+#### Phase 3: Data Pipeline (Audio, MIDI & OSC) [Completed in v0.3.0]
 
 - Control Panelでのマイク入力許可とWeb Audio API (FFT) 実装。
-- MIDI入力 (Web MIDI API) サポートの実装。
+- MIDI入力 (midir) サポートの実装。
 - Rust側でのUDPソケットによるOSC受信とフロントエンドへの emit 実装。
 - 各種データを `update(context)` へ注入するパイプラインの結合。
 
-#### Phase 4: Post-Processing & UI
+#### Phase 4: Post-Processing & UI [Completed in v0.4.0]
 
 - Visualizerへの EffectComposer (`UnrealBloomPass`等) の導入。
 - Control Panel側でのパラメーター調整UI（Bloom強度など）の実装とウィンドウ間同期。

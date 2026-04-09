@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
 import { emit, listen } from "@tauri-apps/api/event";
-import { FileCode, AlertCircle, FileAudio, Settings, Mic, MicOff, Sparkles, Activity, Radio, Music, Volume2 } from "lucide-react";
+import { FileCode, AlertCircle, FileAudio, Mic, MicOff, Sparkles, Activity, Radio, Music, Volume2 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
+import shekereIcon from "./assets/shekere-icon.png";
 
 // --- Helper Components ---
 const LevelBar = ({ label, value, colorClass }: { label: string, value: number, colorClass: string }) => (
@@ -12,7 +13,7 @@ const LevelBar = ({ label, value, colorClass }: { label: string, value: number, 
       <span>{label}</span>
       <span className="text-neutral-400 font-mono">{(value * 100).toFixed(0)}%</span>
     </div>
-    <div className="h-2 w-full bg-neutral-200 dark:bg-neutral-700/50 rounded-full overflow-hidden">
+    <div className="h-2 w-full bg-neutral-700/50 rounded-full overflow-hidden">
       <div
         className={`h-full ${colorClass} transition-all duration-[50ms] ease-out min-w-[2%]`}
         style={{ width: `${Math.min(Math.max(value * 100, 0), 100)}%` }}
@@ -22,18 +23,18 @@ const LevelBar = ({ label, value, colorClass }: { label: string, value: number, 
 );
 
 const Indicator = ({ label, icon: Icon, active, text, subText }: { label: string, icon: any, active: boolean, text: string, subText?: string }) => (
-  <div className="flex items-center gap-3 bg-white dark:bg-neutral-800 p-3 rounded-lg border border-neutral-100 dark:border-neutral-700/50 shadow-sm">
+  <div className="flex items-center gap-3 bg-neutral-800 p-3 rounded-lg border border-neutral-700/50 shadow-sm">
     <div className="relative flex items-center justify-center shrink-0">
-      <Icon className="w-5 h-5 text-neutral-400 dark:text-neutral-500" />
-      <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full transition-colors duration-[50ms] ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-neutral-300 dark:bg-neutral-700'}`} />
+      <Icon className="w-5 h-5 text-neutral-500" />
+      <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full transition-colors duration-[50ms] ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-neutral-700'}`} />
     </div>
     <div className="flex flex-col flex-1 min-w-0 justify-center">
       <div className="flex items-baseline gap-2 mb-0.5">
-        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-widest font-semibold shrink-0">{label}</span>
-        <span className="text-sm font-mono text-neutral-800 dark:text-neutral-200 truncate" title={text}>{text}</span>
+        <span className="text-[10px] text-neutral-400 uppercase tracking-widest font-semibold shrink-0">{label}</span>
+        <span className="text-sm font-mono text-neutral-200 truncate" title={text}>{text}</span>
       </div>
       {(subText || subText === "") && (
-        <span className="text-xs font-mono text-neutral-500 dark:text-neutral-400 truncate" title={subText || "No parameters"}>
+        <span className="text-xs font-mono text-neutral-400 truncate" title={subText || "No parameters"}>
           {subText || "No metadata"}
         </span>
       )}
@@ -270,15 +271,15 @@ export default function App() {
   const isOscActive = lastOsc && (Date.now() - lastOsc.id < 150);
 
   return (
-    <div className="min-h-screen bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 flex flex-col items-center justify-center p-6 font-sans transition-colors duration-200">
-      <div className="max-w-[950px] w-full bg-white dark:bg-neutral-800 rounded-2xl shadow-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+    <div className="min-h-screen bg-neutral-900 text-neutral-100 font-sans transition-colors duration-200 flex flex-col">
+      <div className="w-full flex-1 mx-auto">
 
-        <div className="p-6 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-3">
-          <Settings className="w-6 h-6 text-blue-500" />
+        <div className="p-6 border-b border-neutral-800 flex items-center gap-4">
+          <img src={shekereIcon} alt="Shekere Logo" className="w-10 h-10 object-contain mix-blend-screen drop-shadow-[0_0_12px_rgba(59,130,246,0.5)]" />
           <h1 className="text-2xl font-bold tracking-tight">Shekere Control Panel</h1>
         </div>
 
-        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 items-start max-w-[1200px] mx-auto">
 
           {/* ================= LEFT COLUMN: CONTROLS ================= */}
           <div className="flex flex-col gap-6">
@@ -295,7 +296,7 @@ export default function App() {
                 className={`flex-1 flex justify-center items-center gap-2 ${isAudioActive
                     ? "bg-red-500 hover:bg-red-600 active:bg-red-700 text-white"
                     : "bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white"
-                  } px-4 py-3.5 rounded-xl font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-neutral-800`}
+                  } px-4 py-3.5 rounded-xl font-medium transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-neutral-800`}
               >
                 {isAudioActive ? <><MicOff className="w-5 h-5" />Stop Mic</> : <><Mic className="w-5 h-5" />Enable Mic</>}
               </button>
@@ -303,10 +304,10 @@ export default function App() {
 
             {/* Currently Watching */}
             <div className="w-full flex flex-col gap-2">
-              <h1 className="text-sm font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              <h1 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider">
                 Currently Watching
               </h1>
-              <div className="bg-neutral-100 dark:bg-neutral-900/50 p-4 rounded-xl text-sm font-mono break-all text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/50 flex items-start gap-3">
+              <div className="bg-neutral-900/50 p-4 rounded-xl text-sm font-mono break-all text-neutral-300 border border-neutral-700/50 flex items-start gap-3">
                 <FileAudio className="w-5 h-5 shrink-0 text-neutral-400 mt-0.5" />
                 <span>{filePath || "None"}</span>
               </div>
@@ -316,13 +317,13 @@ export default function App() {
             <div className="w-full flex flex-col pt-2">
               <div className="flex items-center gap-2 mb-4">
                 <Sparkles className="w-5 h-5 text-indigo-500" />
-                <h2 className="text-base font-bold text-neutral-800 dark:text-neutral-200 tracking-tight">
+                <h2 className="text-base font-bold text-neutral-200 tracking-tight">
                   Visual Effects
                 </h2>
               </div>
 
               {/* Tabs Header */}
-              <div className="flex w-full overflow-x-auto hide-scrollbar border-b border-neutral-200 dark:border-neutral-800 mb-4 pt-1">
+              <div className="flex w-full overflow-x-auto hide-scrollbar border-b border-neutral-800 mb-4 pt-1">
                 <button
                   onClick={() => setActiveFxTab('bloom')}
                   className={`flex-1 pb-2 px-1 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeFxTab === 'bloom' ? 'border-blue-500 text-blue-500' : 'border-transparent text-neutral-400 hover:text-neutral-300'}`}
@@ -342,31 +343,31 @@ export default function App() {
               </div>
 
               {/* Tab Content Container */}
-              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-xl border border-neutral-100 dark:border-neutral-700/50 min-h-[160px]">
+              <div className="bg-neutral-800/50 p-4 rounded-xl border border-neutral-700/50 min-h-[160px]">
 
                 {/* Bloom */}
                 {activeFxTab === 'bloom' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Strength</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{bloomStrength.toFixed(2)}</span>
+                        <label className="text-neutral-400">Strength</label>
+                        <span className="text-neutral-100">{bloomStrength.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="3" step="0.01" value={bloomStrength} onChange={(e) => setBloomStrength(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      <input type="range" min="0" max="3" step="0.01" value={bloomStrength} onChange={(e) => setBloomStrength(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Radius</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{bloomRadius.toFixed(2)}</span>
+                        <label className="text-neutral-400">Radius</label>
+                        <span className="text-neutral-100">{bloomRadius.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="1" step="0.01" value={bloomRadius} onChange={(e) => setBloomRadius(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      <input type="range" min="0" max="1" step="0.01" value={bloomRadius} onChange={(e) => setBloomRadius(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Threshold</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{bloomThreshold.toFixed(2)}</span>
+                        <label className="text-neutral-400">Threshold</label>
+                        <span className="text-neutral-100">{bloomThreshold.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="1" step="0.01" value={bloomThreshold} onChange={(e) => setBloomThreshold(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                      <input type="range" min="0" max="1" step="0.01" value={bloomThreshold} onChange={(e) => setBloomThreshold(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                   </div>
                 )}
@@ -376,10 +377,10 @@ export default function App() {
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Amount</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{rgbShiftAmount.toFixed(4)}</span>
+                        <label className="text-neutral-400">Amount</label>
+                        <span className="text-neutral-100">{rgbShiftAmount.toFixed(4)}</span>
                       </div>
-                      <input type="range" min="0" max="0.05" step="0.0001" value={rgbShiftAmount} onChange={(e) => setRgbShiftAmount(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-fuchsia-500" />
+                      <input type="range" min="0" max="0.05" step="0.0001" value={rgbShiftAmount} onChange={(e) => setRgbShiftAmount(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-fuchsia-500" />
                     </div>
                   </div>
                 )}
@@ -389,10 +390,10 @@ export default function App() {
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Intensity</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{filmIntensity.toFixed(2)}</span>
+                        <label className="text-neutral-400">Intensity</label>
+                        <span className="text-neutral-100">{filmIntensity.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="2" step="0.01" value={filmIntensity} onChange={(e) => setFilmIntensity(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                      <input type="range" min="0" max="2" step="0.01" value={filmIntensity} onChange={(e) => setFilmIntensity(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
                     </div>
                   </div>
                 )}
@@ -402,17 +403,17 @@ export default function App() {
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Offset</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{vignetteOffset.toFixed(2)}</span>
+                        <label className="text-neutral-400">Offset</label>
+                        <span className="text-neutral-100">{vignetteOffset.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="3" step="0.01" value={vignetteOffset} onChange={(e) => setVignetteOffset(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+                      <input type="range" min="0" max="3" step="0.01" value={vignetteOffset} onChange={(e) => setVignetteOffset(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between text-xs font-medium">
-                        <label className="text-neutral-600 dark:text-neutral-400">Darkness</label>
-                        <span className="text-neutral-900 dark:text-neutral-100">{vignetteDarkness.toFixed(2)}</span>
+                        <label className="text-neutral-400">Darkness</label>
+                        <span className="text-neutral-100">{vignetteDarkness.toFixed(2)}</span>
                       </div>
-                      <input type="range" min="0" max="3" step="0.01" value={vignetteDarkness} onChange={(e) => setVignetteDarkness(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+                      <input type="range" min="0" max="3" step="0.01" value={vignetteDarkness} onChange={(e) => setVignetteDarkness(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
                     </div>
                   </div>
                 )}
@@ -426,7 +427,7 @@ export default function App() {
 
             {/* Error Displays */}
             {(error || audioError) && (
-              <div className="w-full flex items-start gap-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl text-sm border border-red-200 dark:border-red-900/50">
+              <div className="w-full flex items-start gap-3 bg-red-900/20 text-red-600 text-red-400 p-4 rounded-xl text-sm border border-red-900/50">
                 <AlertCircle className="w-5 h-5 shrink-0" />
                 <div className="flex flex-col gap-1">
                   {error && <p>{error}</p>}
@@ -439,16 +440,16 @@ export default function App() {
             <div className="w-full flex flex-col pt-2">
               <div className="flex items-center gap-2 mb-4">
                 <Activity className="w-5 h-5 text-emerald-500" />
-                <h2 className="text-base font-bold text-neutral-800 dark:text-neutral-200 tracking-tight">
+                <h2 className="text-base font-bold text-neutral-200 tracking-tight">
                   Signal Monitors
                 </h2>
               </div>
 
-              <div className="flex flex-col gap-4 bg-neutral-50 dark:bg-neutral-900/30 p-5 rounded-xl border border-neutral-100 dark:border-neutral-800">
+              <div className="flex flex-col gap-4 bg-neutral-900/30 p-5 rounded-xl border border-neutral-800">
 
                 {/* Audio Levels */}
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300 mb-1">
                     <Volume2 className="w-4 h-4 text-orange-400" />
                     Audio Levels
                   </div>
@@ -458,12 +459,12 @@ export default function App() {
                   <LevelBar label="High" value={audioLevels.high} colorClass="bg-sky-400" />
 
                   {/* Spectrum Canvas */}
-                  <div className="mt-1 w-full h-16 bg-neutral-200 dark:bg-neutral-800 rounded-lg overflow-hidden border border-neutral-300 dark:border-neutral-700/50">
+                  <div className="mt-1 w-full h-16 bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700/50">
                     <canvas ref={canvasRef} width={256} height={64} className="w-full h-full opacity-80" />
                   </div>
                 </div>
 
-                <div className="w-full h-px bg-neutral-200 dark:bg-neutral-800 my-2" />
+                <div className="w-full h-px bg-neutral-800 my-2" />
 
                 {/* MIDI & OSC Indicators */}
                 <div className="flex flex-col gap-3">

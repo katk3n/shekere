@@ -4,7 +4,7 @@ Date: 2026-04-09
 
 ## Status
 
-Accepted
+Implemented (v0.5.1)
 
 ## Context
 
