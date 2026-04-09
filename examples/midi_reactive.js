@@ -34,6 +34,11 @@ export function setup(scene) {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(x, y, 0);
+        
+        // Set fixed emissive color to the same hue as the base color
+        mesh.material.emissive.setHSL(i / PADS_COUNT, 0.8, 0.5);
+        mesh.material.emissiveIntensity = 0;
+
         scene.add(mesh);
 
         padMeshes.push(mesh);
@@ -48,22 +53,32 @@ export function setup(scene) {
 }
 
 export function update(context) {
-    const { midi } = context;
+    const { midi, bloom } = context;
 
     // --- MIDI CC Acquisition & Smoothing ---
-    // Use ?? instead of || to allow zero values, and lerp for smooth transitions.
     
-    // CC 1: Rotation Speed (Default: 0.1)
-    const targetRotationSpeed = (midi.cc[1] ?? 0.1) * 0.1;
+    // CC 1: Bloom Strength (0.0 to 3.0)
+    const targetBloomStrength = (midi.cc[1] ?? 0) * 3.0;
+    bloom.strength = targetBloomStrength;
+    
+    // Set sketch-specific defaults only once at start-up 
+    // so the user can still adjust them manually later.
+    if (!this.fxInitialized) {
+        bloom.radius = 0.5;
+        bloom.threshold = 0.1;
+        this.fxInitialized = true;
+    }
+
+    // CC 11: Rotation Speed (Default: 0.1)
+    const targetRotationSpeed = (midi.cc[11] ?? 0.1) * 0.2;
     currentRotationSpeed += (targetRotationSpeed - currentRotationSpeed) * 0.1;
 
     // CC 10: Horizontal Tilt (Default: 0.5 = center)
     const targetTilt = ((midi.cc[10] ?? 0.5) - 0.5) * 2.0;
     currentTilt += (targetTilt - currentTilt) * 0.1;
 
-    // CC 11: Global Scale (Default: 0.5 -> overall scale 1.25)
-    const targetGlobalScale = 0.5 + (midi.cc[11] ?? 0.5) * 1.5;
-    currentGlobalScale += (targetGlobalScale - currentGlobalScale) * 0.1;
+    // Global Scale: Fixed at 1.0 as requested
+    currentGlobalScale = 1.0;
 
     // --- Update Individual Pads ---
     for (let i = 0; i < PADS_COUNT; i++) {
@@ -77,12 +92,14 @@ export function update(context) {
         const mesh = padMeshes[i];
         const state = padStates[i];
 
-        // Scale (Smoothed globalScale + hit reaction)
-        const s = currentGlobalScale + state * 1.0;
+        // Scale (Fixed globalScale + hit reaction)
+        // Max 1.4 (1.0 + 0.4) to stay within 1.5 spacing
+        const s = currentGlobalScale + state * 0.4;
         mesh.scale.set(s, s, 1);
 
-        // Emissive light
-        mesh.material.emissive.setHSL(i / PADS_COUNT, 0.8, state * 0.6);
+        // Emissive Intensity (Glow control)
+        // High values are fine here and will create nice colored bloom
+        mesh.material.emissiveIntensity = state * 5.0;
         
         // Rotation (Using smoothed values)
         mesh.rotation.z += currentRotationSpeed + state * 0.1;

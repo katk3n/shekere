@@ -1,5 +1,12 @@
 import * as THREE from 'three';
-import { listen } from '@tauri-apps/api/event';
+import { listen, emit } from '@tauri-apps/api/event';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
+import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
@@ -26,12 +33,40 @@ camera.position.z = 5;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
+renderer.setPixelRatio(window.devicePixelRatio); // Better quality on Retina displays
 document.body.appendChild(renderer.domElement);
+
+// --- Post-Processing Setup ---
+const renderScene = new RenderPass(scene, camera);
+
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0, // strength
+    0, // radius (Default to 0)
+    1.0 // threshold (Default to 1.0)
+);
+
+const rgbShiftPass = new ShaderPass(RGBShiftShader);
+rgbShiftPass.uniforms['amount'].value = 0.0; // Default off
+
+const filmPass = new FilmPass(0.0, false); // Default off
+
+const vignettePass = new ShaderPass(VignetteShader);
+vignettePass.uniforms['offset'].value = 0.0; // Default off matches UI default 0
+vignettePass.uniforms['darkness'].value = 1.0; // 1.0 means edges target Black
+
+const composer = new EffectComposer(renderer);
+composer.addPass(renderScene);
+composer.addPass(bloomPass);
+composer.addPass(rgbShiftPass);
+composer.addPass(filmPass);
+composer.addPass(vignettePass);
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // --- 2. Audio Analysis (runs locally in this window — no IPC overhead) ---
@@ -157,6 +192,39 @@ function computeAudioData() {
 listen<void>('start-audio', () => { startAudio(); });
 listen<void>('stop-audio', () => { stopAudio(); });
 
+// Listen for Post-Processing settings from Control Panel
+listen<{ 
+    bloom?: { strength?: number; radius?: number; threshold?: number };
+    rgbShift?: { amount?: number };
+    film?: { intensity?: number };
+    vignette?: { offset?: number; darkness?: number };
+}>('update-fx-settings', (event) => {
+    const { bloom, rgbShift, film, vignette } = event.payload;
+    if (bloom) {
+        if (bloom.strength !== undefined) bloomPass.strength = bloom.strength;
+        if (bloom.radius !== undefined) bloomPass.radius = bloom.radius;
+        if (bloom.threshold !== undefined) bloomPass.threshold = bloom.threshold;
+    }
+    if (rgbShift) {
+        if (rgbShift.amount !== undefined) rgbShiftPass.uniforms['amount'].value = rgbShift.amount;
+    }
+    if (film) {
+        if (film.intensity !== undefined) (filmPass.uniforms as any)['intensity'].value = film.intensity;
+    }
+    if (vignette) {
+        if (vignette.offset !== undefined) vignettePass.uniforms['offset'].value = vignette.offset;
+        if (vignette.darkness !== undefined) vignettePass.uniforms['darkness'].value = vignette.darkness;
+    }
+});
+
+// Legacy listener for backward compatibility during transition
+listen<{ strength?: number; radius?: number; threshold?: number }>('update-bloom-settings', (event) => {
+    const { strength, radius, threshold } = event.payload;
+    if (strength !== undefined) bloomPass.strength = strength;
+    if (radius !== undefined) bloomPass.radius = radius;
+    if (threshold !== undefined) bloomPass.threshold = threshold;
+});
+
 // --- 3. Shared state ---
 let currentModule: SketchModule | null = null;
 let latestAudioData = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[] };
@@ -202,15 +270,46 @@ function animate() {
     if (audioActive) {
         latestAudioData = computeAudioData();
     }
-
     if (currentModule && typeof currentModule.update === 'function') {
         const time = clock.getElapsedTime();
+
+        // Proxy objects to allow sketches to modify FX parameters
+        const bloomControl = {
+            get strength() { return bloomPass.strength; },
+            set strength(v) { bloomPass.strength = v; },
+            get radius() { return bloomPass.radius; },
+            set radius(v) { bloomPass.radius = v; },
+            get threshold() { return bloomPass.threshold; },
+            set threshold(v) { bloomPass.threshold = v; }
+        };
+
+        const rgbShiftControl = {
+            get amount() { return rgbShiftPass.uniforms['amount'].value; },
+            set amount(v) { rgbShiftPass.uniforms['amount'].value = v; }
+        };
+
+        const filmControl = {
+            get intensity() { return (filmPass.uniforms as any)['intensity'].value; },
+            set intensity(v) { (filmPass.uniforms as any)['intensity'].value = v; }
+        };
+
+        const vignetteControl = {
+            get offset() { return vignettePass.uniforms['offset'].value; },
+            set offset(v) { vignettePass.uniforms['offset'].value = v; },
+            get darkness() { return vignettePass.uniforms['darkness'].value; },
+            set darkness(v) { vignettePass.uniforms['darkness'].value = v; }
+        };
+
         const context = {
             time,
             audio: latestAudioData,
             midi: latestMidiData,
             osc: latestOscData,
-            oscEvents: [...oscEvents]
+            oscEvents: [...oscEvents],
+            bloom: bloomControl,
+            rgbShift: rgbShiftControl,
+            film: filmControl,
+            vignette: vignetteControl
         };
         try {
             currentModule.update(context);
@@ -220,8 +319,64 @@ function animate() {
         oscEvents.length = 0;
     }
 
-    renderer.render(scene, camera);
+        // Optimizations & Correctness: Disable passes entirely if they have no effect.
+        // This prevents subtle visual artifacts (like Vignette mixing to white) and saves GPU power.
+        bloomPass.enabled = bloomPass.strength > 0;
+        rgbShiftPass.enabled = rgbShiftPass.uniforms['amount'].value > 0;
+        filmPass.enabled = (filmPass.uniforms as any)['intensity'].value > 0;
+        vignettePass.enabled = vignettePass.uniforms['offset'].value > 0; // offset=0 disables it mathematically
+
+    composer.render();
+
+    // Throttled sync back to Control Panel
+    syncToHost();
 }
+
+let lastSyncTime = 0;
+let lastSyncedValues = { 
+    strength: -1, radius: -1, threshold: -1,
+    rgbAmount: -1,
+    filmIntensity: -1,
+    vignetteOffset: -1, vignetteDarkness: -1
+};
+const SYNC_THROTTLE_MS = 100; // 10fps sync is enough for UI
+
+function syncToHost() {
+    const now = Date.now();
+    if (now - lastSyncTime < SYNC_THROTTLE_MS) return;
+
+    const currentValues = {
+        strength: bloomPass.strength,
+        radius: bloomPass.radius,
+        threshold: bloomPass.threshold,
+        rgbAmount: rgbShiftPass.uniforms['amount'].value,
+        filmIntensity: (filmPass.uniforms as any)['intensity'].value,
+        vignetteOffset: vignettePass.uniforms['offset'].value,
+        vignetteDarkness: vignettePass.uniforms['darkness'].value
+    };
+
+    // Only emit if values have changed significantly
+    const hasChanged = 
+        Math.abs(currentValues.strength - lastSyncedValues.strength) > 0.001 ||
+        Math.abs(currentValues.radius - lastSyncedValues.radius) > 0.001 ||
+        Math.abs(currentValues.threshold - lastSyncedValues.threshold) > 0.001 ||
+        Math.abs(currentValues.rgbAmount - lastSyncedValues.rgbAmount) > 0.0001 ||
+        Math.abs(currentValues.filmIntensity - lastSyncedValues.filmIntensity) > 0.001 ||
+        Math.abs(currentValues.vignetteOffset - lastSyncedValues.vignetteOffset) > 0.001 ||
+        Math.abs(currentValues.vignetteDarkness - lastSyncedValues.vignetteDarkness) > 0.001;
+
+    if (hasChanged) {
+        emit('fx-settings-changed', {
+            bloom: { strength: currentValues.strength, radius: currentValues.radius, threshold: currentValues.threshold },
+            rgbShift: { amount: currentValues.rgbAmount },
+            film: { intensity: currentValues.filmIntensity },
+            vignette: { offset: currentValues.vignetteOffset, darkness: currentValues.vignetteDarkness }
+        });
+        lastSyncedValues = { ...currentValues };
+        lastSyncTime = now;
+    }
+}
+
 animate();
 
 // --- 5. Dynamic Module Loader ---

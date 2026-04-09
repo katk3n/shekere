@@ -1,19 +1,79 @@
 import { useState, useEffect } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
-import { emit } from "@tauri-apps/api/event";
-import { FileCode, AlertCircle, FileAudio, Settings, Mic, MicOff } from "lucide-react";
+import { emit, listen } from "@tauri-apps/api/event";
+import { FileCode, AlertCircle, FileAudio, Settings, Mic, MicOff, Sparkles } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 
 export default function App() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { isActive: isAudioActive, start: startAudio, stop: stopAudio, error: audioError } = useAudioAnalyzer();
+  
+  // Bloom Settings State (Default to 0 / No effect)
+  const [bloomStrength, setBloomStrength] = useState(0);
+  const [bloomRadius, setBloomRadius] = useState(0);
+  const [bloomThreshold, setBloomThreshold] = useState(1.0);
+
+  // New FX Settings State
+  const [rgbShiftAmount, setRgbShiftAmount] = useState(0);
+  const [filmIntensity, setFilmIntensity] = useState(0);
+  const [vignetteOffset, setVignetteOffset] = useState(0); // 0 completely disables vignette
+  const [vignetteDarkness, setVignetteDarkness] = useState(1.0); // 1.0 ensures edges target black, not white
+
+  const [activeFxTab, setActiveFxTab] = useState<'bloom' | 'rgbShift' | 'film' | 'vignette'>('bloom');
+
+  // Ref to prevent feedback loops when syncing from Visualizer
+  const skipNextEmitRef = { current: false };
 
   const handleToggleAudio = () => {
     if (isAudioActive) stopAudio();
     else startAudio();
   };
+
+  // Sync FX settings to Visualizer
+  useEffect(() => {
+    if (skipNextEmitRef.current) {
+      skipNextEmitRef.current = false;
+      return;
+    }
+    emit("update-fx-settings", {
+      bloom: { strength: bloomStrength, radius: bloomRadius, threshold: bloomThreshold },
+      rgbShift: { amount: rgbShiftAmount },
+      film: { intensity: filmIntensity },
+      vignette: { offset: vignetteOffset, darkness: vignetteDarkness }
+    });
+  }, [bloomStrength, bloomRadius, bloomThreshold, rgbShiftAmount, filmIntensity, vignetteOffset, vignetteDarkness]);
+
+  // Listen for sync from Visualizer (driven by sketch code/MIDI)
+  useEffect(() => {
+    const unlistenPromise = listen<any>(
+      "fx-settings-changed",
+      (event) => {
+        const { bloom, rgbShift, film, vignette } = event.payload;
+        
+        // We only set skipNextEmitRef true once before setting all states
+        // But React batches these sets, so one flag is sufficient
+        skipNextEmitRef.current = true;
+        
+        if (bloom) {
+            setBloomStrength(bloom.strength);
+            setBloomRadius(bloom.radius);
+            setBloomThreshold(bloom.threshold);
+        }
+        if (rgbShift && rgbShift.amount !== undefined) setRgbShiftAmount(rgbShift.amount);
+        if (film && film.intensity !== undefined) setFilmIntensity(film.intensity);
+        if (vignette) {
+            if (vignette.offset !== undefined) setVignetteOffset(vignette.offset);
+            if (vignette.darkness !== undefined) setVignetteDarkness(vignette.darkness);
+        }
+      }
+    );
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
 
   useEffect(() => {
     if (!filePath) return;
@@ -140,6 +200,150 @@ export default function App() {
               </div>
             </div>
           )}
+
+          {/* Post-Processing Section */}
+          <div className="w-full flex flex-col border-t border-neutral-200 dark:border-neutral-700 pt-6 mt-2">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="w-5 h-5 text-indigo-500" />
+              <h2 className="text-base font-bold text-neutral-800 dark:text-neutral-200 tracking-tight">
+                Visual Effects
+              </h2>
+            </div>
+            
+            {/* Tabs Header */}
+            <div className="flex w-full overflow-x-auto hide-scrollbar border-b border-neutral-200 dark:border-neutral-800 mb-4 pt-1">
+              <button 
+                onClick={() => setActiveFxTab('bloom')}
+                className={`flex-1 pb-2 px-1 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeFxTab === 'bloom' ? 'border-blue-500 text-blue-500' : 'border-transparent text-neutral-400 hover:text-neutral-300'}`}
+              >
+                Bloom
+              </button>
+              <button 
+                onClick={() => setActiveFxTab('rgbShift')}
+                className={`flex-1 pb-2 px-1 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeFxTab === 'rgbShift' ? 'border-fuchsia-500 text-fuchsia-500' : 'border-transparent text-neutral-400 hover:text-neutral-300'}`}
+              >
+                RGB
+              </button>
+              <button 
+                onClick={() => setActiveFxTab('film')}
+                className={`flex-1 pb-2 px-1 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeFxTab === 'film' ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-neutral-400 hover:text-neutral-300'}`}
+              >
+                Film
+              </button>
+              <button 
+                onClick={() => setActiveFxTab('vignette')}
+                className={`flex-1 pb-2 px-1 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeFxTab === 'vignette' ? 'border-violet-500 text-violet-500' : 'border-transparent text-neutral-400 hover:text-neutral-300'}`}
+              >
+                Vignette
+              </button>
+            </div>
+
+            {/* Tab Content Container */}
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-xl border border-neutral-100 dark:border-neutral-700/50 min-h-[160px]">
+              
+              {/* Bloom */}
+              {activeFxTab === 'bloom' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Strength</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{bloomStrength.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="3" step="0.01" value={bloomStrength}
+                      onChange={(e) => setBloomStrength(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Radius</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{bloomRadius.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="1" step="0.01" value={bloomRadius}
+                      onChange={(e) => setBloomRadius(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Threshold</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{bloomThreshold.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="1" step="0.01" value={bloomThreshold}
+                      onChange={(e) => setBloomThreshold(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* RGB Shift */}
+              {activeFxTab === 'rgbShift' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Amount</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{rgbShiftAmount.toFixed(4)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="0.05" step="0.0001" value={rgbShiftAmount}
+                      onChange={(e) => setRgbShiftAmount(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-fuchsia-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Film Grain */}
+              {activeFxTab === 'film' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Intensity</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{filmIntensity.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="2" step="0.01" value={filmIntensity}
+                      onChange={(e) => setFilmIntensity(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Vignette */}
+              {activeFxTab === 'vignette' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Offset</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{vignetteOffset.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="3" step="0.01" value={vignetteOffset}
+                      onChange={(e) => setVignetteOffset(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs font-medium">
+                      <label className="text-neutral-600 dark:text-neutral-400">Darkness</label>
+                      <span className="text-neutral-900 dark:text-neutral-100">{vignetteDarkness.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range" min="0" max="3" step="0.01" value={vignetteDarkness}
+                      onChange={(e) => setVignetteDarkness(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
         </div>
       </div>
     </div>
