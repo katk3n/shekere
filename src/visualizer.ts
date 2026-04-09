@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { listen, emit } from '@tauri-apps/api/event';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -10,6 +11,7 @@ import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
+(window as any).convertFileSrc = convertFileSrc;
 
 interface SketchConfig {
     audio?: {
