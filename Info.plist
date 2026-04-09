@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>shekere uses the microphone to analyze audio and drive visual effects in real time.</string>
+    <string>Shekere uses the microphone to analyze audio and drive visual effects in real time.</string>
 </dict>
 </plist>

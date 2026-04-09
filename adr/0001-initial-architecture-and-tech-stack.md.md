@@ -1,4 +1,4 @@
-# Architecture Decision Record (ADR): shekere
+# Architecture Decision Record (ADR): Shekere
 
 次世代ライブコーディング用オーディオビジュアル環境の構築
 
@@ -8,8 +8,8 @@ Accepted (承認済)
 
 ## 2. Context & Goals (背景と目的)
 
-既存の「shekere (v1)」はRustとWGSLを用いた環境であったが、ユーザーの学習コストおよびホストアプリの開発・保守コストが高い課題があった。
-本プロジェクト「shekere (v2)」は、以下の実現を目的とする。
+既存の「Shekere (v1)」はRustとWGSLを用いた環境であったが、ユーザーの学習コストおよびホストアプリの開発・保守コストが高い課題があった。
+本プロジェクト「Shekere (v2)」は、以下の実現を目的とする。
 - 参考 (既存のshekere(v1)のリポジトリ): https://github.com/katk3n/shekere-legacy
 
 1. ターゲット層の拡張: 高度なシェーダー言語(WGSL)から、Web標準の JavaScript / Three.js へと記述言語をピボットし、学習コストを極限まで下げる。
@@ -17,7 +17,7 @@ Accepted (承認済)
 
 ## 3. Core Paradigm (コア設計思想)
 
-shekereは「固定のビジュアルを表示するアプリ」ではなく、 **「ユーザーが外部エディタで書いたJavaScriptコードを動的に読み込み、音楽と同期させてThree.jsで描画するホスト環境（ランナー）」** である。
+Shekereは「固定のビジュアルを表示するアプリ」ではなく、 **「ユーザーが外部エディタで書いたJavaScriptコードを動的に読み込み、音楽と同期させてThree.jsで描画するホスト環境（ランナー）」** である。
 
 ## 4. System Architecture (システムアーキテクチャ)
 
@@ -80,7 +80,7 @@ userModule.setup(scene);
 
 ### 7. Interface Contract (ユーザーコードとの規約)
 
-ホストアプリ（shekere）とユーザーコード間のインターフェース仕様。AIエージェントはこれに適合するローダーを実装すること。
+ホストアプリ（Shekere）とユーザーコード間のインターフェース仕様。AIエージェントはこれに適合するローダーを実装すること。
 
 ```typescript
 // ユーザーが記述するJSファイル (例: my_sketch.js) 
