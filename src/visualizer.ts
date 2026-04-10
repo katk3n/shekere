@@ -71,7 +71,38 @@ window.addEventListener('resize', () => {
     composer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// --- 2. Audio Analysis (runs locally in this window — no IPC overhead) ---
+// --- 2. Preview Capture Setup ---
+const PREVIEW_WIDTH = 320;
+const PREVIEW_INTERVAL_MS = 500; // 2 FPS
+const captureCanvas = document.createElement('canvas');
+const captureCtx = captureCanvas.getContext('2d');
+let lastPreviewTime = 0;
+
+function emitPreviewFrame() {
+    if (!captureCtx) return;
+    const now = Date.now();
+    if (now - lastPreviewTime < PREVIEW_INTERVAL_MS) return;
+
+    // Maintain aspect ratio
+    const aspect = window.innerHeight / window.innerWidth;
+    const previewHeight = Math.floor(PREVIEW_WIDTH * aspect);
+    
+    if (captureCanvas.width !== PREVIEW_WIDTH || captureCanvas.height !== previewHeight) {
+        captureCanvas.width = PREVIEW_WIDTH;
+        captureCanvas.height = previewHeight;
+    }
+
+    // Draw the main renderer canvas onto our small capture canvas
+    captureCtx.drawImage(renderer.domElement, 0, 0, PREVIEW_WIDTH, previewHeight);
+    
+    // Convert to low-quality JPEG to minimize IPC payload
+    const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.5);
+    emit('preview-frame', { dataUrl }).catch(err => console.error("Preview emit error:", err));
+    
+    lastPreviewTime = now;
+}
+
+// --- 3. Audio Analysis (runs locally in this window — no IPC overhead) ---
 
 const FFT_SIZE = 4096;
 const BAND_COUNT = 256;
@@ -329,6 +360,9 @@ function animate() {
         vignettePass.enabled = vignettePass.uniforms['offset'].value > 0; // offset=0 disables it mathematically
 
     composer.render();
+
+    // Send preview frame at low frequency
+    emitPreviewFrame();
 
     // Throttled sync back to Control Panel
     syncToHost();

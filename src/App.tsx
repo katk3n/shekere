@@ -15,7 +15,8 @@ import {
   ListMusic, 
   ChevronRight, 
   ChevronLeft,
-  Settings
+  Settings,
+  Eye
 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { parse as parseToml } from "smol-toml";
@@ -107,6 +108,7 @@ export default function App() {
   const [audioLevels, setAudioLevels] = useState({ volume: 0, bass: 0, mid: 0, high: 0 });
   const [lastMidi, setLastMidi] = useState<{ text: string, subText: string, id: number, status: number, data1: number, data2: number } | null>(null);
   const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number } | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const currentSketch = playlist[currentIndex]?.path;
@@ -254,8 +256,12 @@ export default function App() {
       setLastOsc({ text: p.address, subText: argsStr, id: Date.now() });
     });
 
+    const u4 = listen<any>('preview-frame', (e) => {
+      setPreviewUrl(e.payload.dataUrl);
+    });
+
     return () => {
-      u1.then(f => f()); u2.then(f => f()); u3.then(f => f());
+      u1.then(f => f()); u2.then(f => f()); u3.then(f => f()); u4.then(f => f());
     };
   }, []);
 
@@ -570,6 +576,27 @@ export default function App() {
               <div className="flex flex-col gap-2">
                 <Indicator label="MIDI" icon={Music} active={isMidiActive || false} text={lastMidi ? lastMidi.text : "Waiting..."} subText={lastMidi ? lastMidi.subText : ""} />
                 <Indicator label="OSC" icon={Radio} active={isOscActive || false} text={lastOsc ? lastOsc.text : "Waiting..."} subText={lastOsc ? lastOsc.subText : ""} />
+              </div>
+
+              <div className="h-px bg-neutral-800 w-full" />
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
+                  <Eye className="w-3.5 h-3.5 text-blue-400" /> Visualizer Preview
+                </div>
+                <div className="relative aspect-video w-full bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50 flex items-center justify-center group">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-neutral-600">
+                      <Activity className="w-6 h-6 animate-pulse" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">No Signal</span>
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-neutral-400 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                    2 FPS
+                  </div>
+                </div>
               </div>
             </div>
           </div>
