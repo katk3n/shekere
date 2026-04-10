@@ -1,0 +1,25 @@
+# Shekere Example Playlist
+
+[midi.navigation]
+next_note = 38 # D1
+prev_note = 36 # C1
+
+[[sketch]]
+file = "shader_stars.js"
+midi_note = 48 # C2
+
+[[sketch]]
+file = "audio_reactive_knot.js"
+midi_note = 49 # C#2
+
+[[sketch]]
+file = "midi_reactive.js"
+midi_note = 50 # D2
+
+[[sketch]]
+file = "spectrum.js"
+midi_note = 51 # D#2
+
+[[sketch]]
+file = "effects_showcase.js"
+midi_note = 52 # E2

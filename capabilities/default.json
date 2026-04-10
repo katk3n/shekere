@@ -7,8 +7,13 @@
     "core:default",
     "opener:default",
     "dialog:default",
-    "fs:default",
-    "fs:allow-watch",
-    "fs:allow-read-text-file"
+    {
+      "identifier": "fs:allow-watch",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

@@ -44,11 +44,43 @@ export function cleanup(scene) {
 }
 ```
 
-### 3. Load & Live-Edit
+### 3. Playlist & Sketch Switching
+Shekere allowing you to manage multiple sketches using a TOML playlist file. This is ideal for live performances where you need to switch between different visual concepts quickly.
+
+#### Create a Playlist File (`.toml`)
+Create a `.toml` file and define your sketches. You can also map MIDI notes for navigation or direct slot jumping.
+
+```toml
+[midi.navigation]
+next_note = 38 # Trigger "Next" sketch
+prev_note = 36 # Trigger "Prev" sketch
+
+[[sketch]]
+file = "shader_stars.js" # Path relative to the TOML file
+midi_note = 48         # Direct jump to this slot (C2)
+
+[[sketch]]
+file = "audio_bars.js"
+midi_note = 49         # Direct jump to this slot (C#2)
+```
+
+### 4. Load & Live-Edit
 1. Launch Shekere. Two windows will appear: **Control Panel** and **Visualizer**.
-2. In the **Control Panel**, click **"Select JS File"** and choose your `.js` file.
-3. Click **"Enable Mic"** to start the audio analysis.
-4. Open the `.js` file in your favorite text editor. Every time you **save** the file, the Visualizer will hot-reload your changes instantly!
+2. **Standard Load**: In the **Control Panel**, click the "File" icon next to a playlist slot to select a single `.js` file.
+3. **Playlist Load**: Click **"Load Playlist"** and select your `.toml` file to load multiple sketches at once.
+4. Click **"Enable Mic"** to start the audio analysis.
+5. Every time you **save** an active `.js` file, the Visualizer will hot-reload your changes instantly!
+
+---
+
+## ⌨️ Controls & Shortcuts
+
+| Action | Shortcut |
+|---|---|
+| **Jump to Slot 1-9** | `1` – `9` keys |
+| **Next Sketch** | `→` (Right Arrow) or MIDI `next_note` |
+| **Previous Sketch** | `←` (Left Arrow) or MIDI `prev_note` |
+| **Direct Slot Jump** | Specific MIDI `midi_note` or `midi_cc` |
 
 ---
 
