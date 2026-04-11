@@ -1,6 +1,6 @@
 [package]
 name = "shekere"
-version = "0.6.2"
+version = "0.6.3"
 description = "A live-coding audio-visual host powered by Three.js and Tauri"
 authors = ["katk3n"]
 edition = "2021"
