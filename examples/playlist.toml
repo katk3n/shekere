@@ -1,8 +1,18 @@
 # Shekere Example Playlist
 
-[midi.navigation]
-next_note = 38 # D1
-prev_note = 36 # C1
+[midi.navigation.next]
+cc = 21
+
+[midi.navigation.prev]
+cc = 20
+
+[osc.navigation.next]
+key = "s"
+value = "bd"
+
+[osc.navigation.prev]
+key = "s"
+value = "cp"
 
 [[sketch]]
 file = "shader_stars.js"
@@ -23,3 +33,13 @@ midi_note = 51 # D#2
 [[sketch]]
 file = "effects_showcase.js"
 midi_note = 52 # E2
+
+[[sketch]]
+file = "tidal_reactive.js"
+osc_key = "s"
+osc_value = "sd"
+
+[[sketch]]
+file = "hello_world.js"
+osc_key = "s"
+osc_value = "hc"

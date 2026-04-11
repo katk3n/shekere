@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-Proposed
+Implemented (v0.7.0)
 
 ## 2. Context & Goals (背景と目的)
 
@@ -20,6 +20,7 @@ Proposed
 3. **Switching Triggers**
    - **Keyboard (PC)**: Control Panel ウィンドウでのキーボードショートカット。
    - **MIDI**: Visualizer および Control Panel が受信している MIDI イベント (`midi-event`) をトリガーとする（特定のNote番号やCC）。
+   - **OSC**: Control Panel が受信している OSC イベント (`osc-event`) の Address をトリガーとする。
 
 ## 4. Proposed Design (提案される設計)
 
@@ -27,9 +28,10 @@ Proposed
 
 Control Panel 側 (`App.tsx`) で以下の状態（State）を管理する。
 
-- `playlist: Array<{ path: string, midiNote?: number, midiCc?: number }>`: スケッチファイルのパスと、そのスケッチを直接呼び出す（切り替える）ための MIDI 信号等のメタデータを保持するリスト。
+- `playlist: Array<{ path: string, midiNote?: number, midiCc?: number, oscKey?: string, oscValue?: string }>`: スケッチファイルのパスと、そのスケッチを直接呼び出す（切り替える）ための引数（MIDI 信号や OSC の Key-Value ペアなど）のメタデータを保持するリスト。
 - `currentIndex: number`: 現在アクティブなスケッチのインデックス（0開始）。
-- `midiNavigation: { nextNote?: number, prevNote?: number, nextCc?: number, prevCc?: number }`: TOMLから読み込んだ 全体的な「次・前」の切り替え設定（オプション）。
+- `midiNavigation: { next?: { note?: number, cc?: number }, prev?: { note?: number, cc?: number } }`: TOMLから読み込んだ、MIDI信号による全体的な「次・前」の切り替え設定（オプション）。
+- `oscNavigation: { next?: { key: string, value: string }, prev?: { key: string, value: string } }`: TOMLから読み込んだ、OSCの引数（TidalCycles のような key-value 形式）による「次・前」の切り替え設定（オプション）。
 
 ### 4.2 Loading & Watch Logic (読み込みと監視ロジック)
 
@@ -45,8 +47,45 @@ Control Panel 側 (`App.tsx`) で以下の状態（State）を管理する。
 - **MIDI Events**: `midi-event` に流れてくる信号（Note On/Off, Control Change）を監視する。
    - `midiNavigation` に設定された「次/前」の Note/CC が来た場合は、`currentIndex` を増減させる（末尾・先頭対応でループ処理）。
    - 各スケッチ (`playlist[i]`) に `midiNote` や `midiCc` が設定されており、受信した信号とマッチした場合は、そのインデックス `i` へダイレクトにジャンプ（切り替え）する。
+- **OSC Events**: `osc-event` に流れてくる信号の引数（TidalCycles等の key-value 形式など）を監視する。
+   - `oscNavigation.next` または `oscNavigation.prev` で指定された `key` と `value` に一致するペアが引数に含まれていた場合、`currentIndex` を増減させる（末尾・先頭対応でループ処理）。
+   - 各スケッチ (`playlist[i]`) に `oscKey` および `oscValue` が設定されており、受信した引数内のペアとマッチした場合は、そのインデックス `i` へダイレクトにジャンプ（切り替え）する。
 
-### 4.4 UI Updates
+### 4.4 TOML Configuration Format (TOMLの設定フォーマット)
+
+プレイリストの一括読み込みに用いる TOML ファイルのフォーマットは以下の通り。
+
+```toml
+[midi.navigation.next]
+note = 36
+cc = 10
+
+[midi.navigation.prev]
+note = 37
+cc = 11
+
+[osc.navigation.next]
+key = "s"
+value = "bd"
+
+[osc.navigation.prev]
+key = "s"
+value = "cp"
+
+[[sketch]]
+file = "sketches/01_intro.js"
+midi_note = 48
+osc_key = "s"
+osc_value = "hc"
+
+[[sketch]]
+file = "sketches/02_main.js"
+midi_cc = 20
+osc_key = "s"
+osc_value = "sn"
+```
+
+### 4.5 UI Updates
 
 Control Panel に「Playlist」UI を実装する。
 リストにはファイルのパス（またはファイル名）と、割り当てられている MIDI 信号（例: `Note: 36`）が表示される。現在アクティブな行は視覚的にハイライトされ、どこがアクティブかを明示する。

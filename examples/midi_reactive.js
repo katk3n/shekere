@@ -11,6 +11,7 @@ const START_NOTE = 36;
 
 let padMeshes = [];
 let padStates = [];
+let lights = [];
 
 // Current state for smoothing (lerp)
 let currentRotationSpeed = 0;
@@ -34,7 +35,7 @@ export function setup(scene) {
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(x, y, 0);
-        
+
         // Set fixed emissive color to the same hue as the base color
         mesh.material.emissive.setHSL(i / PADS_COUNT, 0.8, 0.5);
         mesh.material.emissiveIntensity = 0;
@@ -49,23 +50,25 @@ export function setup(scene) {
     const light = new THREE.PointLight(0xffffff, 50);
     light.position.set(0, 0, 5);
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0x444444));
+    const ambientLight = new THREE.AmbientLight(0x111111);
+    scene.add(ambientLight);
+    lights.push(light, ambientLight);
 }
 
 export function update(context) {
     const { midi, bloom } = context;
 
     // --- MIDI CC Acquisition & Smoothing ---
-    
+
     // CC 1: Bloom Strength (0.0 to 3.0)
     const targetBloomStrength = (midi.cc[1] ?? 0) * 3.0;
     bloom.strength = targetBloomStrength;
-    
+
     // Set sketch-specific defaults only once at start-up 
     // so the user can still adjust them manually later.
     if (!this.fxInitialized) {
-        bloom.radius = 0.5;
-        bloom.threshold = 0.1;
+        bloom.radius = 0.4;
+        bloom.threshold = 0.4;
         this.fxInitialized = true;
     }
 
@@ -98,9 +101,9 @@ export function update(context) {
         mesh.scale.set(s, s, 1);
 
         // Emissive Intensity (Glow control)
-        // High values are fine here and will create nice colored bloom
-        mesh.material.emissiveIntensity = state * 5.0;
-        
+        // Keep base intensity low (0.2) to maintain saturation
+        mesh.material.emissiveIntensity = 0.2 + state * 4.0;
+
         // Rotation (Using smoothed values)
         mesh.rotation.z += currentRotationSpeed + state * 0.1;
         mesh.rotation.y = currentTilt;
@@ -118,4 +121,7 @@ export function cleanup(scene) {
     });
     padMeshes = [];
     padStates = [];
+
+    lights.forEach(light => scene.remove(light));
+    lights = [];
 }

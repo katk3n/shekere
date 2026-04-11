@@ -48,20 +48,28 @@ export function cleanup(scene) {
 Shekere allowing you to manage multiple sketches using a TOML playlist file. This is ideal for live performances where you need to switch between different visual concepts quickly.
 
 #### Create a Playlist File (`.toml`)
-Create a `.toml` file and define your sketches. You can also map MIDI notes for navigation or direct slot jumping.
+Create a `.toml` file and define your sketches. You can map MIDI notes or OSC messages (parsed key/value pairs like those from TidalCycles) for navigation or direct slot jumping.
 
 ```toml
-[midi.navigation]
-next_note = 38 # Trigger "Next" sketch
-prev_note = 36 # Trigger "Prev" sketch
+[midi.navigation.next]
+note = 38 # Trigger "Next" sketch via MIDI
+
+[midi.navigation.prev]
+note = 36 # Trigger "Prev" sketch via MIDI
+
+[osc.navigation.next]
+key = "s"
+value = "bd" # Trigger "Next" sketch when OSC argument contains `s="bd"`
+
+[osc.navigation.prev]
+key = "s"
+value = "cp" # Trigger "Prev" sketch when OSC argument contains `s="cp"`
 
 [[sketch]]
 file = "shader_stars.js" # Path relative to the TOML file
-midi_note = 48         # Direct jump to this slot (C2)
-
-[[sketch]]
-file = "audio_bars.js"
-midi_note = 49         # Direct jump to this slot (C#2)
+midi_note = 48          # Direct jump to this slot via MIDI C2
+osc_key = "s"
+osc_value = "hc"        # Direct jump to this slot when OSC arg contains `s="hc"`
 ```
 
 ### 4. Load & Live-Edit
@@ -78,9 +86,9 @@ midi_note = 49         # Direct jump to this slot (C#2)
 | Action | Shortcut |
 |---|---|
 | **Jump to Slot 1-9** | `1` – `9` keys |
-| **Next Sketch** | `→` (Right Arrow) or MIDI `next_note` |
-| **Previous Sketch** | `←` (Left Arrow) or MIDI `prev_note` |
-| **Direct Slot Jump** | Specific MIDI `midi_note` or `midi_cc` |
+| **Next Sketch** | `→` (Right Arrow) or MIDI/OSC navigation trigger |
+| **Previous Sketch** | `←` (Left Arrow) or MIDI/OSC navigation trigger |
+| **Direct Slot Jump** | Specific MIDI note or OSC trigger (`osc_key` & `osc_value`) |
 
 ---
 
@@ -104,6 +112,11 @@ export function setup(scene) {
     audio: {
       minFreqHz: 80,   // Lowest frequency to analyze
       maxFreqHz: 2000  // Highest frequency to analyze
+    },
+    renderer: {
+      // Configure specific Tone Mapping per sketch. Default: THREE.NoToneMapping
+      toneMapping: THREE.NeutralToneMapping, 
+      toneMappingExposure: 1.0
     }
   };
 }

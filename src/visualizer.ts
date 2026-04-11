@@ -8,6 +8,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
@@ -17,7 +18,11 @@ interface SketchConfig {
     audio?: {
         minFreqHz?: number;
         maxFreqHz?: number;
-    }
+    };
+    renderer?: {
+        toneMapping?: number;
+        toneMappingExposure?: number;
+    };
 }
 
 // Type definition for user-provided sketch modules
@@ -36,6 +41,11 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
 renderer.setPixelRatio(window.devicePixelRatio); // Better quality on Retina displays
+
+// Revert to NoToneMapping to restore the original "digital" high-contrast look
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
+
 document.body.appendChild(renderer.domElement);
 
 // --- Post-Processing Setup ---
@@ -63,6 +73,9 @@ composer.addPass(bloomPass);
 composer.addPass(rgbShiftPass);
 composer.addPass(filmPass);
 composer.addPass(vignettePass);
+
+const outputPass = new OutputPass();
+composer.addPass(outputPass);
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -353,11 +366,13 @@ function animate() {
     }
 
         // Optimizations & Correctness: Disable passes entirely if they have no effect.
-        // This prevents subtle visual artifacts (like Vignette mixing to white) and saves GPU power.
+        // This prevents visual artifacts and saves GPU power.
+        // With OutputPass added at the end, the jump when enabling these is minimized.
         bloomPass.enabled = bloomPass.strength > 0;
         rgbShiftPass.enabled = rgbShiftPass.uniforms['amount'].value > 0;
         filmPass.enabled = (filmPass.uniforms as any)['intensity'].value > 0;
-        vignettePass.enabled = vignettePass.uniforms['offset'].value > 0; // offset=0 disables it mathematically
+        vignettePass.enabled = vignettePass.uniforms['offset'].value > 0;
+
 
     composer.render();
 
@@ -443,9 +458,20 @@ listen<{ code: string }>('user-code-update', async (event) => {
 
         if (typeof userModule.setup === 'function') {
             const config = userModule.setup.call(sketchContext, scene);
-            // Apply audio config directly — no cross-window IPC needed
-            if (config && config.audio) {
-                applyAudioConfig(config.audio);
+            
+            // Default renderer state if not specified by sketch
+            renderer.toneMapping = THREE.NoToneMapping;
+            renderer.toneMappingExposure = 1.0;
+            scene.background = null;
+
+            if (config) {
+                if (config.audio) {
+                    applyAudioConfig(config.audio);
+                }
+                if (config.renderer) {
+                    if (config.renderer.toneMapping !== undefined) renderer.toneMapping = config.renderer.toneMapping;
+                    if (config.renderer.toneMappingExposure !== undefined) renderer.toneMappingExposure = config.renderer.toneMappingExposure;
+                }
             }
         }
 

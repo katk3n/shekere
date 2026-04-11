@@ -89,7 +89,9 @@ export function setup(scene) {
     points = new THREE.Points(geometry, material);
     scene.add(points);
     
-    scene.add(new THREE.AmbientLight(0x222222));
+    const ambientLight = new THREE.AmbientLight(0x222222);
+    scene.add(ambientLight);
+    this.ambientLight = ambientLight;
 }
 
 export function update(context) {
@@ -130,5 +132,10 @@ export function cleanup(scene) {
         scene.remove(points);
         points.geometry.dispose();
         points.material.dispose();
+        points = null;
+    }
+    starData = [];
+    if (this.ambientLight) {
+        scene.remove(this.ambientLight);
     }
 }

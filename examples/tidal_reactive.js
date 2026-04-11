@@ -59,9 +59,12 @@ export function setup(scene) {
 
     // --- 4. Lights ---
     const light = new THREE.PointLight(0xffffff, 50);
-    light.position.set(5, 5, 5);
+    light.position.set(0, 0, 8);
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0x222222));
+    const ambientLight = new THREE.AmbientLight(0x222222);
+    scene.add(ambientLight);
+
+    this.lights = [light, ambientLight];
 }
 
 export function update(context) {
@@ -127,6 +130,10 @@ export function cleanup(scene) {
         scene.remove(shockwave);
         shockwave.geometry.dispose();
         shockwave.material.dispose();
+    }
+    if (this.lights) {
+        this.lights.forEach(l => scene.remove(l));
+        this.lights = null;
     }
     if (gridGroup) {
         scene.remove(gridGroup);

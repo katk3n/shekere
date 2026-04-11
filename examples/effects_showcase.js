@@ -34,11 +34,13 @@ export function setup(scene) {
     }
 
     const light = new THREE.PointLight(0xffffff, 50);
-    light.position.set(0, 0, 5);
+    light.position.set(2, 2, 5);
     scene.add(light);
     
-    // Ambient light so the background is visible
-    scene.add(new THREE.AmbientLight(0x404040));
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    this.lights = [light, ambientLight];
 
     // Set initial baseline for effects
     return {
@@ -78,4 +80,9 @@ export function cleanup(scene) {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) obj.material.dispose();
     });
+
+    if (this.lights) {
+        this.lights.forEach(l => scene.remove(l));
+        this.lights = null;
+    }
 }

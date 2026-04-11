@@ -13,8 +13,9 @@ export function setup(scene) {
     scene.add(this.mesh);
 
     const light = new THREE.PointLight(0xffffff, 50);
-    light.position.set(0, 0, 5);
+    light.position.set(5, 5, 5);
     scene.add(light);
+    this.light = light;
 
     return {
         audio: { minFreqHz: 20, maxFreqHz: 2000 }
@@ -46,5 +47,8 @@ export function cleanup(scene) {
         scene.remove(this.mesh);
         this.mesh.geometry.dispose();
         this.mesh.material.dispose();
+    }
+    if (this.light) {
+        scene.remove(this.light);
     }
 }

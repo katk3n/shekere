@@ -27,13 +27,28 @@ interface PlaylistEntry {
   path: string | null;
   midiNote?: number;
   midiCc?: number;
+  oscKey?: string;
+  oscValue?: string;
+}
+
+interface Trigger {
+  note?: number;
+  cc?: number;
 }
 
 interface MidiNavigation {
-  next_note?: number;
-  prev_note?: number;
-  next_cc?: number;
-  prev_cc?: number;
+  next?: Trigger;
+  prev?: Trigger;
+}
+
+interface OscTrigger {
+  key?: string;
+  value?: string;
+}
+
+interface OscNavigation {
+  next?: OscTrigger;
+  prev?: OscTrigger;
 }
 
 interface PlaylistToml {
@@ -41,9 +56,14 @@ interface PlaylistToml {
     file: string;
     midi_note?: number;
     midi_cc?: number;
+    osc_key?: string;
+    osc_value?: string;
   }>;
   midi?: {
     navigation?: MidiNavigation;
+  };
+  osc?: {
+    navigation?: OscNavigation;
   };
 }
 
@@ -89,6 +109,7 @@ export default function App() {
   );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [midiNavigation, setMidiNavigation] = useState<MidiNavigation>({});
+  const [oscNavigation, setOscNavigation] = useState<OscNavigation>({});
   const [error, setError] = useState<string | null>(null);
   
   const { isActive: isAudioActive, start: startAudio, stop: stopAudio, error: audioError } = useAudioAnalyzer();
@@ -107,7 +128,7 @@ export default function App() {
   // Signal Activity
   const [audioLevels, setAudioLevels] = useState({ volume: 0, bass: 0, mid: 0, high: 0 });
   const [lastMidi, setLastMidi] = useState<{ text: string, subText: string, id: number, status: number, data1: number, data2: number } | null>(null);
-  const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number } | null>(null);
+  const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number, args?: Record<string, string> } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -171,14 +192,37 @@ export default function App() {
 
     // Navigation
     if (type === 0x90 && data2 > 0) {
-      if (data1 === midiNavigation.next_note) switchIndex(currentIndex + 1);
-      if (data1 === midiNavigation.prev_note) switchIndex(currentIndex - 1);
+      if (data1 === midiNavigation.next?.note) switchIndex(currentIndex + 1);
+      if (data1 === midiNavigation.prev?.note) switchIndex(currentIndex - 1);
     }
     if (type === 0xB0) {
-      if (data1 === midiNavigation.next_cc) switchIndex(currentIndex + 1);
-      if (data1 === midiNavigation.prev_cc) switchIndex(currentIndex - 1);
+      if (data1 === midiNavigation.next?.cc) switchIndex(currentIndex + 1);
+      if (data1 === midiNavigation.prev?.cc) switchIndex(currentIndex - 1);
     }
   }, [lastMidi]);
+
+  // --- OSC Triggers ---
+  useEffect(() => {
+    if (!lastOsc || !lastOsc.args) return;
+    const args = lastOsc.args;
+
+    const match = (trigger?: OscTrigger) => {
+      if (!trigger || !trigger.key || !trigger.value) return false;
+      return args[trigger.key] === trigger.value;
+    };
+
+    // Direct Jump
+    playlist.forEach((entry, idx) => {
+      if (!entry.path) return;
+      if (entry.oscKey && entry.oscValue && args[entry.oscKey] === entry.oscValue) {
+        setCurrentIndex(idx);
+      }
+    });
+
+    // Navigation
+    if (match(oscNavigation.next)) switchIndex(currentIndex + 1);
+    if (match(oscNavigation.prev)) switchIndex(currentIndex - 1);
+  }, [lastOsc]);
 
   // --- Signal Listeners ---
   useEffect(() => {
@@ -219,6 +263,8 @@ export default function App() {
     const u3 = listen<any>('osc-event', (e) => {
       const p = e.payload;
       let argsStr = "";
+      let parsedArgs: Record<string, string> | undefined = undefined;
+      
       if (p.args && Array.isArray(p.args)) {
         const rawArgs = p.args.map((a: any) => {
           if (typeof a === 'object' && a !== null) {
@@ -231,12 +277,15 @@ export default function App() {
         for (let i = 0; i < rawArgs.length; i += 2) {
           if (typeof rawArgs[i] !== 'string') { isKvFormat = false; break; }
         }
+        
         if (isKvFormat) {
+          parsedArgs = {};
           const focusKeys = ['s', 'n', 'cps', 'note', 'gain', 'speed', 'vowel'];
           const pairs: string[] = [];
           for (let i = 0; i < rawArgs.length; i += 2) {
             const key = String(rawArgs[i]);
             const val = rawArgs[i + 1];
+            parsedArgs[key] = String(val);
             if (focusKeys.includes(key)) {
               const fmtVal = typeof val === 'number' ? (Number.isInteger(val) ? val.toString() : val.toFixed(2)) : String(val);
               pairs.push(`${key}: ${fmtVal}`);
@@ -253,7 +302,7 @@ export default function App() {
           if (rawArgs.length > 3) argsStr += ', ...';
         }
       }
-      setLastOsc({ text: p.address, subText: argsStr, id: Date.now() });
+      setLastOsc({ text: p.address, subText: argsStr, id: Date.now(), args: parsedArgs });
     });
 
     const u4 = listen<any>('preview-frame', (e) => {
@@ -387,7 +436,9 @@ export default function App() {
           const newPlaylist: PlaylistEntry[] = data.sketch.map((s: any) => ({
             path: s.file.startsWith('/') || s.file.includes(':') ? s.file : baseDir + s.file,
             midiNote: s.midi_note,
-            midiCc: s.midi_cc
+            midiCc: s.midi_cc,
+            oscKey: s.osc_key,
+            oscValue: s.osc_value
           }));
 
           while (newPlaylist.length < 9) newPlaylist.push({ path: null });
@@ -397,6 +448,9 @@ export default function App() {
 
         if (data.midi && data.midi.navigation) {
           setMidiNavigation(data.midi.navigation);
+        }
+        if (data.osc && data.osc.navigation) {
+          setOscNavigation(data.osc.navigation);
         }
         setError(null);
       }
@@ -460,6 +514,16 @@ export default function App() {
                     {entry.midiNote !== undefined && (
                       <div className="text-[9px] text-blue-400 font-bold uppercase tracking-widest leading-tight">
                         Midi Note: {entry.midiNote}
+                      </div>
+                    )}
+                    {entry.midiCc !== undefined && (
+                      <div className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest leading-tight">
+                        Midi CC: {entry.midiCc}
+                      </div>
+                    )}
+                    {entry.oscKey !== undefined && entry.oscValue !== undefined && (
+                      <div className="text-[9px] text-fuchsia-400 font-bold uppercase tracking-widest leading-tight">
+                        OSC: {entry.oscKey}={entry.oscValue}
                       </div>
                     )}
                   </div>
