@@ -20,6 +20,25 @@ Download the latest version of Shekere for macOS from the [GitHub Releases](http
   2. Go to **System Settings** > **Privacy & Security**.
   3. Scroll down to the **Security** section and click **"Open Anyway"** for Shekere.
 
+### 🛡️ Persistent Permissions (macOS)
+If you find that Shekere asks for Microphone or File permissions **every time** you launch it, this is because the binary downloaded from GitHub is "unsigned." macOS resets permissions for unsigned apps upon every restart as a security measure.
+
+To fix this and make permissions permanent, you can "re-sign" the app locally on your Mac:
+
+1. Move **Shekere.app** to your `/Applications` folder.
+2. Open **Terminal** and run the following two commands:
+   ```bash
+   # 1. Clear the "Quarantine" flag
+   xattr -cr /Applications/Shekere.app
+
+   # 2. Re-sign the app with your own local identity
+   codesign --force --deep --sign - /Applications/Shekere.app
+   ```
+3. Launch Shekere and grant permissions one last time. They will now be remembered.
+
+> [!CAUTION]
+> **Security Warning**: Re-signing a binary bypasses macOS Gatekeeper's origin checks for that specific file. Only perform this on versions of Shekere you have downloaded from the official repository or built yourself. Use at your own risk.
+
 ### 2. Prepare a Sketch File
 Create a new `.js` file anywhere on your computer. Here is a minimal "Hello World" template:
 
