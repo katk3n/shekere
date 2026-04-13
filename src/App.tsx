@@ -161,16 +161,26 @@ export default function App() {
 
   // --- Keyboard Triggers ---
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") switchIndex(currentIndex + 1);
-      if (e.key === "ArrowLeft") switchIndex(currentIndex - 1);
-      if (e.key >= "1" && e.key <= "9") {
-        const idx = parseInt(e.key) - 1;
+    const handleKey = (key: string) => {
+      if (key === "ArrowRight") switchIndex(currentIndex + 1);
+      if (key === "ArrowLeft") switchIndex(currentIndex - 1);
+      if (key >= "1" && key <= "9") {
+        const idx = parseInt(key) - 1;
         if (idx < playlist.length && playlist[idx].path) setCurrentIndex(idx);
       }
     };
+
+    const handleKeyDown = (e: KeyboardEvent) => handleKey(e.key);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+
+    const unlistenPromise = listen<{ key: string }>('visualizer-keydown', (e) => {
+      handleKey(e.payload.key);
+    });
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [currentIndex, playlist.length]);
 
   // --- MIDI Triggers ---

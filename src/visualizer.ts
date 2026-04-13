@@ -110,6 +110,10 @@ window.addEventListener('resize', () => {
     composer.setSize(window.innerWidth, window.innerHeight);
 });
 
+window.addEventListener('keydown', (e) => {
+    emit('visualizer-keydown', { key: e.key }).catch(err => console.error("Keydown emit error:", err));
+});
+
 // --- 2. Preview Capture Setup ---
 const PREVIEW_WIDTH = 320;
 const PREVIEW_INTERVAL_MS = 500; // 2 FPS
