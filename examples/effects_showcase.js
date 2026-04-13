@@ -74,15 +74,5 @@ export function update(context) {
 }
 
 export function cleanup(scene) {
-    [this.mesh, this.bgMesh, ...this.cubes].forEach(obj => {
-        if (!obj) return;
-        scene.remove(obj);
-        if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
-    });
-
-    if (this.lights) {
-        this.lights.forEach(l => scene.remove(l));
-        this.lights = null;
-    }
+    clearScene(scene);
 }

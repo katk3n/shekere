@@ -43,12 +43,5 @@ export function update(context) {
 }
 
 export function cleanup(scene) {
-    if (this.mesh) {
-        scene.remove(this.mesh);
-        this.mesh.geometry.dispose();
-        this.mesh.material.dispose();
-    }
-    if (this.light) {
-        scene.remove(this.light);
-    }
+    clearScene(scene);
 }

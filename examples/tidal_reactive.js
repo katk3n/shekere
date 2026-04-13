@@ -121,25 +121,5 @@ export function update(context) {
 }
 
 export function cleanup(scene) {
-    if (mesh) {
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-    }
-    if (shockwave) {
-        scene.remove(shockwave);
-        shockwave.geometry.dispose();
-        shockwave.material.dispose();
-    }
-    if (this.lights) {
-        this.lights.forEach(l => scene.remove(l));
-        this.lights = null;
-    }
-    if (gridGroup) {
-        scene.remove(gridGroup);
-        gridCubes.forEach(c => {
-            c.mesh.geometry.dispose();
-            c.mesh.material.dispose();
-        });
-    }
+    clearScene(scene);
 }

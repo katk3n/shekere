@@ -14,6 +14,32 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 (window as any).THREE = THREE;
 (window as any).convertFileSrc = convertFileSrc;
 
+/**
+ * Utility to clear all objects from a THREE.Object3D (usually the scene)
+ * and dispose of their geometries and materials to prevent memory leaks.
+ */
+function clearScene(container: THREE.Object3D) {
+    while (container.children.length > 0) {
+        const object = container.children[0];
+        
+        object.traverse((child: any) => {
+            if (child.isMesh) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach((m: any) => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            }
+        });
+
+        container.remove(object);
+    }
+}
+(window as any).clearScene = clearScene;
+
 interface SketchConfig {
     audio?: {
         minFreqHz?: number;

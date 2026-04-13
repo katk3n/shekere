@@ -114,14 +114,5 @@ export function update(context) {
 }
 
 export function cleanup(scene) {
-    padMeshes.forEach(mesh => {
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        mesh.material.dispose();
-    });
-    padMeshes = [];
-    padStates = [];
-
-    lights.forEach(light => scene.remove(light));
-    lights = [];
+    clearScene(scene);
 }

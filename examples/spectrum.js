@@ -83,11 +83,5 @@ export function update({ time, audio }) {
 }
 
 export function cleanup(scene) {
-  for (const bar of this.bars) {
-    scene.remove(bar);
-    bar.material.dispose(); // Material is unique to each bar
-  }
-  this.geometry.dispose(); // Geometry is shared
-  scene.remove(this.ambientLight);
-  scene.remove(this.pointLight);
+  clearScene(scene);
 }

@@ -19,9 +19,5 @@ export function update({ time, audio }) {
 }
 
 export function cleanup(scene) {
-  if (this.mesh) {
-    scene.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    this.mesh.material.dispose();
-  }
+  clearScene(scene);
 }
