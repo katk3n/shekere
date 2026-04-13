@@ -57,9 +57,8 @@ export function update({ time, audio }) {
 }
 
 export function cleanup(scene) {
-  scene.remove(this.mesh);
-  this.mesh.geometry.dispose();
-  this.mesh.material.dispose();
+  // Simplest way to clear the scene and free memory
+  clearScene(scene);
 }
 ```
 
@@ -120,7 +119,7 @@ Export these functions to define your sketch behavior:
 |---|---|---|---|
 | `setup(scene)` | Once when the file is loaded | `scene` (Three.js `Scene`) | `config` object (Optional) |
 | `update(context)` | Every frame (~60fps) | `context` — Data object | `void` |
-| `cleanup(scene)` | Just before the sketch is replaced | `scene` (Three.js `Scene`) | `void` |
+| `cleanup(scene)` | Just before the sketch is replaced | `scene` (Three.js `Scene`) | `void` (Use `clearScene(scene)` to reset) |
 
 ### Sketch Configuration
 The `setup()` function can return an optional configuration object:
@@ -213,6 +212,8 @@ Check the `examples/` directory for reference scripts covering Audio, MIDI, OSC,
 ---
 
 ## 💡 Pro Tips
-- **Performance**: Always implement `cleanup()` to avoid memory leaks.
+- **Performance**: Always implement `cleanup()` to avoid memory leaks. The easiest way is to call `clearScene(scene);`.
+- **Dynamic Cleanup (Afterimages)**: If you want to create an "afterimage" effect where the old sketch persists, simply skip calling `clearScene(scene)` or wrap it in an `if` statement (e.g., reactive to a MIDI fader).
 - **Auto-Sync**: If you change an effect in code (e.g., `bloom.strength = 1.5`), the Control Panel slider will automatically move to match!
 - **Hot Reload**: Keep your editor and the Visualizer side-by-side for the best experience.
+- **Global Helper**: `clearScene(scene)` and `THREE` are available globally. No imports needed.
