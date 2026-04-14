@@ -128,5 +128,5 @@ export function update(context) {
 }
 
 export function cleanup(scene) {
-  clearScene(scene);
+  Shekere.clearScene(scene);
 }

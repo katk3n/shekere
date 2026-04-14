@@ -373,7 +373,8 @@ export default function App() {
     const loadAndEmit = async () => {
       try {
         const code = await readTextFile(currentSketch);
-        await emit("user-code-update", { code });
+        const dir = currentSketch.substring(0, Math.max(currentSketch.lastIndexOf('/'), currentSketch.lastIndexOf('\\')) + 1);
+        await emit("user-code-update", { code, dir });
         setError(null);
       } catch (err: any) {
         console.error("Failed to read or emit file:", err);

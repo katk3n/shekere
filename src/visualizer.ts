@@ -12,7 +12,16 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
-(window as any).convertFileSrc = convertFileSrc;
+
+// Shekere API namespace
+const Shekere = {
+    convertFileSrc,
+    clearScene: (container: THREE.Object3D) => clearScene(container),
+    SKETCH_DIR: ""
+};
+(window as any).Shekere = Shekere;
+
+
 
 /**
  * Utility to clear all objects from a THREE.Object3D (usually the scene)
@@ -38,7 +47,6 @@ function clearScene(container: THREE.Object3D) {
         container.remove(object);
     }
 }
-(window as any).clearScene = clearScene;
 
 interface SketchConfig {
     audio?: {
@@ -473,9 +481,13 @@ function syncToHost() {
 animate();
 
 // --- 5. Dynamic Module Loader ---
-listen<{ code: string }>('user-code-update', async (event) => {
+listen<{ code: string; dir?: string }>('user-code-update', async (event) => {
     try {
-        const jsCode = event.payload.code;
+        const { code: jsCode, dir } = event.payload;
+
+        // Update sketch directory for relative path resolution
+        if (dir) Shekere.SKETCH_DIR = dir;
+
         const blob = new Blob([jsCode], { type: 'application/javascript' });
         const blobUrl = URL.createObjectURL(blob);
 

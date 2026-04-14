@@ -83,5 +83,5 @@ export function update({ time, audio }) {
 }
 
 export function cleanup(scene) {
-  clearScene(scene);
+  Shekere.clearScene(scene);
 }
