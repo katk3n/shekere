@@ -9,6 +9,7 @@ import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import Meyda from 'meyda';
 
 // Expose THREE globally so user sketches can use it without importing
 (window as any).THREE = THREE;
@@ -52,6 +53,7 @@ interface SketchConfig {
     audio?: {
         minFreqHz?: number;
         maxFreqHz?: number;
+        features?: string[];
     };
     renderer?: {
         toneMapping?: number;
@@ -161,18 +163,23 @@ const BASS_MAX_HZ = 250;
 const MID_MAX_HZ = 2_000;
 const DEFAULT_MIN_FREQ = 27.5;
 const DEFAULT_MAX_FREQ = 4186;
+const CORE_FEATURES = ['rms', 'zcr', 'energy', 'spectralCentroid', 'spectralFlatness', 'chroma', 'mfcc'];
 
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
+let audioSourceNode: MediaStreamAudioSourceNode | null = null;
 let audioDataArray: Uint8Array | null = null;
 let audioStream: MediaStream | null = null;
 let audioActive = false;
 let audioMinFreq = DEFAULT_MIN_FREQ;
 let audioMaxFreq = DEFAULT_MAX_FREQ;
 
-function applyAudioConfig(config: { minFreqHz?: number; maxFreqHz?: number }) {
+let meydaAnalyzer: any = null;
+
+function applyAudioConfig(config: { minFreqHz?: number; maxFreqHz?: number; features?: string[] }) {
     if (config.minFreqHz !== undefined) audioMinFreq = config.minFreqHz;
     if (config.maxFreqHz !== undefined) audioMaxFreq = config.maxFreqHz;
+    // features opt-in is no longer needed as we always extract CORE_FEATURES
     console.log(`Audio config updated: ${audioMinFreq}Hz - ${audioMaxFreq}Hz`);
 }
 
@@ -188,10 +195,19 @@ async function startAudio() {
         analyserNode.minDecibels = -70;
         analyserNode.maxDecibels = -10;
         audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
-        const source = audioContext.createMediaStreamSource(audioStream);
-        source.connect(analyserNode);
+        audioSourceNode = audioContext.createMediaStreamSource(audioStream);
+        audioSourceNode.connect(analyserNode);
+        
+        // Always initialize Meyda with all core features
+        meydaAnalyzer = Meyda.createMeydaAnalyzer({
+            audioContext: audioContext,
+            source: audioSourceNode,
+            bufferSize: FFT_SIZE,
+            featureExtractors: CORE_FEATURES
+        });
+        
         audioActive = true;
-        console.log('Audio capture started in Visualizer.');
+        console.log('Audio capture started in Visualizer (Meyda enabled).');
     } catch (e) {
         console.error('Failed to start audio capture:', e);
     }
@@ -208,7 +224,9 @@ function stopAudio() {
         audioContext = null;
     }
     analyserNode = null;
+    audioSourceNode = null;
     audioDataArray = null;
+    meydaAnalyzer = null;
     console.log('Audio capture stopped.');
 }
 
@@ -263,12 +281,22 @@ function computeAudioData() {
         return sum / (e - s);
     };
 
+    let features = {};
+    if (meydaAnalyzer) {
+        try {
+            features = meydaAnalyzer.get(CORE_FEATURES) || {};
+        } catch (e) {
+            console.warn('Meyda feature extraction error:', e);
+        }
+    }
+
     return {
         volume: bands.reduce((a, b) => a + b, 0) / BAND_COUNT,
         bass: avgRange(bands, 0, bassEnd),
         mid: avgRange(bands, bassEnd, midEnd),
         high: avgRange(bands, midEnd, BAND_COUNT),
         bands,
+        features
     };
 }
 
@@ -311,7 +339,7 @@ listen<{ strength?: number; radius?: number; threshold?: number }>('update-bloom
 
 // --- 3. Shared state ---
 let currentModule: SketchModule | null = null;
-let latestAudioData = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[] };
+let latestAudioData: any = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[], features: {} };
 let latestMidiData = {
     notes: new Array(128).fill(0) as number[],
     cc: new Array(128).fill(0) as number[]
@@ -471,7 +499,8 @@ function syncToHost() {
             bass: latestAudioData.bass || 0,
             mid: latestAudioData.mid || 0,
             high: latestAudioData.high || 0,
-            bands: latestAudioData.bands || []
+            bands: latestAudioData.bands || [],
+            features: latestAudioData.features || {}
         }).catch(err => console.error("Audio activity emit error:", err));
     }
 

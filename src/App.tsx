@@ -126,7 +126,7 @@ export default function App() {
   const [activeFxTab, setActiveFxTab] = useState<'bloom' | 'rgbShift' | 'film' | 'vignette'>('bloom');
 
   // Signal Activity
-  const [audioLevels, setAudioLevels] = useState({ volume: 0, bass: 0, mid: 0, high: 0 });
+  const [audioLevels, setAudioLevels] = useState<any>({ volume: 0, bass: 0, mid: 0, high: 0, features: {} });
   const [lastMidi, setLastMidi] = useState<{ text: string, subText: string, id: number, status: number, data1: number, data2: number } | null>(null);
   const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number, args?: Record<string, string> } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -555,7 +555,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Column 2: Visual Effects */}
+          {/* Column 2: Visual Effects & Preview */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 mb-1">
               <Sparkles className="w-5 h-5 text-indigo-500" />
@@ -615,8 +615,32 @@ export default function App() {
                 )}
               </div>
             </div>
+
+            <div className="flex items-center gap-2 mb-1">
+              <Eye className="w-5 h-5 text-blue-400" />
+              <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Preview</h2>
+            </div>
+
+            <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800">
+              <div className="flex flex-col gap-2">
+                <div className="relative aspect-video w-full bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50 flex items-center justify-center group">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-neutral-600">
+                      <Activity className="w-6 h-6 animate-pulse" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">No Signal</span>
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-neutral-400 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                    2 FPS
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* Column 3: Monitors */}
           <div className="flex flex-col gap-4">
             {(error || audioError) && (
               <div className="w-full flex items-start gap-2 bg-red-900/20 text-red-400 p-3 rounded-xl text-[10px] border border-red-900/50 animate-in slide-in-from-top-2 mb-2">
@@ -644,34 +668,100 @@ export default function App() {
                 <div className="mt-1 w-full h-12 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
                   <canvas ref={canvasRef} width={256} height={48} className="w-full h-full opacity-80" />
                 </div>
-              </div>
 
-              <div className="h-px bg-neutral-800 w-full" />
-
-              <div className="flex flex-col gap-2">
-                <Indicator label="MIDI" icon={Music} active={isMidiActive || false} text={lastMidi ? lastMidi.text : "Waiting..."} subText={lastMidi ? lastMidi.subText : ""} />
-                <Indicator label="OSC" icon={Radio} active={isOscActive || false} text={lastOsc ? lastOsc.text : "Waiting..."} subText={lastOsc ? lastOsc.subText : ""} />
-              </div>
-
-              <div className="h-px bg-neutral-800 w-full" />
-
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
-                  <Eye className="w-3.5 h-3.5 text-blue-400" /> Visualizer Preview
-                </div>
-                <div className="relative aspect-video w-full bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50 flex items-center justify-center group">
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-neutral-600">
-                      <Activity className="w-6 h-6 animate-pulse" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest">No Signal</span>
+                <div className="mt-1 pt-3 border-t border-neutral-700/50">
+                  <div className="text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-2 flex justify-between items-center">
+                    <span>Advanced Features</span>
+                    <span className="text-neutral-600 bg-neutral-800 rounded px-1 py-0.5">
+                      {audioLevels.features && Object.keys(audioLevels.features).length > 0 
+                        ? `${Object.keys(audioLevels.features).length} Active` 
+                        : "Inactive"}
+                    </span>
+                  </div>
+                  
+                  {/* Scalar Values */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2">
+                    {[
+                      { label: 'rms', key: 'rms' },
+                      { label: 'zcr', key: 'zcr' },
+                      { label: 'energy', key: 'energy' },
+                      { label: 'centroid', key: 'spectralCentroid' },
+                      { label: 'flatness', key: 'spectralFlatness' }
+                    ].map((f) => {
+                      const val = audioLevels.features?.[f.key];
+                      return (
+                        <div key={f.key} className="flex justify-between items-center text-[10px] bg-neutral-800/50 px-1.5 py-0.5 rounded">
+                          <span className="text-neutral-400 truncate pr-2" title={f.label}>{f.label}</span>
+                          <span className={`${val !== undefined ? 'text-sky-400' : 'text-neutral-600'} font-mono text-right`}>
+                            {val !== undefined 
+                              ? (typeof val === 'number' ? (Number.isInteger(val) ? val.toString() : val.toFixed(2)) : String(val))
+                              : "0.00"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* Placeholder to keep grid balanced (odd number of items) */}
+                    <div className="flex justify-between items-center text-[10px] px-1.5 py-0.5 opacity-0">...</div>
+                  </div>
+                  
+                  {/* Visualizer Row */}
+                  <div className="flex flex-col gap-2">
+                    {/* Chroma Visualizer */}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[8px] font-bold text-neutral-500 uppercase tracking-widest pl-1">Chroma</div>
+                      <div className="w-full flex justify-between items-end h-[50px] bg-neutral-900 rounded-lg p-1.5 border border-neutral-700/50 gap-0.5 relative">
+                        {Array.from({ length: 12 }).map((_, i) => {
+                           const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+                           const isBlackKey = notes[i].includes('#');
+                           const val = audioLevels.features?.chroma?.[i] || 0;
+                           const hPct = Math.max(0, Math.min(100, (Number(val) || 0) * 100));
+                           return (
+                             <div key={i} className="flex-1 flex flex-col items-center justify-end h-full gap-1">
+                               <div className="w-full bg-neutral-800 rounded-[2px] relative overflow-hidden flex-1">
+                                 <div 
+                                   className={`absolute bottom-0 w-full transition-all duration-75 ${isBlackKey ? 'bg-fuchsia-500/80 shadow-[0_0_5px_rgba(217,70,239,0.5)]' : 'bg-emerald-400/80 shadow-[0_0_5px_rgba(52,211,153,0.5)]'}`} 
+                                   style={{ height: `${hPct}%` , opacity: audioLevels.features?.chroma ? 1 : 0.1 }} 
+                                 />
+                               </div>
+                               <span className={`text-[7px] font-bold leading-none ${isBlackKey ? 'text-neutral-500' : 'text-neutral-300'}`}>{notes[i]}</span>
+                             </div>
+                           );
+                        })}
+                      </div>
                     </div>
-                  )}
-                  <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-neutral-400 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                    2 FPS
+
+                    {/* MFCC Visualizer */}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-[8px] font-bold text-neutral-500 uppercase tracking-widest pl-1">MFCC</div>
+                      <div className="w-full flex h-[40px] bg-neutral-900 rounded-lg p-1 border border-neutral-700/50 gap-[1px] relative overflow-hidden group">
+                        <div className="absolute top-1/2 left-0 w-full h-[1px] bg-neutral-700/50 -translate-y-1/2 z-0" />
+                        
+                        {Array.from({ length: 13 }).map((_, i) => {
+                           const val = audioLevels.features?.mfcc?.[i] || 0;
+                           const normalized = Math.max(-50, Math.min(50, (Number(val) || 0) * 1.5));
+                           const heightPct = Math.abs(normalized);
+                           const isPos = normalized > 0;
+                           return (
+                             <div key={i} className="flex-1 flex flex-col items-center justify-center relative z-10 w-full h-full">
+                                 {isPos ? (
+                                    <div className={`w-[80%] bg-cyan-400/80 shadow-[0_0_3px_rgba(34,211,238,0.5)] absolute bottom-1/2 rounded-t-[1px] transition-all duration-75`} style={{ height: `${heightPct}%`, opacity: audioLevels.features?.mfcc ? 1 : 0 }} />
+                                 ) : (
+                                    <div className={`w-[80%] bg-orange-500/80 shadow-[0_0_3px_rgba(249,115,22,0.5)] absolute top-1/2 rounded-b-[1px] transition-all duration-75`} style={{ height: `${heightPct}%`, opacity: audioLevels.features?.mfcc ? 1 : 0 }} />
+                                 )}
+                             </div>
+                           );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="h-px bg-neutral-800 w-full" />
+
+              <div className="flex flex-col gap-2 p-1">
+                <Indicator label="MIDI" icon={Music} active={isMidiActive || false} text={lastMidi ? lastMidi.text : "Waiting..."} subText={lastMidi ? lastMidi.subText : ""} />
+                <Indicator label="OSC" icon={Radio} active={isOscActive || false} text={lastOsc ? lastOsc.text : "Waiting..."} subText={lastOsc ? lastOsc.subText : ""} />
               </div>
             </div>
           </div>
