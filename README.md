@@ -211,6 +211,37 @@ The audio analyzer uses logarithmic frequency scaling to match human hearing.
 
 ---
 
+## 🔊 Advanced Audio Features (Meyda)
+
+Shekere includes integrated [Meyda.js](https://meyda.js.org/) for high-level audio feature extraction. These features allow for more semantic audio-reactivity (e.g., detecting "brightness" or "percussiveness").
+
+#### Data Properties (`context.audio.features`)
+
+| Property | Type | Description |
+|---|---|---|
+| `rms` | `number` | Root Mean Square. Accurate representation of perceived loudness. |
+| `zcr` | `number` | Zero-Crossing Rate. High values indicate noisy/percussive sounds (hi-hats, etc). |
+| `energy` | `number` | The total acoustic energy of the signal. |
+| `spectralCentroid` | `number` | The "center of mass" of the spectrum. High values mean the sound is "brighter". |
+| `spectralFlatness` | `number` | Indicates if a sound is tone-like (0.0) or noise-like (1.0). |
+| `chroma` | `number[12]` | Intensity of the 12 pitch classes (C, C#, D, etc). |
+| `mfcc` | `number[13]` | Mel-Frequency Cepstral Coefficients. Represents timbre/spectral shape. |
+
+#### Example Usage
+
+```js
+export function update({ audio }) {
+  const { rms, zcr, spectralCentroid } = audio.features;
+
+  // Use ZCR to trigger a flash on percussive sounds
+  if (zcr > 50) {
+    this.flash = 1.0;
+  }
+}
+```
+
+---
+
 ## ⌨️ MIDI, OSC & More
 
 - **MIDI**: Access `midi.notes[0-127]` and `midi.cc[0-127]` (all normalized 0.0 – 1.0).
