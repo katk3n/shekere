@@ -1,89 +1,89 @@
 # Architecture Decision Record (ADR): Shekere
 
-次世代ライブコーディング用オーディオビジュアル環境の構築
+Building the next-generation audiovisual environment for live coding.
 
 ## 1. Status
 
 Implemented (v0.4.0)
 
-## 2. Context & Goals (背景と目的)
+## 2. Context & Goals
 
-既存の「Shekere (v1)」はRustとWGSLを用いた環境であったが、ユーザーの学習コストおよびホストアプリの開発・保守コストが高い課題があった。
-本プロジェクト「Shekere (v2)」は、以下の実現を目的とする。
-- 参考 (既存のshekere(v1)のリポジトリ): https://github.com/katk3n/shekere-legacy
+The legacy "Shekere (v1)" was built using Rust and WGSL, but faced challenges with high learning curves for users and high development/maintenance costs for the host application.
+The "Shekere (v2)" project aims to achieve the following:
+- Reference (Legacy Shekere (v1) repository): https://github.com/katk3n/shekere-legacy
 
-1. ターゲット層の拡張: 高度なシェーダー言語(WGSL)から、Web標準の JavaScript / Three.js へと記述言語をピボットし、学習コストを極限まで下げる。
-2. 開発の高速化と安定化: 複雑なシステムプログラミングを避け、Web標準API と Tauri v2のプラグイン を最大限活用したモダンなハイブリッドアーキテクチャを採用する。
+1. **Broaden Target Audience**: Pivot from low-level shader languages (WGSL) to web standards (JavaScript / Three.js) to minimize the learning curve.
+2. **Accelerate & Stabilize Development**: Adopt a modern hybrid architecture that avoids complex system programming and leverages Web Standard APIs and Tauri v2 plugins.
 
-## 3. Core Paradigm (コア設計思想)
+## 3. Core Paradigm
 
-Shekereは「固定のビジュアルを表示するアプリ」ではなく、 **「ユーザーが外部エディタで書いたJavaScriptコードを動的に読み込み、音楽と同期させてThree.jsで描画するホスト環境（ランナー）」** である。
+Shekere is not just an "app that displays fixed visuals"; it is a **"host environment (runner) that dynamically loads JavaScript code written by users in external editors and renders it with Three.js in sync with music."**
 
-## 4. System Architecture (システムアーキテクチャ)
+## 4. System Architecture
 
-- Desktop Framework: Tauri v2
-- Build Tool: Vite
-- Language:
-    - TypeScript (UIおよびフロントエンドロジック)
-    - Rust (TypeScript で実現できない機能の実装)
+- **Desktop Framework**: Tauri v2
+- **Build Tool**: Vite
+- **Language**:
+    - TypeScript (UI and Front-end logic)
+    - Rust (Implementation of features that cannot be achieved with TypeScript)
 
-システムは以下の役割分担（境界）を厳密に守ること。
+The system must strictly adhere to the following division of roles (boundaries).
 
-### 4.1 フロントエンド (TypeScript / WebView)
+### 4.1 Front-end (TypeScript / WebView)
 
-OSC受信以外のすべての処理をここに集約する。Rustのコード量は最小限に抑えること。
+Centralize all processing here except for OSC reception. Keep Rust code to a minimum.
 
-- UIフレームワーク: Viteエコシステムのモダンなライブラリ (React, Vue, または Vanilla TS)。
-- 描画エンジン: Three.js (標準API + EffectComposerによるポストプロセス)。
-- オーディオ解析: Web Audio API を使用 (AnalyserNode によるFFT解析や低音検知)。
-- MIDI入力: **Web MIDI API は macOS (WKWebView) で非対応のため使用しない。** (詳細は 4.2 参照)
-- ファイル監視: Tauri v2公式プラグイン `@tauri-apps/plugin-fs` を使用し、TS側から直接ユーザーファイルの変更を監視（`watch`）し、読み込む（`readTextFile`）。
+- **UI Framework**: Modern Vite ecosystem libraries (React, Vue, or Vanilla TS).
+- **Rendering Engine**: Three.js (Standard API + Post-processing with EffectComposer).
+- **Audio Analysis**: Uses Web Audio API (FFT analysis and low-frequency detection via AnalyserNode).
+- **MIDI Input**: **Web MIDI API is not supported on macOS (WKWebView) and thus will not be used.** (See 4.2 for details)
+- **File Watching**: Uses the official Tauri v2 plugin `@tauri-apps/plugin-fs` to monitor (`watch`) and read (`readTextFile`) user file changes directly from the TypeScript side.
 
-### 4.2 バックエンド (Rust / Tauri Core)
+### 4.2 Back-end (Rust / Tauri Core)
 
-Webの制約でフロントエンドから直接実行できない処理のみを担当する。
+Responsible only for tasks that cannot be executed directly from the front-end due to web constraints.
 
-- OSC通信: `rosc` クレート等を用い、UDPソケットでOSCメッセージを受信。受信データをTauriの `emit` でフロントエンドへ送信する。
-- MIDI入力: `midir` クレートを使用。WKWebView の制限を回避するため、Rust 側で全ポートを監視し、データを `emit` でフロントエンドへ送信する。
-- ※注意: Rustでのファイル監視（`notify`等）は行わない。
+- **OSC Communication**: Uses the `rosc` crate to receive OSC messages via UDP sockets. Emits received data to the front-end via Tauri `emit`.
+- **MIDI Input**: Uses the `midir` crate. To bypass WKWebView limitations, the Rust side monitors all ports and sends data to the front-end via `emit`.
+- **Note**: Do not perform file watching (e.g., `notify`) in Rust.
 
-### 5. Multi-Window Design (マルチウィンドウ設計)
+### 5. Multi-Window Design
 
-ライブパフォーマンス用途のため、必ず2つのウィンドウを分離して起動・管理する。
+For live performance use cases, two windows must be launched and managed separately.
 
-1. Control Panel (メインウィンドウ):
-    - UIの描画、ファイルの選択（監視パスの決定）。
-    - Web Audio APIのインスタンスを保持し、データの解析を行う。
-    - 取得・解析したデータを、TauriのIPC (`emit`) を通じて毎フレーム Visualizer へ送信する。
-    - (MIDI および OSC は Rust 側から直接 Visualizer へ送信される)
-2. Visualizer (描画用サブウィンドウ):
-    - フルスクリーン出力を想定したUIを持たないウィンドウ。
-    - Three.jsのCanvasを保持する。
-    - Control PanelからのデータおよびOSCデータ (listen) を受け取り、ユーザーコードにデータを注入して描画を更新する。
+1. **Control Panel (Main Window)**:
+    - Renders UI and selects files (determines watch paths).
+    - Maintains the Web Audio API instance and performs data analysis.
+    - Sends acquired/analyzed data to the Visualizer every frame via Tauri IPC (`emit`).
+    - (MIDI and OSC are sent directly to the Visualizer from the Rust side)
+2. **Visualizer (Sub-window for Rendering)**:
+    - A window without UI, intended for full-screen output.
+    - Maintains the Three.js Canvas.
+    - Receives data from the Control Panel and OSC data (listen), injects it into user code, and updates rendering.
 
-### 6. Dynamic Module Loading Strategy (ユーザーコードの動的実行)
+### 6. Dynamic Module Loading Strategy
 
-Viteのバンドル制約を回避し、ローカルにある生のユーザーJSファイルを安全にホットリロードするため、 **Blob URLパターン** を採用する。
+To bypass Vite's bundle constraints and safely hot-reload raw user JS files locally, the **Blob URL pattern** is adopted.
 
 ```typescript
-// エージェントへの実装ヒント: Blob URLを使ったホットリロード
-const codeString = await readTextFile(userFilePath); // Tauri fs pluginで読み込み
+// Implementation hint: Hot-reloading using Blob URL
+const codeString = await readTextFile(userFilePath); // Read via Tauri fs plugin
 const blob = new Blob([codeString], { type: 'application/javascript' });
 const blobUrl = URL.createObjectURL(blob);
 
-if (currentModule) currentModule.cleanup(); // 既存のThree.jsオブジェクトの破棄等
+if (currentModule) currentModule.cleanup(); // Disposal of existing Three.js objects, etc.
 
-// ユーザーのモジュールを動的インポートし、Three.jsのsceneを渡す
+// Dynamically import user module and pass Three.js scene
 const userModule = await import(/* @vite-ignore */ blobUrl);
 userModule.setup(scene);
 ```
 
-### 7. Interface Contract (ユーザーコードとの規約)
+### 7. Interface Contract
 
-ホストアプリ（Shekere）とユーザーコード間のインターフェース仕様。AIエージェントはこれに適合するローダーを実装すること。
+Interface specifications between the host app (Shekere) and user code. The AI agent must implement a loader that conforms to this.
 
 ```typescript
-// ユーザーが記述するJSファイル (例: my_sketch.js) 
+// JS file written by the user (Example: my_sketch.js) 
 export function setup(scene) {
     this.mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
     scene.add(this.mesh);
@@ -91,12 +91,12 @@ export function setup(scene) {
 
 export function update(context) {
     const { time, audio, midi, osc } = context;
-    // 例: 低音(audio.bass)でスケール変化
+    // Example: Scale change based on bass (audio.bass)
     const scale = 1.0 + (audio.bass * 2.0);
     this.mesh.scale.set(scale, scale, scale);
 }
 
-// 必須: ホットリロード時のメモリリークを防ぐためのクリーンアップ関数
+// Mandatory: Cleanup function to prevent memory leaks during hot-reloading
 export function cleanup(scene) {
     scene.remove(this.mesh);
     this.mesh.geometry.dispose();
@@ -104,34 +104,34 @@ export function cleanup(scene) {
 }
 ```
 
-### 8. Implementation Roadmap for AI Agent (実装指示フェーズ)
+### 8. Implementation Roadmap for AI Agent
 
-AIエージェントは以下のフェーズに従って段階的に実装・確認を進めること。
+The AI agent must proceed with implementation and verification step-by-step according to the following phases.
 
 #### Phase 1: Bootstrapping [Completed in v0.1.0]
 
-- `create-tauri-app` 等を用いたTauri v2 + Vite + TS基盤の構築。
-- Control PanelとVisualizerの2つのウィンドウが起動する設定 (`tauri.conf.json` 等) の実装。
+- Establishment of Tauri v2 + Vite + TS foundation using `create-tauri-app`, etc.
+- Implementation of settings (`tauri.conf.json`, etc.) to launch two windows: Control Panel and Visualizer.
 
 #### Phase 2: File Watching & Dynamic Loading [Completed in v0.2.0]
 
-- `@tauri-apps/plugin-fs` を用いたJSファイルの監視機構の実装。
-- Visualizer側での Three.js 基盤構築と、Blob URLを用いたJSファイルの動的実行機能の実装。
+- Implementation of the JS file monitoring mechanism using `@tauri-apps/plugin-fs`.
+- Establishment of Three.js foundation on the Visualizer side and implementation of dynamic JS file execution via Blob URL.
 
 #### Phase 3: Data Pipeline (Audio, MIDI & OSC) [Completed in v0.3.0]
 
-- Control Panelでのマイク入力許可とWeb Audio API (FFT) 実装。
-- MIDI入力 (midir) サポートの実装。
-- Rust側でのUDPソケットによるOSC受信とフロントエンドへの emit 実装。
-- 各種データを `update(context)` へ注入するパイプラインの結合。
+- Microphone permission handling and Web Audio API (FFT) implementation in the Control Panel.
+- Implementation of MIDI input (`midir`) support.
+- Implementation of OSC reception via UDP sockets in Rust and `emit` to the front-end.
+- Integration of the pipeline to inject various data into `update(context)`.
 
 #### Phase 4: Post-Processing & UI [Completed in v0.4.0]
 
-- Visualizerへの EffectComposer (`UnrealBloomPass`等) の導入。
-- Control Panel側でのパラメーター調整UI（Bloom強度など）の実装とウィンドウ間同期。
+- Introduction of EffectComposer (`UnrealBloomPass`, etc.) to the Visualizer.
+- Implementation of parameter adjustment UI (Bloom intensity, etc.) in the Control Panel and synchronization between windows.
 
-### 9. Constraints (厳格な制約事項 - 遵守必須)
+### 9. Constraints (Strict Adherence Mandatory)
 
-- Rustのオーディオ/MIDIクレート使用制限: `cpal`, `rustfft` などは本来の目的通り使用禁止。ただし、**`midir` に関しては macOS におけるブラウザ側の Web MIDI 非対応を回避するために例外として Rust 側での実装を許可する。**
-- Rustのファイル監視クレート使用禁止: `notify` などのファイル監視クレートは使用しない。`@tauri-apps/plugin-fs` をフロントエンドから呼び出すこと。
-- 自作コンパイラの禁止: WGSLやGLSLのパース、コンパイル処理などを自作・実装しようとしないこと。ユーザーコードは純粋なJavaScriptとして扱う。
+- **Rust Audio/MIDI Crate Usage Restrictions**: `cpal`, `rustfft`, etc., are prohibited for their original purposes. However, implementing MIDI input via `midir` on the Rust side is permitted as an exception to bypass the lack of Web MIDI support in macOS browsers.
+- **No Rust File Watching Crates**: Do not use file watching crates such as `notify`. Call `@tauri-apps/plugin-fs` from the front-end.
+- **No custom compilers**: Do not attempt to build or implement custom parsing or compilation for WGSL or GLSL. User code is treated as pure JavaScript.

@@ -1,41 +1,44 @@
 # Agent Workflow & Rules for Shekere Project
-あなたは「Shekere」プロジェクトの開発をサポートするシニア・フルスタックエンジニア（AIエージェント）です。以下の行動規範（ワークフローとルール）を厳守してタスクを実行してください。
 
-## 1. 根本原則 (Core Principles)
+You are a Senior Full-Stack Engineer (AI Agent) supporting the development of the "Shekere" project. Strictly adhere to the following code of conduct (workflow and rules) when performing tasks.
 
-- ADRの絶対遵守: いかなる実装を行う前にも、必ず `adr/` ディレクトリ内にあるアーキテクチャ・ディシジョン・レコード（ADR）を確認すること。特に `0001-initial-architecture-and-tech-stack.md` に記載されているアーキテクチャの境界と制約（Rustでオーディオ処理をしない等）はプロジェクトの根幹であるため絶対に守ること。
-- 小さく段階的な実装: 一度に巨大なシステムを書き上げようとしないこと。機能は可能な限り小さなモジュールに分割し、1つずつ確実に動作確認（Approve）を得ながら進めること。
-- 推測の排除: 仕様が曖昧な場合や、複数の技術的選択肢がある場合は、勝手に推測してコードを書かず、ユーザーに質問して判断を仰ぐこと。
+## 1. Core Principles
 
-## 2. タスク実行ワークフロー (Execution Workflow)
-ユーザーから指示を受けた場合、以下のステップで進行してください。
+- **Strict ADR Compliance**: Before any implementation, always check the Architecture Decision Records (ADR) in the `adr/` directory. Specifically, strict adherence to `0001-initial-architecture-and-tech-stack.md` (e.g., no audio processing in Rust) is mandatory as it defines the project's foundation.
+- **Small, Incremental Implementation**: Do not attempt to build massive systems at once. Divide features into the smallest possible modules and proceed one by one, obtaining "Approve" (approval) and verifying operation for each.
+- **Eliminate Guesswork**: If specifications are ambiguous or multiple technical options exist, do not guess. Ask the user for clarification and decision.
 
-1. Plan (計画の提示):
-    - 実装を始める前に、必ず「どのファイルを」「どのように修正・作成するか」の短い計画（Implementation Plan）を提示すること。
-    - 例: "Control PanelにWeb Audio APIの処理を追加します。変更ファイルは src/components/AudioVisualizer.tsx です。"
-2. Wait for Approval (承認待機):
-    - 計画を提示したら、ユーザーからの「Approve（承認）」または「修正指示」を待つこと。勝手に次のステップに進まないこと。
-3. Execute (実行):
-    - 承認を得たら、ターミナルコマンドの実行やコードの生成・編集を行う。
-4. Verify (検証):
-    - 実装完了後、直ちにシンタックスエラーや閉じ括弧・タグの欠落等がないかを最優先で確認すること。
-    - 特に `multi_replace_file_content` 等のツールを使用した後は、意図しない行の削除が発生していないか、関数やクラスの閉じ括弧（`}`）が欠落していないかを厳格に点検すること。
-    - TypeScriptの場合は `npx tsc --noEmit` を実行する、あるいは `view_file` で変更箇所を再目視するなど、機械的・視覚的な両面からチェックを行い、構文エラー（Unexpected end of file等）を絶対に発生させないこと。
-    - 関数コンポーネントの戻り値（JSX）の構造が壊れていないかも目視で再点検すること。
-5. Report & Next (報告と次の提案):
-    - 検証が完了したら、何が完了したかを簡潔に報告し、次のフェーズ（次に実装すべき小さな機能）を提案すること。
-    
-## 3. コード記述スタイル (Coding Style)
-- 簡潔な回答: 説明は最小限にし、コードや行動で示すこと。
-- TypeScript: Strictモードを前提とし、型定義 (interface / type) を明確に行うこと。any は極力使用しない。
-- エラーハンドリング: ユーザーファイルが存在しない、オーディオデバイスのパーミッションが拒否された等のエッジケースを必ず考慮し、安全にフェイルオーバーする処理を書くこと。
+## 2. Task Execution Workflow
 
-## 4. ターミナル実行ルール (Terminal Rules)
-- npm install やファイル作成などのコマンドは自律的に実行してよい。
-- ただし、既存の重要なファイルやディレクトリを一括削除するような「破壊的変更」を伴うコマンドを実行する前は、必ずユーザーの許可を得ること。
-- **Git Push の制限**: **いかなる場合も勝手に git push を実行してはならない。** `git push`（タグを含む）を実行する際は、必ず事前に具体的なコミット内容、ファイル変更点、タグ名を提示し、ユーザーから明示的な「Approve（承認）」を得ること。
+Follow these steps when responding to user instructions:
 
+1. **Plan (Present Implementation Plan)**:
+    - Before starting, always present a short plan (Implementation Plan) of "which files" will be "modified or created and how."
+    - Example: "I will add Web Audio API processing to the Control Panel. The modified file will be src/components/AudioVisualizer.tsx."
+2. **Wait for Approval**:
+    - After presenting the plan, wait for the user's "Approve" or "Revision Instructions." Do not proceed to the next step without explicit approval.
+3. **Execute**:
+    - Once approved, execute terminal commands and generate/edit code.
+4. **Verify**:
+    - Immediately after implementation, prioritize checking for syntax errors, missing closing brackets, or tags.
+    - Particularly after using tools like `multi_replace_file_content`, strictly inspect for unintended line deletions or missing closing braces (`}`).
+    - For TypeScript, run `npx tsc --noEmit` or re-inspect changes via `view_file` to ensure no syntax errors (e.g., "Unexpected end of file") occur.
+    - Re-verify that the returned JSX structure of function components is intact.
+5. **Report & Next**:
+    - Once verified, briefly report what was completed and propose the next phase (the next small feature to implement).
 
-## 5. リリース手順 (Release Procedure)
+## 3. Coding Style
 
-リリースを行う際は、AIエージェントの安全な自律処理を保証するため、専用のスキルファイル `.agents/skills/release/instructions.md` に記載された手順に従って実行してください。
+- **Concise Responses**: Keep explanations minimal; demonstrate through code and actions.
+- **TypeScript**: Assume Strict Mode and define types (interface / type) clearly. Avoid `any` whenever possible.
+- **Error Handling**: Always consider edge cases such as missing user files or denied audio device permissions, and implement safe failover logic.
+
+## 4. Terminal Rules
+
+- Commands like `npm install` or file creation may be executed autonomously.
+- However, obtain user permission before executing commands that involve "destructive changes," such as bulk deletion of important files or directories.
+- **Git Push Restrictions**: **Never execute `git push` on your own accord.** Before running `git push` (including tags), present specific commit details, file changes, and tag names to obtain explicit "Approve" from the user.
+
+## 5. Release Procedure
+
+When performing a release, follow the procedures specified in the dedicated skill file `.agents/skills/release/instructions.md` to ensure safe autonomous processing by the AI agent.

@@ -4,56 +4,56 @@
 
 Implemented (v0.7.0)
 
-## 2. Context & Goals (背景と目的)
+## 2. Context & Goals
 
-現在の Shekere は、1度に1つのスケッチファイル (.js) を選択して読み込み、ホットリロード（監視）する仕組みとなっている。
-しかし、ライブパフォーマンスやVJなどの実際のユースケースにおいては、複数のスケッチをあらかじめ読み込んでおき、パフォーマンスの進行に合わせて瞬時に切り替えられる（スイッチング）機能が必要である。
-本 ADR では、Web/Tauri アーキテクチャの制約内で、効率的に複数ファイルを読み込み、MIDIコントローラやキーボード入力からスケッチを切り替えるためのアーキテクチャや状態管理の方法を定義する。
+Currently, Shekere allows selecting and loading one sketch file (.js) at a time for hot-reloading (monitoring).
+However, in actual use cases such as live performances and VJing, it is necessary to preload multiple sketches and be able to switch between them instantaneously as the performance progresses.
+This ADR defines the architecture and state management methods for efficiently loading multiple files and switching sketches via MIDI controllers or keyboard input within the constraints of the Web/Tauri architecture.
 
-## 3. System Architecture Constraints (システムアーキテクチャの制約)
+## 3. System Architecture Constraints
 
-1. **State Management (状態管理)**
-   - ファイルの管理や切り替えロジックは Control Panel (`App.tsx`) に集約する。
-   - Visualizer ウィンドウ (`visualizer.ts`) は自身が何かを複数保持するのではなく、 Control Panel から送られてきた単一のコード（`user-code-update` イベント）を実行・破棄する従来の仕組みをそのまま使い回す。これにより余計なメモリリークのリスクを抑え、単一ファイル時と変わらない挙動を担保する。
+1. **State Management**
+   - File management and switching logic are centralized in the Control Panel (`App.tsx`).
+   - The Visualizer window (`visualizer.ts`) remains a stateless consumer; it does not maintain multiple sketches itself. Instead, it continues to use the existing mechanism of executing or disposing of a single block of code (`user-code-update` event) sent from the Control Panel. This minimizes the risk of memory leaks and ensures behavior consistent with single-file mode.
 2. **File Selection Method**
-   - TOML ファイル（プレイリスト設定ファイル）を読み込んで一括設定する方式と、UI 上の各スロットからファイルダイアログ (`@tauri-apps/plugin-dialog`) を用いて個別に `.js` ファイルを選択する方式の両方をサポートする。
+   - Supports both bulk configuration by loading a TOML file (playlist configuration file) and individual selection of `.js` files from slots in the UI using the file dialog (`@tauri-apps/plugin-dialog`).
 3. **Switching Triggers**
-   - **Keyboard (PC)**: Control Panel ウィンドウでのキーボードショートカット。
-   - **MIDI**: Visualizer および Control Panel が受信している MIDI イベント (`midi-event`) をトリガーとする（特定のNote番号やCC）。
-   - **OSC**: Control Panel が受信している OSC イベント (`osc-event`) の Address をトリガーとする。
+   - **Keyboard (PC)**: Keyboard shortcuts within the Control Panel window.
+   - **MIDI**: Triggered by MIDI events (`midi-event`) received by the Visualizer and Control Panel (specific Note numbers or CC).
+   - **OSC**: Triggered by the Address or arguments of OSC events (`osc-event`) received by the Control Panel.
 
-## 4. Proposed Design (提案される設計)
+## 4. Proposed Design
 
-### 4.1 State (状態の保持)
+### 4.1 State Management
 
-Control Panel 側 (`App.tsx`) で以下の状態（State）を管理する。
+The following states are managed on the Control Panel side (`App.tsx`):
 
-- `playlist: Array<{ path: string, midiNote?: number, midiCc?: number, oscKey?: string, oscValue?: string }>`: スケッチファイルのパスと、そのスケッチを直接呼び出す（切り替える）ための引数（MIDI 信号や OSC の Key-Value ペアなど）のメタデータを保持するリスト。
-- `currentIndex: number`: 現在アクティブなスケッチのインデックス（0開始）。
-- `midiNavigation: { next?: { note?: number, cc?: number }, prev?: { note?: number, cc?: number } }`: TOMLから読み込んだ、MIDI信号による全体的な「次・前」の切り替え設定（オプション）。
-- `oscNavigation: { next?: { key: string, value: string }, prev?: { key: string, value: string } }`: TOMLから読み込んだ、OSCの引数（TidalCycles のような key-value 形式）による「次・前」の切り替え設定（オプション）。
+- `playlist: Array<{ path: string, midiNote?: number, midiCc?: number, oscKey?: string, oscValue?: string }>`: A list holding sketch file paths and metadata (MIDI signals, OSC key-value pairs, etc.) for directly calling (switching to) that sketch.
+- `currentIndex: number`: The current active sketch index (0-indexed).
+- `midiNavigation: { next?: { note?: number, cc?: number }, prev?: { note?: number, cc?: number } }`: Optional global "Next/Previous" switching settings via MIDI signals loaded from TOML.
+- `oscNavigation: { next?: { key: string, value: string }, prev?: { key: string, value: string } }`: Optional global "Next/Previous" switching settings via OSC arguments (key-value format like TidalCycles) loaded from TOML.
 
-### 4.2 Loading & Watch Logic (読み込みと監視ロジック)
+### 4.2 Loading & Watch Logic
 
-1. TOML などの設定ファイルを読み込むと、そこに定義された順番で `playlist` が構築される。もしくは手動でファイルを選択してスロットに追加する。
-2. アクティブなファイル (`playlist[currentIndex].path`) が存在する場合、そのファイルを `readTextFile` で読み込み、 `user-code-update` イベントとして Visualizer に送信する。
-3. ファイル監視 (`watch`) は、常に `playlist[currentIndex].path` のファイルに対してのみ行う。
+1. When a configuration file like TOML is loaded, the `playlist` is constructed in the defined order. Alternatively, files are manually selected and added to slots.
+2. If an active file (`playlist[currentIndex].path`) exists, that file is read via `readTextFile` and sent to the Visualizer as a `user-code-update` event.
+3. File monitoring (`watch`) is always performed only for the currently active file (`playlist[currentIndex].path`).
 
-### 4.3 Trigger Mechanisms (切り替えトリガー)
+### 4.3 Trigger Mechanisms
 
-- **Keyboard Events**: `App.tsx` 内に `keydown` イベントリスナを登録。
-   - `ArrowRight` (次へ), `ArrowLeft` (前へ), 数字キー `1`~`9` (ダイレクト選択)。
-   - インデックスが末尾や先頭を越えた場合はループさせる。
-- **MIDI Events**: `midi-event` に流れてくる信号（Note On/Off, Control Change）を監視する。
-   - `midiNavigation` に設定された「次/前」の Note/CC が来た場合は、`currentIndex` を増減させる（末尾・先頭対応でループ処理）。
-   - 各スケッチ (`playlist[i]`) に `midiNote` や `midiCc` が設定されており、受信した信号とマッチした場合は、そのインデックス `i` へダイレクトにジャンプ（切り替え）する。
-- **OSC Events**: `osc-event` に流れてくる信号の引数（TidalCycles等の key-value 形式など）を監視する。
-   - `oscNavigation.next` または `oscNavigation.prev` で指定された `key` と `value` に一致するペアが引数に含まれていた場合、`currentIndex` を増減させる（末尾・先頭対応でループ処理）。
-   - 各スケッチ (`playlist[i]`) に `oscKey` および `oscValue` が設定されており、受信した引数内のペアとマッチした場合は、そのインデックス `i` へダイレクトにジャンプ（切り替え）する。
+- **Keyboard Events**: Register a `keydown` event listener within `App.tsx`.
+   - `ArrowRight` (Next), `ArrowLeft` (Previous), Number keys `1`~`9` (Direct selection).
+   - Wrap around if the index exceeds the beginning or end of the list.
+- **MIDI Events**: Monitor signals (Note On/Off, Control Change) flowing into `midi-event`.
+   - If a "Next/Prev" Note/CC specified in `midiNavigation` is received, increment/decrement `currentIndex` (with wrap-around).
+   - If a signal matches the `midiNote` or `midiCc` defined for a specific sketch (`playlist[i]`), jump directly to that index `i`.
+- **OSC Events**: Monitor argument pairs (e.g., TidalCycles key-value format) flowing into `osc-event`.
+   - If a pair matching `oscNavigation.next` or `oscNavigation.prev` is found in the arguments, increment/decrement `currentIndex` (with wrap-around).
+   - If a pair matches the `oscKey` and `oscValue` defined for a specific sketch (`playlist[i]`), jump directly to that index `i`.
 
-### 4.4 TOML Configuration Format (TOMLの設定フォーマット)
+### 4.4 TOML Configuration Format
 
-プレイリストの一括読み込みに用いる TOML ファイルのフォーマットは以下の通り。
+The format for the TOML file used for bulk playlist loading is as follows:
 
 ```toml
 [midi.navigation.next]
@@ -87,12 +87,11 @@ osc_value = "sn"
 
 ### 4.5 UI Updates
 
-Control Panel に「Playlist」UI を実装する。
-リストにはファイルのパス（またはファイル名）と、割り当てられている MIDI 信号（例: `Note: 36`）が表示される。現在アクティブな行は視覚的にハイライトされ、どこがアクティブかを明示する。
-また、TOML ファイルの読み込み機能 (Load Playlist TOML) ボタンスロットを設ける。
+Implement a "Playlist" UI in the Control Panel.
+The list displays the file path (or filename) and assigned MIDI signals (e.g., `Note: 36`). The currently active row is visually highlighted to indicate which sketch is live.
+Additionally, provide a button slot for the "Load Playlist TOML" function.
 
-## 5. Alternatives Considered (他の検討手段)
+## 5. Alternatives Considered
 
-- **Visualizer にすべてのコードを送って切り替える案**: イベントを Emit せず Visualizer 側に複数持たせる場合、WebGL や Three.js コンテキストでのコンフリクトや重いメモリ確保が発生しやすくなるため却下（一度に関数・オブジェクトが多数初期化されるリスク）。
-- **全てのファイルを Watch する案**: 複数の一斉保存があった際に意図しないスケッチのリロードやイベント発火が起きるため、監視は「現在選択されているファイル」のみに限定するのが安定する。
-
+- **Sending all code to the Visualizer for switching**: Rejected because maintaining multiple sketch contexts (WebGL/Three.js) in the Visualizer could lead to resource conflicts and heavy memory allocation (risk of many functions/objects being initialized at once).
+- **Watching all files**: Rejected because simultaneous saves across multiple files could cause unintended sketch reloads or event triggers. Monitoring only the "currently selected file" ensures stability.
