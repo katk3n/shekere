@@ -1,7 +1,7 @@
 # 0004: Meyda.js Audio Feature Extraction
 
 ## Status
-Proposed
+Implemented (v0.8.0)
 
 ## Context
 Shekere currently processes audio via the Web Audio API, extracting basic frequency bands (FFT) and overall volume. While this is sufficient for simple audio-reactivity, modern VJ performances often require more semantic music analysis, such as detecting percussive transients versus sustained tones, or determining the "brightness" of a sound to control color palettes dynamically.
