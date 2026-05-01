@@ -43,12 +43,15 @@ export function update({ ctx, width, height, audio }) {
 
 For more sophisticated analysis, use the `audio.features` object. These are powered by the Meyda library.
 
-| Feature | Use Case |
-| :--- | :--- |
-| `rms` | Root Mean Square. More accurate perceived loudness than `volume`. |
-| `zcr` | Zero-Crossing Rate. Useful for detecting percussive/noise-like sounds. |
-| `spectralCentroid` | Indicates the "brightness" of the sound. |
-| `spectralFlatness` | Distinguishes between pure tones (0.0) and noise (1.0). |
+| Feature | Type | Use Case |
+| :--- | :--- | :--- |
+| `rms` | `number` | Root Mean Square. More accurate perceived loudness than `volume`. |
+| `zcr` | `number` | Zero-Crossing Rate. Useful for detecting percussive/noise-like sounds. |
+| `energy` | `number` | The total acoustic energy of the signal. |
+| `spectralCentroid` | `number` | The "center of mass" of the spectrum. Indicates the "brightness" of the sound. |
+| `spectralFlatness` | `number` | Distinguishes between pure tones (0.0) and noise (1.0). |
+| `chroma` | `number[12]` | Intensity of the 12 pitch classes (C, C#, D, etc). Useful for reacting to harmony/melody. |
+| `mfcc` | `number[13]` | Mel-Frequency Cepstral Coefficients. Represents timbre or spectral shape. |
 
 ### Example: Percussion Detection
 ```javascript
