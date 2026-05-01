@@ -27,7 +27,10 @@ export default defineConfig({
             items: [
               { text: 'Shekereとは', link: '/ja/guide/' },
               { text: 'はじめに', link: '/ja/guide/getting-started' },
-              { text: 'スケッチの書き方', link: '/ja/guide/writing-sketches' }
+              { text: 'スケッチの書き方', link: '/ja/guide/writing-sketches' },
+              { text: 'オーディオ', link: '/ja/guide/audio' },
+              { text: 'MIDI', link: '/ja/guide/midi' },
+              { text: 'OSC', link: '/ja/guide/osc' }
             ]
           }
         ]
@@ -49,7 +52,10 @@ export default defineConfig({
         items: [
           { text: 'What is Shekere?', link: '/guide/' },
           { text: 'Getting Started', link: '/guide/getting-started' },
-          { text: 'Writing Sketches', link: '/guide/writing-sketches' }
+          { text: 'Writing Sketches', link: '/guide/writing-sketches' },
+          { text: 'Audio', link: '/guide/audio' },
+          { text: 'MIDI', link: '/guide/midi' },
+          { text: 'OSC', link: '/guide/osc' }
         ]
       }
     ],
