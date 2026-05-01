@@ -1,10 +1,10 @@
 # Writing Sketches
 
-Shekere allows you to write visuals using JavaScript and **Three.js**. This guide explains the Lifecycle API and how to interact with the visualizer's data.
+Shekere allows you to write visuals using JavaScript and **Three.js**. It acts as a wrapper around Three.js, managing the rendering loop, scene, and camera for you, so you can focus on the logic of your sketch.
 
 ## Lifecycle API
 
-Every Shekere sketch is a JavaScript module that exports specific lifecycle functions.
+Instead of writing a standard Three.js loop, every Shekere sketch exports specific functions.
 
 ### 1. `setup(scene)`
 Called once when the sketch is loaded. Use this to initialize your 3D objects, lights, and materials.

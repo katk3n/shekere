@@ -49,17 +49,11 @@ To make permissions permanent, you can "re-sign" the app locally:
 Re-signing a binary bypasses macOS Gatekeeper's checks. Only perform this on versions you have downloaded from the official repository or built yourself.
 :::
 
-## Loading an Example Sketch
-
-Shekere comes with several example sketches.
-1. Launch Shekere. Two windows will appear: **Control Panel** and **Visualizer**.
-2. In the **Control Panel**, click the **"Open Sketch"** button.
-3. Navigate to the `examples/` directory and select `audio_reactive_knot.js` or `spectrum.js`.
-4. Visuals will appear in the **Visualizer** window, reacting to your microphone.
-
 ## Creating Your First Sketch
 
-Creating a sketch for Shekere uses **Three.js**. Save the following as `my_first_sketch.js`:
+Shekere provides a Three.js-based API. Instead of setting up a renderer yourself, you define your visuals by exporting specific lifecycle functions that Shekere calls.
+
+Save the following as `my_first_sketch.js`:
 
 ```javascript
 export function setup(scene) {
@@ -85,8 +79,15 @@ export function cleanup(scene) {
 }
 ```
 
-Now, go to the Control Panel, click **"Open Sketch"**, and select your new file. You've just created your first 3D audio-reactive visual!
+Now, launch Shekere and use the **Control Panel** to load your file:
+1. Two windows will appear: **Control Panel** and **Visualizer**.
+2. In the **Control Panel**, click the **"Open Sketch"** button.
+3. Select your `my_first_sketch.js` file.
+4. You've just created your first 3D audio-reactive visual!
 
 ---
+
+### Looking for more examples?
+You can find more complex reference scripts covering MIDI, OSC, and Post-Processing in the [examples/](https://github.com/katk3n/shekere/tree/main/examples) directory of our GitHub repository.
 
 Next: [Writing Sketches](./writing-sketches.md)
