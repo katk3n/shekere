@@ -11,7 +11,8 @@ When requested by a user to perform a release, follow the strict procedures outl
 
 ## 1. Pre-flight Checks
 1. Run `git status` to ensure the repository is in a clean state with no uncommitted changes.
-2. If uncommitted changes exist, abort the process and prompt the user to commit or stash the changes.
+2. Confirm that the documentation (in `docs/`) has been updated to reflect any new application features, API changes, or bug fixes.
+3. If uncommitted changes exist, abort the process and prompt the user to commit or stash the changes.
 
 ## 2. Determine Version Number
 1. Ask the user for the new version number (e.g., `0.5.3`) and have them decide.
@@ -20,7 +21,8 @@ When requested by a user to perform a release, follow the strict procedures outl
 1. To guarantee that the releasing code is error-free, verify using at least the following commands:
    - `npx tsc --noEmit` (TypeScript type/syntax check)
    - `cargo check` (Rust compilation error check)
-   Alternatively, run `npm run build` to ensure overall integrity.
+   - `npm run docs:build` (Documentation build and link check)
+   Alternatively, run `npm run build` and `npm run docs:build` to ensure overall integrity.
 2. If any error occurs, immediately abort the release procedure, report the error to the user, and perform fixes.
 
 ## 4. Update Version Numbers

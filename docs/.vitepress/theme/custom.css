@@ -1,0 +1,48 @@
+/**
+ * Custom CSS to adjust logo and icon sizes
+ */
+
+/* Header icon size */
+.VPNavBar .logo {
+  height: 32px !important;
+}
+
+/* Home hero image size - Balanced Update */
+
+/* Ensure the hero container allows side-by-side layout on desktop */
+.VPHero.has-image .container {
+  max-width: 1152px !important; /* Default VitePress width */
+  margin: 0 auto !important;
+}
+
+.VPHero .image-container {
+  width: 100% !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+/* Target the image and limit its size more strictly */
+.VPHero .VPImage {
+  width: 100% !important;
+  height: auto !important;
+  max-width: 280px !important; /* Mobile */
+  object-fit: contain !important;
+}
+
+@media (min-width: 640px) {
+  .VPHero .VPImage {
+    max-width: 380px !important; /* Tablet */
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHero .VPImage {
+    max-width: 480px !important; /* Desktop */
+  }
+}
+
+.VPHero .image-bg {
+  filter: blur(40px);
+  opacity: 0.2;
+}
