@@ -30,7 +30,9 @@ export default defineConfig({
               { text: 'スケッチの書き方', link: '/ja/guide/writing-sketches' },
               { text: 'オーディオ', link: '/ja/guide/audio' },
               { text: 'MIDI', link: '/ja/guide/midi' },
-              { text: 'OSC', link: '/ja/guide/osc' }
+              { text: 'OSC', link: '/ja/guide/osc' },
+              { text: 'エフェクト', link: '/ja/guide/effects' },
+              { text: 'プレイリスト', link: '/ja/guide/playlist' }
             ]
           }
         ]
@@ -55,7 +57,9 @@ export default defineConfig({
           { text: 'Writing Sketches', link: '/guide/writing-sketches' },
           { text: 'Audio', link: '/guide/audio' },
           { text: 'MIDI', link: '/guide/midi' },
-          { text: 'OSC', link: '/guide/osc' }
+          { text: 'OSC', link: '/guide/osc' },
+          { text: 'Effects', link: '/guide/effects' },
+          { text: 'Playlist', link: '/guide/playlist' }
         ]
       }
     ],
