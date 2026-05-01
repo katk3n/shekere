@@ -42,11 +42,7 @@ export default defineConfig({
 
   themeConfig: {
     search: {
-      provider: 'local',
-      options: {
-        disablePlaceholder: true,
-        _render: () => "" // Effectively disabling search UI
-      }
+      provider: 'local'
     },
     logo: '/icon.png',
     // Default (English) theme config
