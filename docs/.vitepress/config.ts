@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: '/shekere/',
   title: "Shekere",
   description: "Visualizer for the modern age",
   head: [['link', { rel: 'icon', href: '/icon.png' }]],
