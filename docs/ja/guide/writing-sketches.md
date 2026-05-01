@@ -1,77 +1,94 @@
 # スケッチの書き方
 
-Shekereでは、JavaScriptを使ってビジュアルを作成できます。このガイドでは、主要なAPIとビジュアライザーとのやり取りについて説明します。
+Shekereでは、JavaScriptと **Three.js** を使ってビジュアルを作成できます。このガイドでは、ライフサイクルAPIとビジュアライザーから提供されるデータの使い方について説明します。
 
-## スケッチAPI
+## ライフサイクルAPI
 
-Shekereのすべてのスケッチは、`update` 関数をエクスポートする必要があります。この関数は、ビジュアルを描画するために毎フレーム（通常は毎秒60回）呼び出されます。
+Shekereの各スケッチは、特定のライフサイクル関数をエクスポートするJavaScriptモジュールです。
+
+### 1. `setup(scene)`
+スケッチが読み込まれたときに一度だけ呼び出されます。3Dオブジェクト、ライト、マテリアルの初期化に使用します。
+- **引数**: `scene` (`THREE.Scene` オブジェクト)。
+- **戻り値**: オーディオ範囲やレンダラーのプロパティを設定するためのオプションの構成オブジェクト。
 
 ```javascript
-/**
- * @param {CanvasRenderingContext2D} ctx - 2D描画コンテキスト
- * @param {number} width - ビジュアライザーウィンドウの現在の幅
- * @param {number} height - ビジュアライザーウィンドウの現在の高さ
- * @param {object} audio - Meydaによって提供される音声解析データ
- */
-export function update(ctx, width, height, audio) {
-  // ここに描画ロジックを書きます
+export function setup(scene) {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  this.cube = new THREE.Mesh(geometry, material);
+  scene.add(this.cube);
+
+  return {
+    audio: { minFreqHz: 80, maxFreqHz: 2000 }
+  };
 }
 ```
 
-### 1. コンテキスト (`ctx`)
-Shekereは標準的な `CanvasRenderingContext2D` を提供します。`fillRect()`、`stroke()`、`beginPath()` など、すべての標準的なCanvas APIメソッドを使用できます。
+### 2. `update(context)`
+毎フレーム（毎秒約60回）呼び出されます。シーンのアニメーションに使用します。
+- **引数**: `context` (リアルタイムデータを含むオブジェクト)。
 
-### 2. サイズ (`width` と `height`)
-これらの値は、ビジュアライザーウィンドウのサイズを表します。Shekereはウィンドウのリサイズを自動的に処理するため、要素の配置には常にこれらの変数を使用することをお勧めします。
+```javascript
+export function update({ time, audio, bloom }) {
+  // 時間の経過に合わせて立方体を回転させる
+  this.cube.rotation.x = time;
+  
+  // ブルーム（発光）の強度を音量に反応させる
+  bloom.strength = audio.volume * 2.0;
+}
+```
 
-### 3. オーディオデータ (`audio`)
-`audio` オブジェクトには、[Meyda](https://meyda.js.org/) ライブラリを使用して抽出されたリアルタイム解析データが含まれています。主なプロパティは以下の通りです。
+### 3. `cleanup(scene)`
+スケッチが切り替わる直前、またはリロードされる直前に呼び出されます。
+- **重要**: メモリリークを防ぐために、オブジェクトをクリーンアップする必要があります。後述のヘルパー関数を使用するのが最も簡単です。
+
+```javascript
+export function cleanup(scene) {
+  Shekere.clearScene(scene);
+}
+```
+
+## `context` オブジェクト
+
+`update` 関数は、以下のデータを含むリッチなオブジェクトを受け取ります：
 
 | プロパティ | 型 | 説明 |
 | :--- | :--- | :--- |
-| `rms` | `number` | ルート平均二乗（知覚的な音量）。おおよそ 0.0 から 1.0 の範囲です。 |
-| `energy` | `number` | 音声信号の総エネルギー。 |
-| `zcr` | `number` | ゼロ交差率（ノイズと音色の判別に役立ちます）。 |
-| `amplitudeSpectrum` | `Float32Array` | 各周波数帯域の振幅（FFTデータ）。 |
-| `complexSpectrum` | `object` | FFTの複素数表現（実部と虚部）。 |
+| `time` | `number` | 起動からの経過時間（秒）。 |
+| `audio` | `object` | 処理済みのオーディオデータ（volume, bass, mid, high, bands）。 |
+| `midi` | `object` | MIDI入力データ (`midi.notes[0-127]`, `midi.cc[0-127]`)。 |
+| `osc` | `object` | アドレスごとの最新のOSCデータ（例：`osc['/play']`）。 |
+| `bloom` | `object` | ポストプロセスのブルーム制御（`strength`, `radius`, `threshold`）。 |
+| `rgbShift` | `object` | RGBシフトの量を制御。 |
 
-周波数データを使用した例：
+## オーディオデータの詳細
+
+### 基本プロパティ (`audio`)
+- `audio.volume`: 全体的な音量 (0.0 - 1.0)。
+- `audio.bass` / `mid` / `high`: 特定の周波数範囲の平均強度。
+- `audio.bands`: 256個の周波数ビン（FFTデータ）の配列。
+
+### 高度な特徴量 (`audio.features`)
+Shekereは、深い音声解析のために **Meyda.js** を使用しています。
+- `audio.features.rms`: 知覚的な音量。
+- `audio.features.zcr`: ゼロ交差率（パーカッシブな音の検出に有効）。
+- `audio.features.spectralCentroid`: 音の「明るさ」を示します。
+
+## `Shekere` グローバルオブジェクト
+
+開発を支援するためのグローバルユーティリティが提供されています：
+
+- `Shekere.clearScene(container)`: シーン内のすべてのオブジェクトとマテリアルを安全に破棄します。
+- `Shekere.SKETCH_DIR`: 現在のスケッチが保存されているディレクトリの絶対パス。テクスチャなどのローカルアセットを読み込む際に便利です。
+- `THREE`: Three.jsライブラリ全体がグローバルに利用可能です。インポートは不要です。
+
+## ポストプロセス (Post-Processing)
+
+コードから直接ビジュアルエフェクトを制御できます。変更はコントロールパネルのUIと自動的に同期されます。
+
 ```javascript
-export function update(ctx, width, height, audio) {
-  const bands = audio.amplitudeSpectrum;
-  const barWidth = width / bands.length;
-
-  ctx.fillStyle = 'white';
-  for (let i = 0; i < bands.length; i++) {
-    const barHeight = bands[i] * height;
-    ctx.fillRect(i * barWidth, height - barHeight, barWidth, barHeight);
-  }
+export function update({ audio, bloom, rgbShift }) {
+  bloom.strength = audio.bass * 3.0;
+  rgbShift.amount = audio.high * 0.02;
 }
 ```
-
-## 状態管理
-
-`update` 関数は毎フレーム呼び出されるため、関数の *内部* で宣言された変数はリセットされます。フレーム間で状態（カウンターやオブジェクトの位置など）を保持するには、関数の *外部* で変数を宣言してください。
-
-```javascript
-let rotation = 0;
-
-export function update(ctx, width, height, audio) {
-  rotation += audio.rms * 0.1; // 音量に基づいて回転
-
-  ctx.save();
-  ctx.translate(width / 2, height / 2);
-  ctx.rotate(rotation);
-  ctx.fillStyle = 'red';
-  ctx.fillRect(-50, -50, 100, 100);
-  ctx.restore();
-}
-```
-
-## より良いビジュアルのためのヒント
-
-1.  **正規化**: ほとんどのオーディオ特徴量は生の数値です。描画に役立つ値を得るために、定数を掛ける（例：`audio.rms * 500`）必要があることがよくあります。
-2.  **スムージング**: オーディオデータは急激に変化することがあります。単純なイージング関数を使用して、動きを滑らかにすることを検討してください。
-    `targetSize = audio.rms * 1000; currentSize += (targetSize - currentSize) * 0.1;`
-3.  **アルファブレンディング**: `fillRect` で画面を完全にクリアする代わりに、半透明の長方形を描画して「残像」エフェクトを作成できます。
-    `ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; ctx.fillRect(0, 0, width, height);`

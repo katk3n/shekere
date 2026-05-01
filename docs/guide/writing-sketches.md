@@ -1,77 +1,94 @@
 # Writing Sketches
 
-Shekere allows you to write visuals using JavaScript. This guide explains the core API and how to interact with the visualizer.
+Shekere allows you to write visuals using JavaScript and **Three.js**. This guide explains the Lifecycle API and how to interact with the visualizer's data.
 
-## The Sketch API
+## Lifecycle API
 
-Every Shekere sketch must export an `update` function. This function is called on every frame (usually 60 times per second) to render your visual.
+Every Shekere sketch is a JavaScript module that exports specific lifecycle functions.
+
+### 1. `setup(scene)`
+Called once when the sketch is loaded. Use this to initialize your 3D objects, lights, and materials.
+- **Argument**: `scene` (A `THREE.Scene` object).
+- **Return**: An optional configuration object to set audio ranges or renderer properties.
 
 ```javascript
-/**
- * @param {CanvasRenderingContext2D} ctx - The 2D rendering context
- * @param {number} width - The current width of the visualizer window
- * @param {number} height - The current height of the visualizer window
- * @param {object} audio - The audio analysis data provided by Meyda
- */
-export function update(ctx, width, height, audio) {
-  // Your drawing logic here
+export function setup(scene) {
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+  this.cube = new THREE.Mesh(geometry, material);
+  scene.add(this.cube);
+
+  return {
+    audio: { minFreqHz: 80, maxFreqHz: 2000 }
+  };
 }
 ```
 
-### 1. The Context (`ctx`)
-Shekere provides a standard `CanvasRenderingContext2D`. You can use all standard Canvas API methods like `fillRect()`, `stroke()`, `beginPath()`, etc.
+### 2. `update(context)`
+Called on every frame (~60 times per second). Use this to animate your scene.
+- **Argument**: `context` (An object containing real-time data).
 
-### 2. Dimensions (`width` and `height`)
-These values represent the size of the visualizer window. Shekere automatically handles window resizing, so you should always use these variables to position your elements.
+```javascript
+export function update({ time, audio, bloom }) {
+  // Rotate the cube over time
+  this.cube.rotation.x = time;
+  
+  // Make the bloom glow react to volume
+  bloom.strength = audio.volume * 2.0;
+}
+```
 
-### 3. Audio Data (`audio`)
-The `audio` object contains real-time analysis data extracted using the [Meyda](https://meyda.js.org/) library. Common properties include:
+### 3. `cleanup(scene)`
+Called just before the sketch is replaced or reloaded.
+- **Important**: You must clean up your objects to prevent memory leaks. The easiest way is using the helper below.
+
+```javascript
+export function cleanup(scene) {
+  Shekere.clearScene(scene);
+}
+```
+
+## The `context` Object
+
+The `update` function receives a rich object containing the following:
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `rms` | `number` | Root Mean Square (perceived loudness). Ranges roughly from 0.0 to 1.0. |
-| `energy` | `number` | The total energy of the audio signal. |
-| `zcr` | `number` | Zero Crossing Rate (helps detect noise vs tones). |
-| `amplitudeSpectrum` | `Float32Array` | The magnitude of each frequency band (FFT data). |
-| `complexSpectrum` | `object` | Real and imaginary parts of the FFT. |
+| `time` | `number` | Total elapsed time in seconds. |
+| `audio` | `object` | Processed audio data (volume, bass, mid, high, bands). |
+| `midi` | `object` | MIDI input data (`midi.notes[0-127]`, `midi.cc[0-127]`). |
+| `osc` | `object` | Latest OSC data per address (e.g., `osc['/play']`). |
+| `bloom` | `object` | Control post-processing bloom (`strength`, `radius`, `threshold`). |
+| `rgbShift` | `object` | Control RGB shift amount. |
 
-Example using frequency data:
+## Audio Data Details
+
+### Basic Properties (`audio`)
+- `audio.volume`: Overall loudness (0.0 - 1.0).
+- `audio.bass` / `mid` / `high`: Average intensity of specific frequency ranges.
+- `audio.bands`: An array of 256 frequency bins (FFT data).
+
+### Advanced Features (`audio.features`)
+Shekere uses **Meyda.js** for deep audio analysis.
+- `audio.features.rms`: Perceived loudness.
+- `audio.features.zcr`: Zero-crossing rate (good for detecting percussive sounds).
+- `audio.features.spectralCentroid`: Indicates how "bright" the sound is.
+
+## The `Shekere` Global Object
+
+Shekere provides global utilities to assist with development:
+
+- `Shekere.clearScene(container)`: Safely disposes all objects and materials in a scene.
+- `Shekere.SKETCH_DIR`: The absolute path to the current sketch's directory. Useful for loading local assets like textures.
+- `THREE`: The entire Three.js library is available globally. No imports required.
+
+## Post-Processing
+
+You can control visual effects directly from your code. Changes are automatically synced with the Control Panel UI.
+
 ```javascript
-export function update(ctx, width, height, audio) {
-  const bands = audio.amplitudeSpectrum;
-  const barWidth = width / bands.length;
-
-  ctx.fillStyle = 'white';
-  for (let i = 0; i < bands.length; i++) {
-    const barHeight = bands[i] * height;
-    ctx.fillRect(i * barWidth, height - barHeight, barWidth, barHeight);
-  }
+export function update({ audio, bloom, rgbShift }) {
+  bloom.strength = audio.bass * 3.0;
+  rgbShift.amount = audio.high * 0.02;
 }
 ```
-
-## State Management
-
-Since the `update` function is called every frame, any variables declared *inside* the function will be reset. To maintain state (like a counter or an object's position) across frames, declare them *outside* the function.
-
-```javascript
-let rotation = 0;
-
-export function update(ctx, width, height, audio) {
-  rotation += audio.rms * 0.1; // Rotate based on volume
-
-  ctx.save();
-  ctx.translate(width / 2, height / 2);
-  ctx.rotate(rotation);
-  ctx.fillStyle = 'red';
-  ctx.fillRect(-50, -50, 100, 100);
-  ctx.restore();
-}
-```
-
-## Tips for Better Visuals
-
-1.  **Normalization**: Most audio features are raw numbers. You often need to multiply them by a constant (e.g., `audio.rms * 500`) to get useful values for drawing.
-2.  **Smoothing**: Audio data can be jumpy. Consider using a simple easing function to smooth out the movement:
-    `targetSize = audio.rms * 1000; currentSize += (targetSize - currentSize) * 0.1;`
-3.  **Alpha Blending**: Instead of clearing the screen with `fillRect`, try drawing a semi-transparent rectangle to create a trail effect:
-    `ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'; ctx.fillRect(0, 0, width, height);`
