@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import pkg from '../../package.json'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -20,7 +21,13 @@ export default defineConfig({
         logo: '/icon.png',
         nav: [
           { text: 'ホーム', link: '/ja/' },
-          { text: 'ガイド', link: '/ja/guide/' }
+          { text: 'ガイド', link: '/ja/guide/' },
+          {
+            text: `v${pkg.version}`,
+            items: [
+              { text: 'リリースノート', link: 'https://github.com/katk3n/shekere/releases' }
+            ]
+          }
         ],
         sidebar: [
           {
@@ -49,7 +56,13 @@ export default defineConfig({
     // Default (English) theme config
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Guide', link: '/guide/' }
+      { text: 'Guide', link: '/guide/' },
+      {
+        text: `v${pkg.version}`,
+        items: [
+          { text: 'Release Notes', link: 'https://github.com/katk3n/shekere/releases' }
+        ]
+      }
     ],
 
     sidebar: [
