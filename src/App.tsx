@@ -181,7 +181,7 @@ export default function App() {
       window.removeEventListener("keydown", handleKeyDown);
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [currentIndex, playlist.length]);
+  }, [currentIndex, playlist]);
 
   // --- MIDI Triggers ---
   useEffect(() => {
