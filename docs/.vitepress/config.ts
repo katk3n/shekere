@@ -41,6 +41,13 @@ export default defineConfig({
   },
 
   themeConfig: {
+    search: {
+      provider: 'local',
+      options: {
+        disablePlaceholder: true,
+        _render: () => "" // Effectively disabling search UI
+      }
+    },
     logo: '/icon.png',
     // Default (English) theme config
     nav: [
