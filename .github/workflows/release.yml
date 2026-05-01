@@ -33,7 +33,7 @@ jobs:
           workspaces: '. -> target'
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Tauri app (universal macOS binary)
         run: npm run tauri build -- --target universal-apple-darwin
