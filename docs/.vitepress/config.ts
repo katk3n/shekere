@@ -26,7 +26,8 @@ export default defineConfig({
             text: 'ガイド',
             items: [
               { text: 'Shekereとは', link: '/ja/guide/' },
-              { text: 'はじめに', link: '/ja/guide/getting-started' }
+              { text: 'はじめに', link: '/ja/guide/getting-started' },
+              { text: 'スケッチの書き方', link: '/ja/guide/writing-sketches' }
             ]
           }
         ]
@@ -47,7 +48,8 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'What is Shekere?', link: '/guide/' },
-          { text: 'Getting Started', link: '/guide/getting-started' }
+          { text: 'Getting Started', link: '/guide/getting-started' },
+          { text: 'Writing Sketches', link: '/guide/writing-sketches' }
         ]
       }
     ],
