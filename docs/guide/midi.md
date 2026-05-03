@@ -48,5 +48,4 @@ export function update({ midi }) {
 1.  **Normalization**: Since Shekere values are always 0.0 - 1.0, you don't need to manually divide MIDI data by 127.
 2.  **Smoothing**: MIDI controllers often send data at a lower frequency than 60fps, which can cause "stepping" in visuals. Consider smoothing CC values:
     `currentValue += (midi.cc[10] - currentValue) * 0.1;`
-3.  **Debugging**: If you are unsure which CC or Note number your hardware is sending, you can log it to the console (View > Toggle Developer Tools):
-    `console.log(midi.cc.findIndex(v => v > 0));`
+3.  **Debugging**: If you are unsure which CC or Note number your hardware is sending, check the **Monitors** section in the Shekere Control Panel. It visually displays active MIDI signals in real-time.
