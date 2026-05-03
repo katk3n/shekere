@@ -60,6 +60,8 @@ The `update` function receives a rich object containing the following:
 | `osc` | `object` | Latest OSC data per address (e.g., `osc['/play']`). |
 | `bloom` | `object` | Control post-processing bloom (`strength`, `radius`, `threshold`). |
 | `rgbShift` | `object` | Control RGB shift amount. |
+| `film` | `object` | Control Film Grain (`intensity`). |
+| `vignette` | `object` | Control Vignette (`offset`, `darkness`). |
 
 ## Audio Data Details
 
@@ -81,6 +83,7 @@ Shekere provides global utilities to assist with development:
 - `Shekere.clearScene(container)`: Safely disposes all objects and materials in a scene.
 - `Shekere.SKETCH_DIR`: The absolute path to the current sketch's directory. Useful for loading local assets like textures.
 - `THREE`: The entire Three.js library is available globally. No imports required.
+- `TSL`: The Three.js Shading Language module is available globally for building shader nodes.
 
 ## Post-Processing
 

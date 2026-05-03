@@ -9,34 +9,7 @@ const STAR_COUNT = 1500;
 let points;
 let starData = [];
 
-// Vertex shader for drawing procedural (mathematical) circles
-const vertexShader = `
-  attribute float size;
-  attribute vec3 customColor;
-  varying vec3 vColor;
-  void main() {
-    vColor = customColor;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    // Distance-based size calculation
-    gl_PointSize = size * (200.0 / -mvPosition.z);
-    gl_Position = projectionMatrix * mvPosition;
-  }
-`;
-
-// Fragment shader for drawing perfectly smooth spheres of light
-const fragmentShader = `
-  varying vec3 vColor;
-  void main() {
-    // Get distance from center in range 0.0 to 0.5
-    float d = distance(gl_PointCoord, vec2(0.5));
-    // Smooth attenuation using exponential function (No pixelation as it doesn't use textures)
-    float strength = exp(-d * 8.0);
-    // Soften the edges further
-    strength *= (1.0 - smoothstep(0.4, 0.5, d));
-    
-    gl_FragColor = vec4(vColor, strength);
-  }
-`;
+// TSL nodes will be defined in setup where TSL is available.
 
 export function setup(scene) {
     const positions = new Float32Array(STAR_COUNT * 3);
@@ -73,20 +46,41 @@ export function setup(scene) {
         });
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('customColor', new THREE.BufferAttribute(colors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    geometry.setAttribute('instanceOffset', new THREE.InstancedBufferAttribute(positions, 3));
+    geometry.setAttribute('customColor', new THREE.InstancedBufferAttribute(colors, 3));
+    geometry.setAttribute('size', new THREE.InstancedBufferAttribute(sizes, 1));
 
-    const material = new THREE.ShaderMaterial({
-        vertexShader,
-        fragmentShader,
+    const material = new THREE.MeshBasicNodeMaterial({
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         transparent: true
     });
 
-    points = new THREE.Points(geometry, material);
+    const instanceOffset = TSL.attribute('instanceOffset', 'vec3');
+    const sizeAttribute = TSL.attribute('size', 'float');
+    const customColorAttribute = TSL.attribute('customColor', 'vec3');
+
+    // Billboarding: Transform instance offset to view space
+    const viewOffset = TSL.cameraViewMatrix.mul(TSL.modelWorldMatrix).mul(TSL.vec4(instanceOffset, 1.0));
+    // Scale local quad by size and add to view offset
+    const scaledLocal = TSL.positionLocal.xy.mul(sizeAttribute);
+    const finalViewPos = viewOffset.add(TSL.vec4(scaledLocal, 0.0, 0.0));
+    material.vertexNode = TSL.cameraProjectionMatrix.mul(finalViewPos);
+
+    // Fragment shader logic
+    const getOpacity = TSL.Fn(() => {
+        const d = TSL.distance(TSL.uv(), TSL.vec2(0.5));
+        let strength = TSL.exp(d.mul(-8.0));
+        strength = strength.mul( TSL.sub(1.0, TSL.smoothstep(0.4, 0.5, d)) );
+        return strength;
+    });
+
+    material.colorNode = customColorAttribute;
+    material.opacityNode = getOpacity();
+
+    points = new THREE.InstancedMesh(geometry, material, STAR_COUNT);
+    points.frustumCulled = false; // Disable culling since instanceOffset is dynamic
     scene.add(points);
 
     const ambientLight = new THREE.AmbientLight(0x222222);

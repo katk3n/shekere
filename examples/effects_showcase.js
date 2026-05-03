@@ -51,6 +51,16 @@ export function setup(scene) {
 export function update(context) {
     const { time, audio, bloom, rgbShift, film, vignette } = context;
 
+    if (!this.fxInitialized) {
+        bloom.strength = 1.5;
+        bloom.radius = 0.5;
+        bloom.threshold = 1.0;
+        rgbShift.amount = 0.005;
+        film.intensity = 0.35;
+        vignette.darkness = 1.2;
+        this.fxInitialized = true;
+    }
+
     // Spin the knot
     this.mesh.rotation.y = time * 0.5;
     this.mesh.rotation.x = time * 0.2;

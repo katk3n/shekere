@@ -74,7 +74,8 @@ export function update({ time, audio }) {
     bar.position.y = BOTTOM_Y + bar.scale.y / 2;
 
     // Brightness changes with overall volume
-    bar.material.emissiveIntensity = volume * 0.5;
+    // Emissive intensity needs to exceed 1.0 (the default Bloom threshold) to glow!
+    bar.material.emissiveIntensity = volume * 5.0;
     bar.material.emissive = bar.material.color;
   }
 

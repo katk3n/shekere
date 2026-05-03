@@ -40,6 +40,7 @@ export default defineConfig({
               { text: 'MIDI', link: '/ja/guide/midi' },
               { text: 'OSC', link: '/ja/guide/osc' },
               { text: 'エフェクト', link: '/ja/guide/effects' },
+              { text: 'シェーダー (TSL)', link: '/ja/guide/shaders' },
               { text: 'プレイリスト', link: '/ja/guide/playlist' }
             ]
           }
@@ -76,6 +77,7 @@ export default defineConfig({
           { text: 'MIDI', link: '/guide/midi' },
           { text: 'OSC', link: '/guide/osc' },
           { text: 'Effects', link: '/guide/effects' },
+          { text: 'Shaders (TSL)', link: '/guide/shaders' },
           { text: 'Playlist', link: '/guide/playlist' }
         ]
       }
