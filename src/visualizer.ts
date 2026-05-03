@@ -152,9 +152,7 @@ currentPass = TSL.mix(currentPass, filmNode as any, filmMix.greaterThan(0.0) as 
 // 5. Vignette (Custom TSL)
 const vignetteOffsetUniform = TSL.uniform(1.0);
 const vignetteDarknessUniform = TSL.uniform(1.0);
-const vignetteNode = applyVignette(currentPass, vignetteOffsetUniform, vignetteDarknessUniform);
-// Mix it using a threshold on darkness/offset if needed, but the formula inherently works.
-currentPass = vignetteNode;
+currentPass = applyVignette(currentPass, vignetteOffsetUniform, vignetteDarknessUniform);
 
 // Final Output
 postProcessing.outputNode = currentPass;
@@ -224,8 +222,6 @@ let meydaAnalyzer: any = null;
 function applyAudioConfig(config: { minFreqHz?: number; maxFreqHz?: number; features?: string[] }) {
     if (config.minFreqHz !== undefined) audioMinFreq = config.minFreqHz;
     if (config.maxFreqHz !== undefined) audioMaxFreq = config.maxFreqHz;
-    // features opt-in is no longer needed as we always extract CORE_FEATURES
-    console.log(`Audio config updated: ${audioMinFreq}Hz - ${audioMaxFreq}Hz`);
 }
 
 async function startAudio() {
@@ -252,7 +248,6 @@ async function startAudio() {
         });
         
         audioActive = true;
-        console.log('Audio capture started in Visualizer (Meyda enabled).');
     } catch (e) {
         console.error('Failed to start audio capture:', e);
     }
@@ -272,7 +267,6 @@ function stopAudio() {
     audioSourceNode = null;
     audioDataArray = null;
     meydaAnalyzer = null;
-    console.log('Audio capture stopped.');
 }
 
 function computeAudioData() {
@@ -616,7 +610,6 @@ listen<{ code: string; dir?: string }>('user-code-update', async (event) => {
             cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
         };
 
-        console.log('Successfully hot-reloaded user code.');
         URL.revokeObjectURL(blobUrl);
     } catch (e: any) {
         console.error('Failed to execute user sketch:', e);
