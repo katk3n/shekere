@@ -58,6 +58,5 @@ export function update({ oscEvents }) {
 ## Tips for OSC
 
 1.  **UDP Traffic**: High-frequency OSC data can sometimes be dropped or arrive late over UDP. For critical sync, try to minimize the number of messages sent per frame.
-2.  **Debugging**: Use the browser console to inspect the incoming OSC structure:
-    `if (oscEvents.length > 0) console.log(oscEvents);`
+2.  **Debugging**: Check the **Monitors** section in the Shekere Control Panel to inspect incoming OSC messages and their addresses in real-time.
 3.  **External Port Mapping**: If you need to receive OSC on a different port, you may need to use a proxy tool, as the current port is fixed to 2020 in the application.
