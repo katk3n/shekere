@@ -1,18 +1,32 @@
 import * as THREE from 'three';
 import { listen, emit } from '@tauri-apps/api/event';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
-import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
-import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+
 import Meyda from 'meyda';
+import { WebGPURenderer, RenderPipeline, MeshStandardNodeMaterial, PointsNodeMaterial, LineBasicNodeMaterial, MeshBasicNodeMaterial, NodeMaterial } from 'three/webgpu';
+import * as TSL from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { film } from 'three/addons/tsl/display/FilmNode.js';
+import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 
 // Expose THREE globally so user sketches can use it without importing
-(window as any).THREE = THREE;
+// Clone the namespace to avoid "assign to readonly property" errors
+(window as any).THREE = {
+    ...THREE,
+    MeshStandardNodeMaterial,
+    PointsNodeMaterial,
+    LineBasicNodeMaterial,
+    MeshBasicNodeMaterial,
+    NodeMaterial
+};
+
+// Expose TSL
+(window as any).TSL = {
+    ...TSL,
+    bloom,
+    film,
+    rgbShift
+};
 
 // Shekere API namespace
 const Shekere = {
@@ -73,7 +87,8 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 5;
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// WebGPURenderer is required for TSL
+const renderer = new WebGPURenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
 renderer.setPixelRatio(window.devicePixelRatio); // Better quality on Retina displays
@@ -85,39 +100,69 @@ renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
 // --- Post-Processing Setup ---
-const renderScene = new RenderPass(scene, camera);
+const postProcessing = new RenderPipeline(renderer);
 
-const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0, // strength
-    0, // radius (Default to 0)
-    1.0 // threshold (Default to 1.0)
-);
+// FX variables (initial primitive values)
+let currentVignetteOffset = 0.0;
+let currentVignetteDarkness = 1.0;
 
-const rgbShiftPass = new ShaderPass(RGBShiftShader);
-rgbShiftPass.uniforms['amount'].value = 0.0; // Default off
+// Base scene pass
+let scenePass = TSL.pass(scene, camera);
 
-const filmPass = new FilmPass(0.0, false); // Default off
+// Standard Three.js Eskil's Vignette
+const applyVignette = (colorNode: any, offset: any, darkness: any) => {
+    const uv = TSL.uv();
+    // vec2 uvOffset = ( uv - vec2( 0.5 ) ) * vec2( offset );
+    const uvOffset = uv.sub(TSL.vec2(0.5)).mul(offset);
+    
+    // dot( uvOffset, uvOffset )
+    const distSq = TSL.dot(uvOffset, uvOffset);
+    
+    // vec3( 1.0 - darkness )
+    const darkColor = TSL.vec3(TSL.sub(1.0, darkness));
+    
+    // mix( texel.rgb, vec3( 1.0 - darkness ), dot( uv, uv ) )
+    // Ensure we clamp the mix factor so it doesn't invert colors outside the circle
+    const mixFactor = TSL.clamp(distSq, 0.0, 1.0);
+    const mixed = TSL.mix(colorNode.rgb, darkColor, mixFactor);
+    
+    return TSL.vec4(mixed, colorNode.a);
+};
 
-const vignettePass = new ShaderPass(VignetteShader);
-vignettePass.uniforms['offset'].value = 0.0; // Default off matches UI default 0
-vignettePass.uniforms['darkness'].value = 1.0; // 1.0 means edges target Black
+// Pipeline composition
+// 1. Scene
+let currentPass = scenePass.getTextureNode('output') as any;
+// 2. Bloom
+const bloomNode = bloom(currentPass, 0.0 as any, 0.0 as any, 1.0 as any);
+// BloomNode returns ONLY the bloom effect (blurred highlights), so we must ADD it to the scene.
+currentPass = currentPass.add(bloomNode as any);
 
-const composer = new EffectComposer(renderer);
-composer.addPass(renderScene);
-composer.addPass(bloomPass);
-composer.addPass(rgbShiftPass);
-composer.addPass(filmPass);
-composer.addPass(vignettePass);
+// 3. RGB Shift
+const rgbNode = rgbShift(currentPass, 0.0 as any);
+// We use a custom uniform for mixing so we can dynamically toggle it
+const rgbMix = TSL.uniform(0.0);
+currentPass = TSL.mix(currentPass, rgbNode as any, rgbMix.greaterThan(0.0) as any);
 
-const outputPass = new OutputPass();
-composer.addPass(outputPass);
+// 4. Film
+const filmIntensityUniform = TSL.uniform(0.0);
+const filmNode = film(currentPass, filmIntensityUniform);
+const filmMix = TSL.uniform(0.0);
+currentPass = TSL.mix(currentPass, filmNode as any, filmMix.greaterThan(0.0) as any);
+
+// 5. Vignette (Custom TSL)
+const vignetteOffsetUniform = TSL.uniform(1.0);
+const vignetteDarknessUniform = TSL.uniform(1.0);
+const vignetteNode = applyVignette(currentPass, vignetteOffsetUniform, vignetteDarknessUniform);
+// Mix it using a threshold on darkness/offset if needed, but the formula inherently works.
+currentPass = vignetteNode;
+
+// Final Output
+postProcessing.outputNode = currentPass;
 
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 window.addEventListener('keydown', (e) => {
@@ -313,28 +358,40 @@ listen<{
 }>('update-fx-settings', (event) => {
     const { bloom, rgbShift, film, vignette } = event.payload;
     if (bloom) {
-        if (bloom.strength !== undefined) bloomPass.strength = bloom.strength;
-        if (bloom.radius !== undefined) bloomPass.radius = bloom.radius;
-        if (bloom.threshold !== undefined) bloomPass.threshold = bloom.threshold;
+        if (bloom.strength !== undefined) (bloomNode as any).strength.value = bloom.strength;
+        if (bloom.radius !== undefined) (bloomNode as any).radius.value = bloom.radius;
+        if (bloom.threshold !== undefined) (bloomNode as any).threshold.value = bloom.threshold;
     }
     if (rgbShift) {
-        if (rgbShift.amount !== undefined) rgbShiftPass.uniforms['amount'].value = rgbShift.amount;
+        if (rgbShift.amount !== undefined) {
+            (rgbNode as any).amount.value = rgbShift.amount;
+            rgbMix.value = rgbShift.amount;
+        }
     }
     if (film) {
-        if (film.intensity !== undefined) (filmPass.uniforms as any)['intensity'].value = film.intensity;
+        if (film.intensity !== undefined) {
+            filmIntensityUniform.value = film.intensity;
+            filmMix.value = film.intensity;
+        }
     }
     if (vignette) {
-        if (vignette.offset !== undefined) vignettePass.uniforms['offset'].value = vignette.offset;
-        if (vignette.darkness !== undefined) vignettePass.uniforms['darkness'].value = vignette.darkness;
+        if (vignette.offset !== undefined) {
+            currentVignetteOffset = vignette.offset;
+            vignetteOffsetUniform.value = vignette.offset;
+        }
+        if (vignette.darkness !== undefined) {
+            currentVignetteDarkness = vignette.darkness;
+            vignetteDarknessUniform.value = vignette.darkness;
+        }
     }
 });
 
 // Legacy listener for backward compatibility during transition
 listen<{ strength?: number; radius?: number; threshold?: number }>('update-bloom-settings', (event) => {
     const { strength, radius, threshold } = event.payload;
-    if (strength !== undefined) bloomPass.strength = strength;
-    if (radius !== undefined) bloomPass.radius = radius;
-    if (threshold !== undefined) bloomPass.threshold = threshold;
+    if (strength !== undefined) (bloomNode as any).strength.value = strength;
+    if (radius !== undefined) (bloomNode as any).radius.value = radius;
+    if (threshold !== undefined) (bloomNode as any).threshold.value = threshold;
 });
 
 // --- 3. Shared state ---
@@ -374,42 +431,55 @@ listen<{ address: string; args: any[] }>('osc-event', (event) => {
 });
 
 // --- 4. Render Loop ---
-const clock = new THREE.Clock();
+const timer = new THREE.Timer();
 function animate() {
     requestAnimationFrame(animate);
+    timer.update();
 
     // Compute audio data locally on every frame (no IPC)
     if (audioActive) {
         latestAudioData = computeAudioData();
     }
     if (currentModule && typeof currentModule.update === 'function') {
-        const time = clock.getElapsedTime();
+        const time = timer.getElapsed();
 
         // Proxy objects to allow sketches to modify FX parameters
         const bloomControl = {
-            get strength() { return bloomPass.strength; },
-            set strength(v) { bloomPass.strength = v; },
-            get radius() { return bloomPass.radius; },
-            set radius(v) { bloomPass.radius = v; },
-            get threshold() { return bloomPass.threshold; },
-            set threshold(v) { bloomPass.threshold = v; }
+            get strength() { return (bloomNode as any).strength.value; },
+            set strength(v) { (bloomNode as any).strength.value = v; },
+            get radius() { return (bloomNode as any).radius.value; },
+            set radius(v) { (bloomNode as any).radius.value = v; },
+            get threshold() { return (bloomNode as any).threshold.value; },
+            set threshold(v) { (bloomNode as any).threshold.value = v; }
         };
 
         const rgbShiftControl = {
-            get amount() { return rgbShiftPass.uniforms['amount'].value; },
-            set amount(v) { rgbShiftPass.uniforms['amount'].value = v; }
+            get amount() { return (rgbNode as any).amount.value; },
+            set amount(v) { 
+                (rgbNode as any).amount.value = v; 
+                rgbMix.value = v; 
+            }
         };
 
         const filmControl = {
-            get intensity() { return (filmPass.uniforms as any)['intensity'].value; },
-            set intensity(v) { (filmPass.uniforms as any)['intensity'].value = v; }
+            get intensity() { return filmIntensityUniform.value; },
+            set intensity(v) { 
+                filmIntensityUniform.value = v; 
+                filmMix.value = v; 
+            }
         };
 
         const vignetteControl = {
-            get offset() { return vignettePass.uniforms['offset'].value; },
-            set offset(v) { vignettePass.uniforms['offset'].value = v; },
-            get darkness() { return vignettePass.uniforms['darkness'].value; },
-            set darkness(v) { vignettePass.uniforms['darkness'].value = v; }
+            get offset() { return currentVignetteOffset; },
+            set offset(v) { 
+                currentVignetteOffset = v;
+                vignetteOffsetUniform.value = v; 
+            },
+            get darkness() { return currentVignetteDarkness; },
+            set darkness(v) { 
+                currentVignetteDarkness = v;
+                vignetteDarknessUniform.value = v; 
+            }
         };
 
         const context = {
@@ -431,16 +501,8 @@ function animate() {
         oscEvents.length = 0;
     }
 
-        // Optimizations & Correctness: Disable passes entirely if they have no effect.
-        // This prevents visual artifacts and saves GPU power.
-        // With OutputPass added at the end, the jump when enabling these is minimized.
-        bloomPass.enabled = bloomPass.strength > 0;
-        rgbShiftPass.enabled = rgbShiftPass.uniforms['amount'].value > 0;
-        filmPass.enabled = (filmPass.uniforms as any)['intensity'].value > 0;
-        vignettePass.enabled = vignettePass.uniforms['offset'].value > 0;
-
-
-    composer.render();
+    // Render using RenderPipeline
+    postProcessing.render();
 
     // Send preview frame at low frequency
     emitPreviewFrame();
@@ -463,13 +525,13 @@ function syncToHost() {
     if (now - lastSyncTime < SYNC_THROTTLE_MS) return;
 
     const currentValues = {
-        strength: bloomPass.strength,
-        radius: bloomPass.radius,
-        threshold: bloomPass.threshold,
-        rgbAmount: rgbShiftPass.uniforms['amount'].value,
-        filmIntensity: (filmPass.uniforms as any)['intensity'].value,
-        vignetteOffset: vignettePass.uniforms['offset'].value,
-        vignetteDarkness: vignettePass.uniforms['darkness'].value
+        strength: (bloomNode as any).strength.value,
+        radius: (bloomNode as any).radius.value,
+        threshold: (bloomNode as any).threshold.value,
+        rgbAmount: (rgbNode as any).amount.value,
+        filmIntensity: filmIntensityUniform.value,
+        vignetteOffset: currentVignetteOffset,
+        vignetteDarkness: currentVignetteDarkness
     };
 
     // Only emit if values have changed significantly
@@ -507,7 +569,10 @@ function syncToHost() {
     lastSyncTime = now;
 }
 
-animate();
+(async function() {
+    await renderer.init();
+    animate();
+})();
 
 // --- 5. Dynamic Module Loader ---
 listen<{ code: string; dir?: string }>('user-code-update', async (event) => {
