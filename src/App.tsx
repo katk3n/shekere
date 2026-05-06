@@ -16,7 +16,8 @@ import {
   ChevronRight, 
   ChevronLeft,
   Settings,
-  Eye
+  Eye,
+  RotateCcw
 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { parse as parseToml } from "smol-toml";
@@ -126,6 +127,11 @@ export default function App() {
   const [activeFxTab, setActiveFxTab] = useState<'bloom' | 'rgbShift' | 'film' | 'vignette'>('bloom');
 
   // Signal Activity
+  const [audioSensitivity, setAudioSensitivity] = useState(1.0);
+  useEffect(() => {
+    emit('update-audio-sensitivity', { sensitivity: audioSensitivity });
+  }, [audioSensitivity]);
+
   const [audioLevels, setAudioLevels] = useState<any>({ volume: 0, bass: 0, mid: 0, high: 0, features: {} });
   const [lastMidi, setLastMidi] = useState<{ text: string, subText: string, id: number, status: number, data1: number, data2: number } | null>(null);
   const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number, args?: Record<string, string> } | null>(null);
@@ -656,8 +662,30 @@ export default function App() {
 
             <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800 flex flex-col gap-4">
               <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
-                  <Volume2 className="w-3.5 h-3.5 text-orange-400" /> Audio
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
+                    <Volume2 className="w-3.5 h-3.5 text-orange-400" /> Audio
+                  </div>
+                  <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sensitivity</span>
+                    <input 
+                      type="range" 
+                      min="0.01" 
+                      max="2.00" 
+                      step="0.01" 
+                      value={audioSensitivity} 
+                      onChange={(e) => setAudioSensitivity(parseFloat(e.target.value))} 
+                      className="flex-1 h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-orange-400" 
+                    />
+                    <span className="text-xs font-mono text-neutral-300 w-10 text-right">{audioSensitivity.toFixed(2)}x</span>
+                    <button 
+                      onClick={() => setAudioSensitivity(1.0)}
+                      className="p-1 hover:bg-neutral-700 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+                      title="Reset to 1.0x"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <LevelBar label="Vol" value={audioLevels.volume} colorClass="bg-orange-400" />

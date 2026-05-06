@@ -211,9 +211,11 @@ const CORE_FEATURES = ['rms', 'zcr', 'energy', 'spectralCentroid', 'spectralFlat
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
 let audioSourceNode: MediaStreamAudioSourceNode | null = null;
+let gainNode: GainNode | null = null;
 let audioDataArray: Uint8Array | null = null;
 let audioStream: MediaStream | null = null;
 let audioActive = false;
+let currentAudioSensitivity = 1.0;
 let audioMinFreq = DEFAULT_MIN_FREQ;
 let audioMaxFreq = DEFAULT_MAX_FREQ;
 
@@ -236,13 +238,18 @@ async function startAudio() {
         analyserNode.minDecibels = -70;
         analyserNode.maxDecibels = -10;
         audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
+        
+        gainNode = audioContext.createGain();
+        gainNode.gain.value = currentAudioSensitivity;
+
         audioSourceNode = audioContext.createMediaStreamSource(audioStream);
-        audioSourceNode.connect(analyserNode);
+        audioSourceNode.connect(gainNode);
+        gainNode.connect(analyserNode);
         
         // Always initialize Meyda with all core features
         meydaAnalyzer = Meyda.createMeydaAnalyzer({
             audioContext: audioContext,
-            source: audioSourceNode,
+            source: gainNode,
             bufferSize: FFT_SIZE,
             featureExtractors: CORE_FEATURES
         });
@@ -265,6 +272,7 @@ function stopAudio() {
     }
     analyserNode = null;
     audioSourceNode = null;
+    gainNode = null;
     audioDataArray = null;
     meydaAnalyzer = null;
 }
@@ -342,6 +350,14 @@ function computeAudioData() {
 // Listen for start/stop commands from the Control Panel
 listen<void>('start-audio', () => { startAudio(); });
 listen<void>('stop-audio', () => { stopAudio(); });
+
+// Listen for Audio Sensitivity
+listen<{ sensitivity: number }>('update-audio-sensitivity', (event) => {
+    currentAudioSensitivity = event.payload.sensitivity;
+    if (gainNode && audioContext) {
+        gainNode.gain.setTargetAtTime(currentAudioSensitivity, audioContext.currentTime, 0.1);
+    }
+});
 
 // Listen for Post-Processing settings from Control Panel
 listen<{ 
