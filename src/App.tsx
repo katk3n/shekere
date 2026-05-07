@@ -131,11 +131,19 @@ export default function App() {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   
   useEffect(() => {
-    emit('request-audio-devices');
     const unlisten = listen<{ devices: { deviceId: string, label: string }[] }>('audio-device-list', (e) => {
       setAudioDevices(e.payload.devices);
     });
-    return () => { unlisten.then(f => f()); };
+    
+    // Visualizerの準備を待ってからリクエストを送信
+    const timer = setTimeout(() => {
+      emit('request-audio-devices');
+    }, 1000);
+
+    return () => { 
+      unlisten.then(f => f()); 
+      clearTimeout(timer);
+    };
   }, []);
 
   const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -684,21 +692,19 @@ export default function App() {
                     <Volume2 className="w-3.5 h-3.5 text-orange-400" /> Audio
                   </div>
                   
-                  {audioDevices.length > 0 && (
-                    <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
-                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
-                      <select 
-                        value={selectedDeviceId}
-                        onChange={handleDeviceChange}
-                        className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-orange-400 truncate w-full"
-                      >
-                        <option value="">Default Device</option>
-                        {audioDevices.map(d => (
-                          <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
+                    <select 
+                      value={selectedDeviceId}
+                      onChange={handleDeviceChange}
+                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-orange-400 truncate w-full"
+                    >
+                      <option value="">Default Device</option>
+                      {audioDevices.map(d => (
+                        <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                      ))}
+                    </select>
+                  </div>
 
                   <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sensitivity</span>

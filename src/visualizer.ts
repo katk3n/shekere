@@ -616,6 +616,8 @@ function syncToHost() {
 (async function() {
     await renderer.init();
     animate();
+    // Broadcast initial audio devices after a short delay to ensure host is listening
+    setTimeout(sendAudioDevices, 500);
 })();
 
 // --- 5. Dynamic Module Loader ---
