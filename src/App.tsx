@@ -127,6 +127,23 @@ export default function App() {
   const [activeFxTab, setActiveFxTab] = useState<'bloom' | 'rgbShift' | 'film' | 'vignette'>('bloom');
 
   // Signal Activity
+  const [audioDevices, setAudioDevices] = useState<{ deviceId: string, label: string }[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  
+  useEffect(() => {
+    emit('request-audio-devices');
+    const unlisten = listen<{ devices: { deviceId: string, label: string }[] }>('audio-device-list', (e) => {
+      setAudioDevices(e.payload.devices);
+    });
+    return () => { unlisten.then(f => f()); };
+  }, []);
+
+  const handleDeviceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const deviceId = e.target.value;
+    setSelectedDeviceId(deviceId);
+    emit('update-audio-device', { deviceId });
+  };
+
   const [audioSensitivity, setAudioSensitivity] = useState(1.0);
   useEffect(() => {
     emit('update-audio-sensitivity', { sensitivity: audioSensitivity });
@@ -666,6 +683,23 @@ export default function App() {
                   <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
                     <Volume2 className="w-3.5 h-3.5 text-orange-400" /> Audio
                   </div>
+                  
+                  {audioDevices.length > 0 && (
+                    <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                      <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
+                      <select 
+                        value={selectedDeviceId}
+                        onChange={handleDeviceChange}
+                        className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-orange-400 truncate w-full"
+                      >
+                        <option value="">Default Device</option>
+                        {audioDevices.map(d => (
+                          <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sensitivity</span>
                     <input 
@@ -708,7 +742,7 @@ export default function App() {
                   </div>
                   
                   {/* Scalar Values */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-2">
+                  <div className="grid grid-cols-3 gap-x-2 gap-y-1.5 mb-2">
                     {[
                       { label: 'rms', key: 'rms' },
                       { label: 'zcr', key: 'zcr' },
@@ -728,8 +762,6 @@ export default function App() {
                         </div>
                       );
                     })}
-                    {/* Placeholder to keep grid balanced (odd number of items) */}
-                    <div className="flex justify-between items-center text-[10px] px-1.5 py-0.5 opacity-0">...</div>
                   </div>
                   
                   {/* Visualizer Row */}

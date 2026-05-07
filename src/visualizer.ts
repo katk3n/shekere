@@ -218,6 +218,7 @@ let audioActive = false;
 let currentAudioSensitivity = 1.0;
 let audioMinFreq = DEFAULT_MIN_FREQ;
 let audioMaxFreq = DEFAULT_MAX_FREQ;
+let currentAudioDeviceId: string | undefined = undefined;
 
 let meydaAnalyzer: any = null;
 
@@ -226,10 +227,43 @@ function applyAudioConfig(config: { minFreqHz?: number; maxFreqHz?: number; feat
     if (config.maxFreqHz !== undefined) audioMaxFreq = config.maxFreqHz;
 }
 
+async function sendAudioDevices() {
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput').map(d => ({
+            deviceId: d.deviceId,
+            label: d.label || `Microphone ${d.deviceId.slice(0, 5)}...`
+        }));
+        emit('audio-device-list', { devices: audioInputs }).catch(e => console.error(e));
+    } catch (e) {
+        console.error('Failed to enumerate devices:', e);
+    }
+}
+
+listen('request-audio-devices', () => {
+    sendAudioDevices();
+});
+
+listen<{ deviceId: string }>('update-audio-device', (event) => {
+    currentAudioDeviceId = event.payload.deviceId;
+    if (audioActive) {
+        stopAudio();
+        startAudio();
+    }
+});
+
+if (navigator.mediaDevices) {
+    navigator.mediaDevices.addEventListener('devicechange', sendAudioDevices);
+}
+
 async function startAudio() {
     if (audioActive) return;
     try {
-        audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        const constraints = currentAudioDeviceId 
+            ? { audio: { deviceId: { exact: currentAudioDeviceId } }, video: false }
+            : { audio: true, video: false };
+        audioStream = await navigator.mediaDevices.getUserMedia(constraints);
+        sendAudioDevices();
         const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
         audioContext = new AudioContextCtor();
         analyserNode = audioContext.createAnalyser();

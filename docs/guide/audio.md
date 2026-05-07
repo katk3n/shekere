@@ -66,6 +66,13 @@ export function update({ audio }) {
 
 ## Configuration
 
+### Input Device Selection
+In the Control Panel, you can select the microphone or audio interface to be used from the **Device** dropdown in the Monitors section. 
+
+> [!TIP]
+> If device names are not displayed correctly (e.g., "Default Device"), click **Enable Mic** to grant browser permissions, after which the hardware names should appear.
+
+### Frequency Range
 You can customize the frequency range analyzed by returning an `audio` object in your `setup` function.
 
 ```javascript
