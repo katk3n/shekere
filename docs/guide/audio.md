@@ -70,7 +70,10 @@ export function update({ audio }) {
 In the Control Panel, you can select the microphone or audio interface to be used from the **Device** dropdown in the Monitors section. 
 
 > [!TIP]
-> If device names are not displayed correctly (e.g., "Default Device"), click **Enable Mic** to grant browser permissions, after which the hardware names should appear.
+> If specific hardware names are not displayed, click **Enable Mic** to grant browser permissions.
+
+### Sensitivity
+You can adjust the input gain using the **Sensitivity** slider in the Monitors section. This allows you to fine-tune the responsiveness of your sketches in real-time without changing your code.
 
 ### Frequency Range
 You can customize the frequency range analyzed by returning an `audio` object in your `setup` function.
