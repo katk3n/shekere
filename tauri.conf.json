@@ -17,7 +17,8 @@
         "title": "Control Panel - Shekere",
         "width": 1200,
         "height": 860,
-        "url": "/"
+        "url": "/",
+        "theme": "Dark"
       },
       {
         "label": "visualizer",
@@ -28,7 +29,8 @@
         "decorations": true,
         "transparent": false,
         "closable": false,
-        "focus": false
+        "focus": false,
+        "theme": "Dark"
       }
     ],
     "security": {
