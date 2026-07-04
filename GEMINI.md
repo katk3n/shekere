@@ -38,6 +38,7 @@ Follow these steps when responding to user instructions:
 - Commands like `npm install` or file creation may be executed autonomously.
 - However, obtain user permission before executing commands that involve "destructive changes," such as bulk deletion of important files or directories.
 - **Git Push Restrictions**: **Never execute `git push` on your own accord.** Before running `git push` (including tags), present specific commit details, file changes, and tag names to obtain explicit "Approve" from the user.
+- **No Bundling of Approval & Execution**: For operations requiring approval (such as `git push` or destructive changes), it is strictly prohibited to perform an "Approval Request" and its "Execution Command" within the same turn. You must end the turn immediately after sending the message requesting approval and wait for explicit "Approve" from the user.
 
 ## 5. Release Procedure
 

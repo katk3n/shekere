@@ -259,9 +259,14 @@ if (navigator.mediaDevices) {
 async function startAudio() {
     if (audioActive) return;
     try {
+        const audioConstraints = {
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppression: false
+        };
         const constraints = currentAudioDeviceId 
-            ? { audio: { deviceId: { exact: currentAudioDeviceId } }, video: false }
-            : { audio: true, video: false };
+            ? { audio: { deviceId: { exact: currentAudioDeviceId }, ...audioConstraints }, video: false }
+            : { audio: audioConstraints, video: false };
         audioStream = await navigator.mediaDevices.getUserMedia(constraints);
         sendAudioDevices();
         const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;

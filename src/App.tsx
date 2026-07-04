@@ -135,7 +135,7 @@ export default function App() {
       setAudioDevices(e.payload.devices);
     });
     
-    // Visualizerの準備を待ってからリクエストを送信
+    // Wait for Visualizer to be ready before sending request
     const timer = setTimeout(() => {
       emit('request-audio-devices');
     }, 1000);
