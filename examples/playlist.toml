@@ -43,3 +43,6 @@ osc_value = "sd"
 file = "hello_world.js"
 osc_key = "s"
 osc_value = "hc"
+
+[[sketch]]
+file = "oscilloscope.js"

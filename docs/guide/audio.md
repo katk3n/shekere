@@ -39,6 +39,41 @@ export function update({ ctx, width, height, audio }) {
 }
 ```
 
+## Raw Waveform
+
+`audio.waveform` exposes the incoming signal in the time domain. Each channel
+is a reusable `Float32Array` containing **4096 normalized samples** (normally
+from `-1.0` to `1.0`) on every `update` call.
+
+| Property | Description |
+| :--- | :--- |
+| `audio.waveform.mono` | Mixed mono waveform. |
+| `audio.waveform.left` | Left-channel waveform. |
+| `audio.waveform.right` | Right-channel waveform. |
+
+For mono input, `left` and `right` contain the same samples as `mono`. When
+audio capture is inactive or unavailable, all three arrays are present and
+zero-filled. The arrays are reused each frame; copy samples only when your
+sketch needs to retain waveform history.
+
+### Example: Oscilloscope Line
+```javascript
+export function update({ audio }) {
+  const waveform = audio.waveform.mono;
+  const positions = this.line.geometry.attributes.position.array;
+  const stride = waveform.length / this.pointCount;
+
+  for (let i = 0; i < this.pointCount; i++) {
+    positions[i * 3 + 1] = waveform[Math.floor(i * stride)] * 2;
+  }
+  this.line.geometry.attributes.position.needsUpdate = true;
+}
+```
+
+Use `audio.waveform.left` and `audio.waveform.right` for stereo X/Y or
+Lissajous figures. Trigger alignment and further downsampling are intentionally
+left to each sketch.
+
 ## Advanced Features (Meyda)
 
 For more sophisticated analysis, use the `audio.features` object. These are powered by the Meyda library.

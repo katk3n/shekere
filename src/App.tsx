@@ -83,6 +83,24 @@ interface FxSettingsChangedEvent {
   vignette?: Partial<FxSettings["vignette"]>;
 }
 
+interface WaveformPreviewChannel {
+  min: number[];
+  max: number[];
+}
+
+interface AudioActivityEvent {
+  volume: number;
+  bass: number;
+  mid: number;
+  high: number;
+  bands: number[];
+  features: Record<string, unknown>;
+  waveformPreview?: {
+    left: WaveformPreviewChannel;
+    right: WaveformPreviewChannel;
+  };
+}
+
 const DEFAULT_FX_SETTINGS: FxSettings = {
   bloom: { strength: 0, radius: 0, threshold: 1 },
   rgbShift: { amount: 0 },
@@ -132,6 +150,43 @@ const Indicator = ({ label, icon: Icon, active, text, subText }: { label: string
     </div>
   </div>
 );
+
+function drawWaveformPreview(canvas: HTMLCanvasElement, preview: NonNullable<AudioActivityEvent['waveformPreview']>) {
+  const context = canvas.getContext('2d');
+  if (!context) return;
+
+  const { width, height } = canvas;
+  const channelHeight = height / 2;
+  context.clearRect(0, 0, width, height);
+  context.strokeStyle = 'rgba(115, 115, 115, 0.45)';
+  context.lineWidth = 1;
+
+  const drawChannel = (channel: WaveformPreviewChannel, offsetY: number, color: string) => {
+    if (channel.min.length === 0 || channel.min.length !== channel.max.length) return;
+    const centerY = offsetY + channelHeight / 2;
+    const amplitude = channelHeight / 2 - 2;
+    context.beginPath();
+    context.moveTo(0, centerY);
+    context.lineTo(width, centerY);
+    context.stroke();
+
+    context.strokeStyle = color;
+    const bucketWidth = width / channel.min.length;
+    context.beginPath();
+    for (let index = 0; index < channel.min.length; index++) {
+      const min = Math.max(-1, Math.min(1, channel.min[index]));
+      const max = Math.max(-1, Math.min(1, channel.max[index]));
+      const x = (index + 0.5) * bucketWidth;
+      context.moveTo(x, centerY - max * amplitude);
+      context.lineTo(x, centerY - min * amplitude);
+    }
+    context.stroke();
+    context.strokeStyle = 'rgba(115, 115, 115, 0.45)';
+  };
+
+  drawChannel(preview.left, 0, '#34d399');
+  drawChannel(preview.right, channelHeight, '#60a5fa');
+}
 
 export default function App() {
   const [playlist, setPlaylist] = useState<PlaylistEntry[]>(
@@ -185,6 +240,7 @@ export default function App() {
   const [lastOsc, setLastOsc] = useState<{ text: string, subText: string, id: number, args?: Record<string, string> } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const currentSketch = playlist[currentIndex]?.path;
   const currentFxSettings = currentSketch
@@ -305,7 +361,7 @@ export default function App() {
 
   // --- Signal Listeners ---
   useEffect(() => {
-    const u1 = listen<any>('audio-activity', (e) => {
+    const u1 = listen<AudioActivityEvent>('audio-activity', (e) => {
       setAudioLevels(e.payload);
       if (canvasRef.current && e.payload.bands && e.payload.bands.length > 0) {
         const canvas = canvasRef.current;
@@ -322,6 +378,9 @@ export default function App() {
             ctx.fillRect(i * barWidth, h - barHeight, Math.max(1, barWidth - 0.5), barHeight);
           }
         }
+      }
+      if (waveformCanvasRef.current && e.payload.waveformPreview) {
+        drawWaveformPreview(waveformCanvasRef.current, e.payload.waveformPreview);
       }
     });
 
@@ -615,6 +674,48 @@ export default function App() {
           {/* Column 2: Visual Effects & Preview */}
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 mb-1">
+              <Volume2 className="w-5 h-5 text-orange-400" />
+              <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Audio</h2>
+            </div>
+
+            <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800 flex flex-col gap-3">
+              <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
+                <select
+                  value={selectedDeviceId}
+                  onChange={handleDeviceChange}
+                  className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-orange-400 truncate w-full"
+                >
+                  <option value="">Default Device</option>
+                  {audioDevices.map(d => (
+                    <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sensitivity</span>
+                <input
+                  type="range"
+                  min="0.01"
+                  max="2.00"
+                  step="0.01"
+                  value={audioSensitivity}
+                  onChange={(e) => setAudioSensitivity(parseFloat(e.target.value))}
+                  className="flex-1 h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-orange-400"
+                />
+                <span className="text-xs font-mono text-neutral-300 w-10 text-right">{audioSensitivity.toFixed(2)}x</span>
+                <button
+                  onClick={() => setAudioSensitivity(1.0)}
+                  className="p-1 hover:bg-neutral-700 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+                  title="Reset to 1.0x"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-1">
               <Sparkles className="w-5 h-5 text-indigo-500" />
               <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Effects</h2>
             </div>
@@ -713,46 +814,6 @@ export default function App() {
 
             <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800 flex flex-col gap-4">
               <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 text-[10px] font-bold text-neutral-400 uppercase tracking-widest leading-none">
-                    <Volume2 className="w-3.5 h-3.5 text-orange-400" /> Audio
-                  </div>
-                  
-                  <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
-                    <select 
-                      value={selectedDeviceId}
-                      onChange={handleDeviceChange}
-                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-orange-400 truncate w-full"
-                    >
-                      <option value="">Default Device</option>
-                      {audioDevices.map(d => (
-                        <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Sensitivity</span>
-                    <input 
-                      type="range" 
-                      min="0.01" 
-                      max="2.00" 
-                      step="0.01" 
-                      value={audioSensitivity} 
-                      onChange={(e) => setAudioSensitivity(parseFloat(e.target.value))} 
-                      className="flex-1 h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-orange-400" 
-                    />
-                    <span className="text-xs font-mono text-neutral-300 w-10 text-right">{audioSensitivity.toFixed(2)}x</span>
-                    <button 
-                      onClick={() => setAudioSensitivity(1.0)}
-                      className="p-1 hover:bg-neutral-700 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
-                      title="Reset to 1.0x"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <LevelBar label="Vol" value={audioLevels.volume} colorClass="bg-orange-400" />
                   <LevelBar label="Bass" value={audioLevels.bass} colorClass="bg-rose-500" />
@@ -761,6 +822,15 @@ export default function App() {
                 </div>
                 <div className="mt-1 w-full h-12 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
                   <canvas ref={canvasRef} width={256} height={48} className="w-full h-full opacity-80" />
+                </div>
+                <div className="mt-1 flex items-stretch gap-2">
+                  <div className="w-4 shrink-0 flex flex-col text-[9px] font-bold uppercase text-neutral-500">
+                    <span className="flex-1 flex items-center justify-center">L</span>
+                    <span className="flex-1 flex items-center justify-center">R</span>
+                  </div>
+                  <div className="flex-1 h-12 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
+                    <canvas ref={waveformCanvasRef} width={256} height={48} className="w-full h-full opacity-90" />
+                  </div>
                 </div>
 
                 <div className="mt-1 pt-3 border-t border-neutral-700/50">

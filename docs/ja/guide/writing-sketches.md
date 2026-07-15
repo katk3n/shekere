@@ -55,7 +55,7 @@ export function cleanup(scene) {
 | プロパティ | 型 | 説明 |
 | :--- | :--- | :--- |
 | `time` | `number` | 起動からの経過時間（秒）。 |
-| `audio` | `object` | 処理済みのオーディオデータ（volume, bass, mid, high, bands）。 |
+| `audio` | `object` | 処理済みのオーディオデータ（volume、bands、features、waveform）。 |
 | `midi` | `object` | MIDI入力データ (`midi.notes[0-127]`, `midi.cc[0-127]`)。 |
 | `osc` | `object` | アドレスごとの最新のOSCデータ（例：`osc['/play']`）。 |
 | `bloom` | `object` | ポストプロセスのブルーム制御（`strength`, `radius`, `threshold`）。 |
@@ -69,6 +69,9 @@ export function cleanup(scene) {
 - `audio.volume`: 全体的な音量 (0.0 - 1.0)。
 - `audio.bass` / `mid` / `high`: 特定の周波数範囲の平均強度。
 - `audio.bands`: 256個の周波数ビン（FFTデータ）の配列。
+- `audio.waveform.mono`、`.left`、`.right`: それぞれ4096個の正規化済み
+  サンプルを持つ、再利用可能な `Float32Array` の時間領域バッファです。
+  モノラル入力では left/right も同一になり、キャプチャ停止中はゼロで満たされます。
 
 ### 高度な特徴量 (`audio.features`)
 Shekereは、深い音声解析のために **Meyda.js** を使用しています。

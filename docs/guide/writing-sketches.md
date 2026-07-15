@@ -55,7 +55,7 @@ The `update` function receives a rich object containing the following:
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `time` | `number` | Total elapsed time in seconds. |
-| `audio` | `object` | Processed audio data (volume, bass, mid, high, bands). |
+| `audio` | `object` | Processed audio data (volume, bands, features, waveform). |
 | `midi` | `object` | MIDI input data (`midi.notes[0-127]`, `midi.cc[0-127]`). |
 | `osc` | `object` | Latest OSC data per address (e.g., `osc['/play']`). |
 | `bloom` | `object` | Control post-processing bloom (`strength`, `radius`, `threshold`). |
@@ -69,6 +69,9 @@ The `update` function receives a rich object containing the following:
 - `audio.volume`: Overall loudness (0.0 - 1.0).
 - `audio.bass` / `mid` / `high`: Average intensity of specific frequency ranges.
 - `audio.bands`: An array of 256 frequency bins (FFT data).
+- `audio.waveform.mono`, `.left`, `.right`: Reused `Float32Array` time-domain
+  buffers with 4096 normalized samples each. Mono inputs expose equivalent
+  left/right data; inactive capture exposes zero-filled buffers.
 
 ### Advanced Features (`audio.features`)
 Shekere uses **Meyda.js** for deep audio analysis.
