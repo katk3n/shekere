@@ -1,6 +1,6 @@
 [package]
 name = "shekere"
-version = "0.11.3"
+version = "0.11.4"
 description = "A live-coding audio-visual host powered by Three.js and Tauri"
 authors = ["katk3n"]
 edition = "2021"
@@ -27,4 +27,3 @@ tauri-plugin-fs = { version = "2.4.5", features = ["watch"] }
 midir = "0.9.1"
 anyhow = "1.0.86"
 rosc = "0.10.1"
-

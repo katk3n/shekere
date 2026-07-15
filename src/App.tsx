@@ -68,6 +68,35 @@ interface PlaylistToml {
   };
 }
 
+interface FxSettings {
+  bloom: { strength: number; radius: number; threshold: number };
+  rgbShift: { amount: number };
+  film: { intensity: number };
+  vignette: { offset: number; darkness: number };
+}
+
+interface FxSettingsChangedEvent {
+  sketchPath?: string;
+  bloom?: Partial<FxSettings["bloom"]>;
+  rgbShift?: Partial<FxSettings["rgbShift"]>;
+  film?: Partial<FxSettings["film"]>;
+  vignette?: Partial<FxSettings["vignette"]>;
+}
+
+const DEFAULT_FX_SETTINGS: FxSettings = {
+  bloom: { strength: 0, radius: 0, threshold: 1 },
+  rgbShift: { amount: 0 },
+  film: { intensity: 0 },
+  vignette: { offset: 0, darkness: 1 },
+};
+
+const mergeFxSettings = (current: FxSettings, changes: FxSettingsChangedEvent): FxSettings => ({
+  bloom: { ...current.bloom, ...changes.bloom },
+  rgbShift: { ...current.rgbShift, ...changes.rgbShift },
+  film: { ...current.film, ...changes.film },
+  vignette: { ...current.vignette, ...changes.vignette },
+});
+
 // --- Helper Components ---
 const LevelBar = ({ label, value, colorClass }: { label: string, value: number, colorClass: string }) => (
   <div className="flex flex-col gap-1 w-full">
@@ -115,14 +144,8 @@ export default function App() {
   
   const { isActive: isAudioActive, start: startAudio, stop: stopAudio, error: audioError } = useAudioAnalyzer();
 
-  // FX Settings
-  const [bloomStrength, setBloomStrength] = useState(0);
-  const [bloomRadius, setBloomRadius] = useState(0);
-  const [bloomThreshold, setBloomThreshold] = useState(1.0);
-  const [rgbShiftAmount, setRgbShiftAmount] = useState(0);
-  const [filmIntensity, setFilmIntensity] = useState(0);
-  const [vignetteOffset, setVignetteOffset] = useState(0);
-  const [vignetteDarkness, setVignetteDarkness] = useState(1.0);
+  // FX settings are owned by the Control Panel and scoped to each sketch path.
+  const [fxSettingsBySketch, setFxSettingsBySketch] = useState<Record<string, FxSettings>>({});
 
   const [activeFxTab, setActiveFxTab] = useState<'bloom' | 'rgbShift' | 'film' | 'vignette'>('bloom');
 
@@ -164,6 +187,21 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const currentSketch = playlist[currentIndex]?.path;
+  const currentFxSettings = currentSketch
+    ? fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS
+    : DEFAULT_FX_SETTINGS;
+
+  const updateCurrentFxSettings = (changes: FxSettingsChangedEvent) => {
+    if (!currentSketch) return;
+
+    setFxSettingsBySketch((settingsBySketch) => ({
+      ...settingsBySketch,
+      [currentSketch]: mergeFxSettings(
+        settingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
+        changes,
+      ),
+    }));
+  };
 
   // --- Switching Logic ---
   const switchIndex = (newIndex: number) => {
@@ -356,42 +394,25 @@ export default function App() {
   }, []);
 
   // --- FX Sync ---
-  const skipNextEmitRef = useRef(false);
-
   useEffect(() => {
-    if (skipNextEmitRef.current) {
-      skipNextEmitRef.current = false;
-      return;
-    }
+    if (!currentSketch) return;
+
     emit("update-fx-settings", {
-      bloom: { strength: bloomStrength, radius: bloomRadius, threshold: bloomThreshold },
-      rgbShift: { amount: rgbShiftAmount },
-      film: { intensity: filmIntensity },
-      vignette: { offset: vignetteOffset, darkness: vignetteDarkness }
+      sketchPath: currentSketch,
+      ...currentFxSettings,
     });
-  }, [bloomStrength, bloomRadius, bloomThreshold, rgbShiftAmount, filmIntensity, vignetteOffset, vignetteDarkness]);
+  }, [currentSketch, currentFxSettings]);
 
   useEffect(() => {
-    const unlistenPromise = listen<any>(
+    const unlistenPromise = listen<FxSettingsChangedEvent>(
       "fx-settings-changed",
       (event) => {
-        const { bloom, rgbShift, film, vignette } = event.payload;
-        skipNextEmitRef.current = true;
-        if (bloom) {
-          setBloomStrength(bloom.strength);
-          setBloomRadius(bloom.radius);
-          setBloomThreshold(bloom.threshold);
-        }
-        if (rgbShift && rgbShift.amount !== undefined) setRgbShiftAmount(rgbShift.amount);
-        if (film && film.intensity !== undefined) setFilmIntensity(film.intensity);
-        if (vignette) {
-          if (vignette.offset !== undefined) setVignetteOffset(vignette.offset);
-          if (vignette.darkness !== undefined) setVignetteDarkness(vignette.darkness);
-        }
+        if (!event.payload.sketchPath || event.payload.sketchPath !== currentSketch) return;
+        updateCurrentFxSettings(event.payload);
       }
     );
     return () => { unlistenPromise.then((unlisten) => unlisten()); };
-  }, []);
+  }, [currentSketch]);
 
   // --- Code Loading & Watching ---
   useEffect(() => {
@@ -405,7 +426,12 @@ export default function App() {
       try {
         const code = await readTextFile(currentSketch);
         const dir = currentSketch.substring(0, Math.max(currentSketch.lastIndexOf('/'), currentSketch.lastIndexOf('\\')) + 1);
-        await emit("user-code-update", { code, dir });
+        await emit("user-code-update", {
+          code,
+          dir,
+          sketchPath: currentSketch,
+          fxSettings: fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
+        });
         setError(null);
       } catch (err: any) {
         console.error("Failed to read or emit file:", err);
@@ -607,40 +633,40 @@ export default function App() {
                 {activeFxTab === 'bloom' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-2">
-                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Strength</label><span>{bloomStrength.toFixed(2)}</span></div>
-                       <input type="range" min="0" max="3" step="0.01" value={bloomStrength} onChange={(e) => setBloomStrength(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Strength</label><span>{currentFxSettings.bloom.strength.toFixed(2)}</span></div>
+                       <input type="range" min="0" max="3" step="0.01" value={currentFxSettings.bloom.strength} onChange={(e) => updateCurrentFxSettings({ bloom: { strength: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                     <div className="space-y-2">
-                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Radius</label><span>{bloomRadius.toFixed(2)}</span></div>
-                       <input type="range" min="0" max="1" step="0.01" value={bloomRadius} onChange={(e) => setBloomRadius(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Radius</label><span>{currentFxSettings.bloom.radius.toFixed(2)}</span></div>
+                       <input type="range" min="0" max="1" step="0.01" value={currentFxSettings.bloom.radius} onChange={(e) => updateCurrentFxSettings({ bloom: { radius: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                     <div className="space-y-2">
-                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Threshold</label><span>{bloomThreshold.toFixed(2)}</span></div>
-                       <input type="range" min="0" max="1" step="0.01" value={bloomThreshold} onChange={(e) => setBloomThreshold(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Threshold</label><span>{currentFxSettings.bloom.threshold.toFixed(2)}</span></div>
+                       <input type="range" min="0" max="1" step="0.01" value={currentFxSettings.bloom.threshold} onChange={(e) => updateCurrentFxSettings({ bloom: { threshold: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-blue-600" />
                     </div>
                   </div>
                 )}
                 {activeFxTab === 'rgbShift' && (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Amount</label><span>{rgbShiftAmount.toFixed(4)}</span></div>
-                    <input type="range" min="0" max="0.05" step="0.0001" value={rgbShiftAmount} onChange={(e) => setRgbShiftAmount(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-fuchsia-500" />
+                    <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Amount</label><span>{currentFxSettings.rgbShift.amount.toFixed(4)}</span></div>
+                    <input type="range" min="0" max="0.05" step="0.0001" value={currentFxSettings.rgbShift.amount} onChange={(e) => updateCurrentFxSettings({ rgbShift: { amount: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-fuchsia-500" />
                   </div>
                 )}
                 {activeFxTab === 'film' && (
                   <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Intensity</label><span>{filmIntensity.toFixed(2)}</span></div>
-                    <input type="range" min="0" max="2" step="0.01" value={filmIntensity} onChange={(e) => setFilmIntensity(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
+                    <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Intensity</label><span>{currentFxSettings.film.intensity.toFixed(2)}</span></div>
+                    <input type="range" min="0" max="2" step="0.01" value={currentFxSettings.film.intensity} onChange={(e) => updateCurrentFxSettings({ film: { intensity: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-emerald-500" />
                   </div>
                 )}
                 {activeFxTab === 'vignette' && (
                   <div className="space-y-4">
                     <div className="space-y-2">
-                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Offset</label><span>{vignetteOffset.toFixed(2)}</span></div>
-                       <input type="range" min="0" max="3" step="0.01" value={vignetteOffset} onChange={(e) => setVignetteOffset(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Offset</label><span>{currentFxSettings.vignette.offset.toFixed(2)}</span></div>
+                       <input type="range" min="0" max="3" step="0.01" value={currentFxSettings.vignette.offset} onChange={(e) => updateCurrentFxSettings({ vignette: { offset: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
                     </div>
                     <div className="space-y-2">
-                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Darkness</label><span>{vignetteDarkness.toFixed(2)}</span></div>
-                       <input type="range" min="0" max="3" step="0.01" value={vignetteDarkness} onChange={(e) => setVignetteDarkness(parseFloat(e.target.value))} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
+                       <div className="flex justify-between text-xs font-medium"><label className="text-neutral-400">Darkness</label><span>{currentFxSettings.vignette.darkness.toFixed(2)}</span></div>
+                       <input type="range" min="0" max="3" step="0.01" value={currentFxSettings.vignette.darkness} onChange={(e) => updateCurrentFxSettings({ vignette: { darkness: parseFloat(e.target.value) } })} className="w-full h-1.5 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-violet-500" />
                     </div>
                   </div>
                 )}

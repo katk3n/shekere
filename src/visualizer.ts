@@ -398,14 +398,17 @@ listen<{ sensitivity: number }>('update-audio-sensitivity', (event) => {
     }
 });
 
-// Listen for Post-Processing settings from Control Panel
-listen<{ 
+interface FxSettingsPayload {
+    sketchPath?: string;
     bloom?: { strength?: number; radius?: number; threshold?: number };
     rgbShift?: { amount?: number };
     film?: { intensity?: number };
     vignette?: { offset?: number; darkness?: number };
-}>('update-fx-settings', (event) => {
-    const { bloom, rgbShift, film, vignette } = event.payload;
+}
+
+let activeSketchPath: string | null = null;
+
+function applyFxSettings({ bloom, rgbShift, film, vignette }: FxSettingsPayload) {
     if (bloom) {
         if (bloom.strength !== undefined) (bloomNode as any).strength.value = bloom.strength;
         if (bloom.radius !== undefined) (bloomNode as any).radius.value = bloom.radius;
@@ -433,6 +436,13 @@ listen<{
             vignetteDarknessUniform.value = vignette.darkness;
         }
     }
+}
+
+// Listen for Post-Processing settings from Control Panel. Ignore messages for a
+// sketch that is no longer active so delayed cross-window events cannot leak FX.
+listen<FxSettingsPayload>('update-fx-settings', (event) => {
+    if (event.payload.sketchPath && event.payload.sketchPath !== activeSketchPath) return;
+    applyFxSettings(event.payload);
 });
 
 // Legacy listener for backward compatibility during transition
@@ -595,6 +605,7 @@ function syncToHost() {
 
     if (hasChanged) {
         emit('fx-settings-changed', {
+            sketchPath: activeSketchPath ?? undefined,
             bloom: { strength: currentValues.strength, radius: currentValues.radius, threshold: currentValues.threshold },
             rgbShift: { amount: currentValues.rgbAmount },
             film: { intensity: currentValues.filmIntensity },
@@ -626,9 +637,11 @@ function syncToHost() {
 })();
 
 // --- 5. Dynamic Module Loader ---
-listen<{ code: string; dir?: string }>('user-code-update', async (event) => {
+listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSettingsPayload }>('user-code-update', async (event) => {
     try {
-        const { code: jsCode, dir } = event.payload;
+        const { code: jsCode, dir, sketchPath, fxSettings } = event.payload;
+
+        activeSketchPath = sketchPath ?? null;
 
         // Update sketch directory for relative path resolution
         if (dir) Shekere.SKETCH_DIR = dir;
@@ -666,6 +679,8 @@ listen<{ code: string; dir?: string }>('user-code-update', async (event) => {
             update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
             cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
         };
+
+        if (fxSettings) applyFxSettings(fxSettings);
 
         URL.revokeObjectURL(blobUrl);
     } catch (e: any) {
