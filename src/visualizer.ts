@@ -202,14 +202,63 @@ function emitPreviewFrame() {
 
 const FFT_SIZE = 4096;
 const BAND_COUNT = 256;
+const WAVEFORM_PREVIEW_BUCKET_COUNT = 128;
 const BASS_MAX_HZ = 250;
 const MID_MAX_HZ = 2_000;
 const DEFAULT_MIN_FREQ = 27.5;
 const DEFAULT_MAX_FREQ = 4186;
 const CORE_FEATURES = ['rms', 'zcr', 'energy', 'spectralCentroid', 'spectralFlatness', 'chroma', 'mfcc'];
 
+interface AudioWaveform {
+    mono: Float32Array;
+    left: Float32Array;
+    right: Float32Array;
+}
+
+interface AudioAnalysisData {
+    volume: number;
+    bass: number;
+    mid: number;
+    high: number;
+    bands: number[];
+    features: Record<string, unknown>;
+    waveform: AudioWaveform;
+}
+
+// These buffers are part of the sketch API. Keep their identity stable so a
+// render frame never allocates new full-resolution waveform arrays.
+const waveform: AudioWaveform = {
+    mono: new Float32Array(FFT_SIZE),
+    left: new Float32Array(FFT_SIZE),
+    right: new Float32Array(FFT_SIZE)
+};
+
+interface WaveformPreviewChannel {
+    min: number[];
+    max: number[];
+}
+
+interface WaveformPreview {
+    left: WaveformPreviewChannel;
+    right: WaveformPreviewChannel;
+}
+
+const waveformPreview: WaveformPreview = {
+    left: {
+        min: new Array(WAVEFORM_PREVIEW_BUCKET_COUNT).fill(0),
+        max: new Array(WAVEFORM_PREVIEW_BUCKET_COUNT).fill(0)
+    },
+    right: {
+        min: new Array(WAVEFORM_PREVIEW_BUCKET_COUNT).fill(0),
+        max: new Array(WAVEFORM_PREVIEW_BUCKET_COUNT).fill(0)
+    }
+};
+
 let audioContext: AudioContext | null = null;
 let analyserNode: AnalyserNode | null = null;
+let channelSplitterNode: ChannelSplitterNode | null = null;
+let leftWaveformAnalyserNode: AnalyserNode | null = null;
+let rightWaveformAnalyserNode: AnalyserNode | null = null;
 let audioSourceNode: MediaStreamAudioSourceNode | null = null;
 let gainNode: GainNode | null = null;
 let audioDataArray: Uint8Array | null = null;
@@ -219,6 +268,7 @@ let currentAudioSensitivity = 1.0;
 let audioMinFreq = DEFAULT_MIN_FREQ;
 let audioMaxFreq = DEFAULT_MAX_FREQ;
 let currentAudioDeviceId: string | undefined = undefined;
+let isMonoInput = false;
 
 let meydaAnalyzer: any = null;
 
@@ -277,6 +327,12 @@ async function startAudio() {
         analyserNode.minDecibels = -70;
         analyserNode.maxDecibels = -10;
         audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
+
+        channelSplitterNode = audioContext.createChannelSplitter(2);
+        leftWaveformAnalyserNode = audioContext.createAnalyser();
+        rightWaveformAnalyserNode = audioContext.createAnalyser();
+        leftWaveformAnalyserNode.fftSize = FFT_SIZE;
+        rightWaveformAnalyserNode.fftSize = FFT_SIZE;
         
         gainNode = audioContext.createGain();
         gainNode.gain.value = currentAudioSensitivity;
@@ -284,6 +340,12 @@ async function startAudio() {
         audioSourceNode = audioContext.createMediaStreamSource(audioStream);
         audioSourceNode.connect(gainNode);
         gainNode.connect(analyserNode);
+        gainNode.connect(channelSplitterNode);
+        channelSplitterNode.connect(leftWaveformAnalyserNode, 0);
+        channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
+
+        // A mono source must still expose safe, equivalent left/right arrays.
+        isMonoInput = audioStream.getAudioTracks()[0]?.getSettings().channelCount === 1;
         
         // Always initialize Meyda with all core features
         meydaAnalyzer = Meyda.createMeydaAnalyzer({
@@ -301,6 +363,11 @@ async function startAudio() {
 
 function stopAudio() {
     audioActive = false;
+    audioSourceNode?.disconnect();
+    gainNode?.disconnect();
+    channelSplitterNode?.disconnect();
+    leftWaveformAnalyserNode?.disconnect();
+    rightWaveformAnalyserNode?.disconnect();
     if (audioStream) {
         audioStream.getTracks().forEach(t => t.stop());
         audioStream = null;
@@ -310,18 +377,76 @@ function stopAudio() {
         audioContext = null;
     }
     analyserNode = null;
+    channelSplitterNode = null;
+    leftWaveformAnalyserNode = null;
+    rightWaveformAnalyserNode = null;
     audioSourceNode = null;
     gainNode = null;
     audioDataArray = null;
     meydaAnalyzer = null;
+    isMonoInput = false;
+    waveform.mono.fill(0);
+    waveform.left.fill(0);
+    waveform.right.fill(0);
 }
 
-function computeAudioData() {
+function readWaveform() {
+    if (!analyserNode || !leftWaveformAnalyserNode || !rightWaveformAnalyserNode) {
+        waveform.mono.fill(0);
+        waveform.left.fill(0);
+        waveform.right.fill(0);
+        return;
+    }
+
+    analyserNode.getFloatTimeDomainData(waveform.mono);
+    if (isMonoInput) {
+        waveform.left.set(waveform.mono);
+        waveform.right.set(waveform.mono);
+        return;
+    }
+
+    leftWaveformAnalyserNode.getFloatTimeDomainData(waveform.left);
+    rightWaveformAnalyserNode.getFloatTimeDomainData(waveform.right);
+}
+
+function downsampleWaveform(source: Float32Array, target: WaveformPreviewChannel) {
+    for (let bucket = 0; bucket < WAVEFORM_PREVIEW_BUCKET_COUNT; bucket++) {
+        const start = Math.floor((bucket * source.length) / WAVEFORM_PREVIEW_BUCKET_COUNT);
+        const end = Math.floor(((bucket + 1) * source.length) / WAVEFORM_PREVIEW_BUCKET_COUNT);
+        let min = 1;
+        let max = -1;
+
+        for (let sample = start; sample < end; sample++) {
+            const value = source[sample];
+            if (value < min) min = value;
+            if (value > max) max = value;
+        }
+
+        target.min[bucket] = min;
+        target.max[bucket] = max;
+    }
+}
+
+function updateWaveformPreview() {
+    downsampleWaveform(waveform.left, waveformPreview.left);
+    downsampleWaveform(waveform.right, waveformPreview.right);
+}
+
+function computeAudioData(): AudioAnalysisData {
     if (!analyserNode || !audioDataArray) {
-        return { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[] };
+        return {
+            volume: 0,
+            bass: 0,
+            mid: 0,
+            high: 0,
+            bands: new Array(BAND_COUNT).fill(0) as number[],
+            features: {},
+            waveform
+        };
     }
 
     analyserNode.getByteFrequencyData(audioDataArray as any);
+    readWaveform();
 
     const sampleRate = audioContext?.sampleRate ?? 44100;
     const binResolution = sampleRate / FFT_SIZE;
@@ -367,7 +492,7 @@ function computeAudioData() {
         return sum / (e - s);
     };
 
-    let features = {};
+    let features: Record<string, unknown> = {};
     if (meydaAnalyzer) {
         try {
             features = meydaAnalyzer.get(CORE_FEATURES) || {};
@@ -382,7 +507,8 @@ function computeAudioData() {
         mid: avgRange(bands, bassEnd, midEnd),
         high: avgRange(bands, midEnd, BAND_COUNT),
         bands,
-        features
+        features,
+        waveform
     };
 }
 
@@ -455,7 +581,15 @@ listen<{ strength?: number; radius?: number; threshold?: number }>('update-bloom
 
 // --- 3. Shared state ---
 let currentModule: SketchModule | null = null;
-let latestAudioData: any = { volume: 0, bass: 0, mid: 0, high: 0, bands: new Array(BAND_COUNT).fill(0) as number[], features: {} };
+let latestAudioData: AudioAnalysisData = {
+    volume: 0,
+    bass: 0,
+    mid: 0,
+    high: 0,
+    bands: new Array(BAND_COUNT).fill(0) as number[],
+    features: {},
+    waveform
+};
 let latestMidiData = {
     notes: new Array(128).fill(0) as number[],
     cc: new Array(128).fill(0) as number[]
@@ -616,13 +750,15 @@ function syncToHost() {
 
     // Always emit audio activity if active (throttled to 10fps by this function)
     if (audioActive && latestAudioData) {
+        updateWaveformPreview();
         emit('audio-activity', {
             volume: latestAudioData.volume || 0,
             bass: latestAudioData.bass || 0,
             mid: latestAudioData.mid || 0,
             high: latestAudioData.high || 0,
             bands: latestAudioData.bands || [],
-            features: latestAudioData.features || {}
+            features: latestAudioData.features || {},
+            waveformPreview
         }).catch(err => console.error("Audio activity emit error:", err));
     }
 

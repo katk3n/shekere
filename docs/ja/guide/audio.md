@@ -39,6 +39,41 @@ export function update({ ctx, width, height, audio }) {
 }
 ```
 
+## 生波形
+
+`audio.waveform` は入力信号の時間領域データを公開します。各チャンネルは、
+毎回の `update` 呼び出しで **4096個の正規化済みサンプル**（通常 `-1.0` 〜
+`1.0`）を持つ再利用可能な `Float32Array` です。
+
+| プロパティ | 説明 |
+| :--- | :--- |
+| `audio.waveform.mono` | ミックスされたモノラル波形。 |
+| `audio.waveform.left` | 左チャンネルの波形。 |
+| `audio.waveform.right` | 右チャンネルの波形。 |
+
+モノラル入力では、`left` と `right` にも `mono` と同じサンプルが入ります。
+音声キャプチャが停止中または利用できない場合でも、3つの配列は常に存在し、
+ゼロで満たされます。配列はフレームごとに再利用されるため、波形履歴を保持する
+必要がある場合だけサンプルをコピーしてください。
+
+### 例：オシロスコープのライン
+```javascript
+export function update({ audio }) {
+  const waveform = audio.waveform.mono;
+  const positions = this.line.geometry.attributes.position.array;
+  const stride = waveform.length / this.pointCount;
+
+  for (let i = 0; i < this.pointCount; i++) {
+    positions[i * 3 + 1] = waveform[Math.floor(i * stride)] * 2;
+  }
+  this.line.geometry.attributes.position.needsUpdate = true;
+}
+```
+
+ステレオ X/Y やリサージュ図形には `audio.waveform.left` と
+`audio.waveform.right` を使用できます。トリガー位置合わせや追加の
+ダウンサンプリングは、スケッチごとに実装してください。
+
 ## 高度な特徴量 (Meyda)
 
 より洗練された解析を行うには、`audio.features` オブジェクトを使用します。これらは Meyda ライブラリによって計算されます。
