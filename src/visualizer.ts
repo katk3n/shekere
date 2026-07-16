@@ -203,6 +203,7 @@ function emitPreviewFrame() {
 const FFT_SIZE = 4096;
 const BAND_COUNT = 256;
 const WAVEFORM_PREVIEW_BUCKET_COUNT = 128;
+const WAVEFORM_SILENCE_THRESHOLD = 0.001;
 const BASS_MAX_HZ = 250;
 const MID_MAX_HZ = 2_000;
 const DEFAULT_MIN_FREQ = 27.5;
@@ -269,6 +270,7 @@ let audioMinFreq = DEFAULT_MIN_FREQ;
 let audioMaxFreq = DEFAULT_MAX_FREQ;
 let currentAudioDeviceId: string | undefined = undefined;
 let isMonoInput = false;
+let reportedInputChannelCount: number | undefined = undefined;
 
 let meydaAnalyzer: any = null;
 
@@ -345,7 +347,10 @@ async function startAudio() {
         channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
 
         // A mono source must still expose safe, equivalent left/right arrays.
-        isMonoInput = audioStream.getAudioTracks()[0]?.getSettings().channelCount === 1;
+        // WKWebView may omit channelCount for built-in Mac microphones, so the
+        // waveform read also has an unknown-channel fallback below.
+        reportedInputChannelCount = audioStream.getAudioTracks()[0]?.getSettings().channelCount;
+        isMonoInput = reportedInputChannelCount === 1;
         
         // Always initialize Meyda with all core features
         meydaAnalyzer = Meyda.createMeydaAnalyzer({
@@ -385,6 +390,7 @@ function stopAudio() {
     audioDataArray = null;
     meydaAnalyzer = null;
     isMonoInput = false;
+    reportedInputChannelCount = undefined;
     waveform.mono.fill(0);
     waveform.left.fill(0);
     waveform.right.fill(0);
@@ -407,6 +413,26 @@ function readWaveform() {
 
     leftWaveformAnalyserNode.getFloatTimeDomainData(waveform.left);
     rightWaveformAnalyserNode.getFloatTimeDomainData(waveform.right);
+
+    // On macOS, a mono microphone can be exposed as a two-output splitter
+    // while its MediaStreamTrack omits channelCount. Only use this fallback
+    // when the device supplied no channel metadata; an explicitly stereo
+    // device can therefore keep an intentionally silent right channel.
+    if (
+        reportedInputChannelCount === undefined &&
+        hasWaveformSignal(waveform.mono) &&
+        !hasWaveformSignal(waveform.right)
+    ) {
+        waveform.left.set(waveform.mono);
+        waveform.right.set(waveform.mono);
+    }
+}
+
+function hasWaveformSignal(samples: Float32Array) {
+    for (let index = 0; index < samples.length; index++) {
+        if (Math.abs(samples[index]) >= WAVEFORM_SILENCE_THRESHOLD) return true;
+    }
+    return false;
 }
 
 function downsampleWaveform(source: Float32Array, target: WaveformPreviewChannel) {
