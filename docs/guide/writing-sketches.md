@@ -55,6 +55,7 @@ The `update` function receives a rich object containing the following:
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `time` | `number` | Total elapsed time in seconds. |
+| `camera` | `object` | Live camera state and host-owned `VideoTexture`. |
 | `audio` | `object` | Processed audio data (volume, bands, features, waveform). |
 | `midi` | `object` | MIDI input data (`midi.notes[0-127]`, `midi.cc[0-127]`). |
 | `osc` | `object` | Latest OSC data per address (e.g., `osc['/play']`). |

@@ -17,9 +17,12 @@ import {
   ChevronLeft,
   Settings,
   Eye,
-  RotateCcw
+  RotateCcw,
+  Camera,
+  CameraOff
 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
+import { useCameraControl } from "./hooks/useCameraControl";
 import { parse as parseToml } from "smol-toml";
 import shekereIcon from "./assets/shekere-icon.png";
 
@@ -198,6 +201,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   
   const { isActive: isAudioActive, start: startAudio, stop: stopAudio, error: audioError } = useAudioAnalyzer();
+  const {
+    devices: cameraDevices,
+    status: cameraStatus,
+    start: startCamera,
+    stop: stopCamera,
+    selectDevice: selectCameraDevice,
+  } = useCameraControl();
 
   // FX settings are owned by the Control Panel and scoped to each sketch path.
   const [fxSettingsBySketch, setFxSettingsBySketch] = useState<Record<string, FxSettings>>({});
@@ -611,6 +621,15 @@ export default function App() {
               >
                 {isAudioActive ? <><MicOff className="w-3.5 h-3.5" /> Stop Mic</> : <><Mic className="w-3.5 h-3.5" /> Enable Mic</>}
               </button>
+             <button
+                onClick={() => { if (cameraStatus.active) void stopCamera(); else void startCamera(); }}
+                disabled={cameraStatus.state === "starting"}
+                className={`flex items-center gap-2 ${cameraStatus.active ? "bg-red-500/20 text-red-400 border-red-500/50" : "bg-sky-500/20 text-sky-400 border-sky-500/50"} px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:cursor-wait disabled:opacity-60`}
+              >
+                {cameraStatus.active
+                  ? <><CameraOff className="w-3.5 h-3.5" /> Stop Camera</>
+                  : <><Camera className="w-3.5 h-3.5" /> {cameraStatus.state === "starting" ? "Starting..." : "Enable Camera"}</>}
+              </button>
           </div>
         </div>
 
@@ -673,6 +692,48 @@ export default function App() {
 
           {/* Column 2: Visual Effects & Preview */}
           <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Camera className="w-5 h-5 text-sky-400" />
+              <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Camera</h2>
+            </div>
+
+            <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800 flex flex-col gap-3">
+              <div className="flex items-center gap-3 bg-neutral-800/50 p-2.5 rounded-lg border border-neutral-700/50">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Device</span>
+                <select
+                  value={cameraStatus.selectedDeviceId}
+                  onChange={(event) => { void selectCameraDevice(event.target.value); }}
+                  disabled={cameraStatus.state === "starting"}
+                  className="flex-1 bg-neutral-900 border border-neutral-700 rounded text-xs text-neutral-200 p-1 focus:outline-none focus:border-sky-400 truncate w-full disabled:opacity-60"
+                >
+                  <option value="">Default Device</option>
+                  {cameraDevices.map((device, index) => (
+                    <option key={device.deviceId || `camera-${index}`} value={device.deviceId}>
+                      {device.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 text-[10px] font-mono">
+                <span className={`uppercase font-bold tracking-widest ${cameraStatus.active ? "text-emerald-400" : cameraStatus.state === "error" ? "text-red-400" : "text-neutral-500"}`}>
+                  {cameraStatus.state}
+                </span>
+                <span className="text-neutral-400">
+                  {cameraStatus.active
+                    ? `${cameraStatus.width}×${cameraStatus.height} @ ${cameraStatus.frameRate.toFixed(1)} fps`
+                    : "No capture"}
+                </span>
+              </div>
+
+              {cameraStatus.error && (
+                <div className="flex items-start gap-2 bg-red-900/20 text-red-400 p-2.5 rounded-lg text-[10px] border border-red-900/50">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <p>{cameraStatus.error.message}</p>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-2 mb-1">
               <Volume2 className="w-5 h-5 text-orange-400" />
               <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Audio</h2>

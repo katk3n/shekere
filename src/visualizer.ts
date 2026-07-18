@@ -8,6 +8,7 @@ import * as TSL from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
+import { CameraManager, type CameraStatus } from './cameraManager';
 
 // Expose THREE globally so user sketches can use it without importing
 // Clone the namespace to avoid "assign to readonly property" errors
@@ -35,6 +36,35 @@ const Shekere = {
     SKETCH_DIR: ""
 };
 (window as any).Shekere = Shekere;
+
+const cameraManager = new CameraManager({
+    onStatus: (status: CameraStatus) => {
+        emit('camera-status', status).catch(error => console.error('Camera status emit error:', error));
+    },
+    onDevices: (devices) => {
+        emit('camera-device-list', { devices }).catch(error => console.error('Camera device list emit error:', error));
+    }
+});
+
+listen<void>('request-camera-devices', () => { void cameraManager.refreshDevices(); });
+listen<void>('request-camera-status', () => {
+    emit('camera-status', cameraManager.getStatus()).catch(error => console.error('Camera status emit error:', error));
+});
+listen<{ deviceId: string }>('update-camera-device', (event) => {
+    void cameraManager.selectDevice(event.payload.deviceId);
+});
+listen<void>('start-camera', () => { void cameraManager.start(); });
+listen<void>('stop-camera', () => { cameraManager.stop(); });
+
+const handleCameraDeviceChange = () => { void cameraManager.refreshDevices(); };
+if (navigator.mediaDevices) {
+    navigator.mediaDevices.addEventListener('devicechange', handleCameraDeviceChange);
+}
+
+window.addEventListener('beforeunload', () => {
+    navigator.mediaDevices?.removeEventListener('devicechange', handleCameraDeviceChange);
+    cameraManager.dispose();
+});
 
 
 
@@ -703,6 +733,7 @@ function animate() {
 
         const context = {
             time,
+            camera: cameraManager.data,
             audio: latestAudioData,
             midi: latestMidiData,
             osc: latestOscData,
@@ -796,6 +827,7 @@ function syncToHost() {
     animate();
     // Broadcast initial audio devices after a short delay to ensure host is listening
     setTimeout(sendAudioDevices, 500);
+    setTimeout(() => { void cameraManager.refreshDevices(); }, 500);
 })();
 
 // --- 5. Dynamic Module Loader ---
