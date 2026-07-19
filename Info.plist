@@ -4,5 +4,7 @@
 <dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>Shekere uses the microphone to analyze audio and drive visual effects in real time.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Shekere uses the camera to provide live video textures for visual sketches.</string>
 </dict>
 </plist>

@@ -55,6 +55,7 @@ export function cleanup(scene) {
 | プロパティ | 型 | 説明 |
 | :--- | :--- | :--- |
 | `time` | `number` | 起動からの経過時間（秒）。 |
+| `camera` | `object` | ライブカメラの状態とホスト所有の`VideoTexture`。 |
 | `audio` | `object` | 処理済みのオーディオデータ（volume、bands、features、waveform）。 |
 | `midi` | `object` | MIDI入力データ (`midi.notes[0-127]`, `midi.cc[0-127]`)。 |
 | `osc` | `object` | アドレスごとの最新のOSCデータ（例：`osc['/play']`）。 |
