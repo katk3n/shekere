@@ -130,14 +130,8 @@ export function update({ time, audio, camera, bloom, rgbShift, film }) {
 
 export function cleanup(scene) {
   scene.background = this.previousBackground;
-  scene.remove(this.outerLine, this.glowLine, this.coreLine);
-
-  this.outerMaterial.dispose();
-  this.glowMaterial.dispose();
-  this.coreMaterial.dispose();
-  this.waveformGeometry.dispose();
-
   // Release the reference without disposing the host-owned VideoTexture.
   this.cameraTexture = null;
   this.scene = null;
+  Shekere.clearScene(scene);
 }

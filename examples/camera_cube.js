@@ -65,10 +65,7 @@ export function update({ time, audio, camera, bloom, rgbShift, film }) {
 }
 
 export function cleanup(scene) {
-  scene.remove(this.mesh);
-
   // Detach, but never dispose, the host-owned camera VideoTexture.
   this.material.map = null;
-  this.geometry.dispose();
-  this.material.dispose();
+  Shekere.clearScene(scene);
 }
