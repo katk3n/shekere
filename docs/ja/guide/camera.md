@@ -43,6 +43,28 @@ export function update({ camera }) {
 キャプチャの再起動やデバイス変更では`camera.texture`が交換される場合があります。
 上記の例のように、マテリアルのテクスチャ参照を比較して更新してください。
 
+### 安定したTSL node
+
+`setup(scene)`で構築するTSL graphでは、raw texture参照を再設定する代わりに
+安定したcamera nodeを使用できます。
+
+```javascript
+export function setup(scene) {
+  const cameraColor = Shekere.camera.textureNode.sample(TSL.uv()).rgb;
+  this.material = new THREE.MeshBasicNodeMaterial();
+  this.material.colorNode = cameraColor;
+}
+```
+
+`Shekere.camera.textureNode`の同一性は維持され、Shekereが内部`VideoTexture`を
+更新します。キャプチャ停止中、利用不可、開始処理中は黒いsRGB fallbackを
+サンプルします。
+
+::: warning Nodeの所有権
+nodeとfallback textureはShekereが所有します。サンプルには利用できますが、
+`value`の代入やdisposeを行わないでください。
+:::
+
 ::: warning テクスチャの所有権
 `VideoTexture`はShekereが所有します。スケッチから
 `camera.texture.dispose()`を呼び出さないでください。cleanupではスケッチ自身が
@@ -51,6 +73,9 @@ export function update({ camera }) {
 
 カメラのライフサイクルはスケッチから独立しています。スケッチの再読込や切替では
 動作中のカメラは停止しません。不要になったら **Stop Camera** をクリックします。
+
+動いた画像領域に追従するエフェクトについては、
+[カメラモーション](./camera-motion.md)を参照してください。
 
 ## キャプチャ初期値とトラブルシューティング
 

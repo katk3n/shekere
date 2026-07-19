@@ -92,6 +92,19 @@ interface CameraData {
 }
 ```
 
+TSL graphs created during `setup(scene)` may use a stable host-owned camera
+node exposed through the global Shekere namespace:
+
+```typescript
+Shekere.camera.textureNode: TSL.TextureNode;
+```
+
+The node keeps the same identity for the lifetime of the Visualizer. The host
+updates its underlying value when camera capture starts, stops, or replaces the
+`VideoTexture`. While the camera is inactive or unavailable, it samples a
+host-owned black sRGB fallback texture. Sketches may sample the node but must
+not assign its value or dispose the node or fallback texture.
+
 Example usage:
 
 ```javascript
@@ -172,6 +185,7 @@ to include, at minimum:
 
 - a TypeScript camera lifecycle module owned by the Visualizer;
 - Visualizer event handlers and `context.camera` injection;
+- a stable `Shekere.camera.textureNode` binding with a black sRGB fallback;
 - Control Panel state, device selection, start/stop controls, and errors;
 - macOS camera usage description and sandbox entitlement changes;
 - an example sketch using `THREE.VideoTexture`;
@@ -266,3 +280,6 @@ A future implementation must verify:
     entitlement;
 13. TypeScript strict-mode checks, the production application build, and the
     documentation build pass.
+14. `Shekere.camera.textureNode` keeps stable identity, follows camera texture
+    replacement, returns to black when inactive, and releases its fallback on
+    Visualizer unload.

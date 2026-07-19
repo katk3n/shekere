@@ -136,6 +136,13 @@ describe("CameraManager", () => {
       width: 0,
       height: 0,
       frameRate: 0,
+      motion: {
+        active: false,
+        maskTexture: null,
+        trailTexture: null,
+        width: 0,
+        height: 0,
+      },
     });
     expect(statuses[statuses.length - 1]?.state).toBe("inactive");
   });

@@ -9,7 +9,8 @@ Instead of writing a standard Three.js loop, every Shekere sketch exports specif
 ### 1. `setup(scene)`
 Called once when the sketch is loaded. Use this to initialize your 3D objects, lights, and materials.
 - **Argument**: `scene` (A `THREE.Scene` object).
-- **Return**: An optional configuration object to set audio ranges or renderer properties.
+- **Return**: An optional configuration object to set audio ranges, renderer
+  properties, or opt-in camera motion analysis.
 
 ```javascript
 export function setup(scene) {
@@ -48,6 +49,13 @@ export function cleanup(scene) {
 }
 ```
 
+`Shekere.clearScene(scene)` removes all descendants and disposes each unique
+geometry and material once, including resources used by meshes, lines, points,
+and sprites. It intentionally does not dispose textures or resources that are
+not attached directly to scene objects because their ownership cannot be
+inferred. Explicitly dispose sketch-owned textures, event listeners, and other
+external resources in `cleanup`.
+
 ## The `context` Object
 
 The `update` function receives a rich object containing the following:
@@ -55,7 +63,7 @@ The `update` function receives a rich object containing the following:
 | Property | Type | Description |
 | :--- | :--- | :--- |
 | `time` | `number` | Total elapsed time in seconds. |
-| `camera` | `object` | Live camera state and host-owned `VideoTexture`. |
+| `camera` | `object` | Live camera state, host-owned `VideoTexture`, and optional [motion textures](./camera-motion.md). |
 | `audio` | `object` | Processed audio data (volume, bands, features, waveform). |
 | `midi` | `object` | MIDI input data (`midi.notes[0-127]`, `midi.cc[0-127]`). |
 | `osc` | `object` | Latest OSC data per address (e.g., `osc['/play']`). |
@@ -84,8 +92,13 @@ Shekere uses **Meyda.js** for deep audio analysis.
 
 Shekere provides global utilities to assist with development:
 
-- `Shekere.clearScene(container)`: Safely disposes all objects and materials in a scene.
+- `Shekere.clearScene(container)`: Removes descendants and disposes unique
+  scene geometry and materials without disposing textures.
 - `Shekere.SKETCH_DIR`: The absolute path to the current sketch's directory. Useful for loading local assets like textures.
+- `Shekere.camera.textureNode`: Stable, host-owned TSL node for the live camera
+  image, with a black fallback while inactive.
+- `Shekere.camera.motion.maskNode` / `trailNode`: Stable, host-owned TSL nodes
+  for camera motion graphs created during `setup(scene)`.
 - `THREE`: The entire Three.js library is available globally. No imports required.
 - `TSL`: The Three.js Shading Language module is available globally for building shader nodes.
 
