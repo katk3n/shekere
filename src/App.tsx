@@ -135,7 +135,7 @@ const LevelBar = ({ label, value, colorClass }: { label: string, value: number, 
 );
 
 const Indicator = ({ label, icon: Icon, active, text, subText }: { label: string, icon: any, active: boolean, text: string, subText?: string }) => (
-  <div className="flex items-center gap-3 bg-neutral-800 p-3 rounded-lg border border-neutral-700/50 shadow-sm">
+  <div className="flex items-center gap-3 bg-neutral-800 p-2 rounded-lg border border-neutral-700/50 shadow-sm">
     <div className="relative flex items-center justify-center shrink-0">
       <Icon className="w-5 h-5 text-neutral-500" />
       <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full transition-colors duration-[50ms] ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-neutral-700'}`} />
@@ -634,7 +634,7 @@ export default function App() {
         </div>
 
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start max-w-[1600px] mx-auto">
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 mb-1">
               <ListMusic className="w-5 h-5 text-blue-500" />
               <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Playlist</h2>
@@ -688,10 +688,31 @@ export default function App() {
                <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400">Sketch Switching</span>
                <button onClick={() => switchIndex(currentIndex + 1)} className="p-1.5 hover:bg-neutral-700 rounded-lg"><ChevronRight className="w-4 h-4" /></button>
             </div>
+
+            <div className="flex items-center gap-2 mb-1">
+              <Eye className="w-5 h-5 text-blue-400" />
+              <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Preview</h2>
+            </div>
+
+            <div className="bg-neutral-800/30 p-3 rounded-2xl border border-neutral-800">
+              <div className="relative aspect-video w-full bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50 flex items-center justify-center group">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-neutral-600">
+                    <Activity className="w-6 h-6 animate-pulse" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">No Signal</span>
+                  </div>
+                )}
+                <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-neutral-400 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                  2 FPS
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Column 2: Visual Effects & Preview */}
-          <div className="flex flex-col gap-4">
+          {/* Column 2: Input controls & Visual Effects */}
+          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 mb-1">
               <Camera className="w-5 h-5 text-sky-400" />
               <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Camera</h2>
@@ -791,7 +812,7 @@ export default function App() {
                   >{tab === 'rgbShift' ? 'RGB' : tab}</button>
                 ))}
               </div>
-              <div className="min-h-[180px]">
+              <div className="min-h-[160px]">
                 {activeFxTab === 'bloom' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="space-y-2">
@@ -835,32 +856,10 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mb-1">
-              <Eye className="w-5 h-5 text-blue-400" />
-              <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Preview</h2>
-            </div>
-
-            <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800">
-              <div className="flex flex-col gap-2">
-                <div className="relative aspect-video w-full bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50 flex items-center justify-center group">
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-neutral-600">
-                      <Activity className="w-6 h-6 animate-pulse" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest">No Signal</span>
-                    </div>
-                  )}
-                  <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-sm rounded text-[8px] font-bold text-neutral-400 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity">
-                    2 FPS
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Column 3: Monitors */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {(error || audioError) && (
               <div className="w-full flex items-start gap-2 bg-red-900/20 text-red-400 p-3 rounded-xl text-[10px] border border-red-900/50 animate-in slide-in-from-top-2 mb-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -873,7 +872,7 @@ export default function App() {
               <h2 className="text-base font-bold text-neutral-200 uppercase tracking-wider">Monitors</h2>
             </div>
 
-            <div className="bg-neutral-800/30 p-4 rounded-2xl border border-neutral-800 flex flex-col gap-4">
+            <div className="bg-neutral-800/30 p-3 rounded-2xl border border-neutral-800 flex flex-col gap-3">
               <div className="flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <LevelBar label="Vol" value={audioLevels.volume} colorClass="bg-orange-400" />
@@ -881,7 +880,7 @@ export default function App() {
                   <LevelBar label="Mid" value={audioLevels.mid} colorClass="bg-amber-500" />
                   <LevelBar label="High" value={audioLevels.high} colorClass="bg-sky-400" />
                 </div>
-                <div className="mt-1 w-full h-12 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
+                <div className="mt-1 w-full h-10 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
                   <canvas ref={canvasRef} width={256} height={48} className="w-full h-full opacity-80" />
                 </div>
                 <div className="mt-1 flex items-stretch gap-2">
@@ -889,7 +888,7 @@ export default function App() {
                     <span className="flex-1 flex items-center justify-center">L</span>
                     <span className="flex-1 flex items-center justify-center">R</span>
                   </div>
-                  <div className="flex-1 h-12 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
+                  <div className="flex-1 h-10 bg-neutral-900 rounded-lg overflow-hidden border border-neutral-700/50">
                     <canvas ref={waveformCanvasRef} width={256} height={48} className="w-full h-full opacity-90" />
                   </div>
                 </div>
@@ -932,7 +931,7 @@ export default function App() {
                     {/* Chroma Visualizer */}
                     <div className="flex flex-col gap-1">
                       <div className="text-[8px] font-bold text-neutral-500 uppercase tracking-widest pl-1">Chroma</div>
-                      <div className="w-full flex justify-between items-end h-[50px] bg-neutral-900 rounded-lg p-1.5 border border-neutral-700/50 gap-0.5 relative">
+                      <div className="w-full flex justify-between items-end h-[44px] bg-neutral-900 rounded-lg p-1.5 border border-neutral-700/50 gap-0.5 relative">
                         {Array.from({ length: 12 }).map((_, i) => {
                            const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
                            const isBlackKey = notes[i].includes('#');
@@ -956,7 +955,7 @@ export default function App() {
                     {/* MFCC Visualizer */}
                     <div className="flex flex-col gap-1">
                       <div className="text-[8px] font-bold text-neutral-500 uppercase tracking-widest pl-1">MFCC</div>
-                      <div className="w-full flex h-[40px] bg-neutral-900 rounded-lg p-1 border border-neutral-700/50 gap-[1px] relative overflow-hidden group">
+                      <div className="w-full flex h-[34px] bg-neutral-900 rounded-lg p-1 border border-neutral-700/50 gap-[1px] relative overflow-hidden group">
                         <div className="absolute top-1/2 left-0 w-full h-[1px] bg-neutral-700/50 -translate-y-1/2 z-0" />
                         
                         {Array.from({ length: 13 }).map((_, i) => {
