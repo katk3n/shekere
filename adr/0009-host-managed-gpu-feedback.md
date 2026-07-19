@@ -68,7 +68,11 @@ type FeedbackUniformValue =
   | [number, number, number]
   | [number, number, number, number];
 
-type FeedbackTextureInput = THREE.Texture | FeedbackPass | null;
+type FeedbackTextureInput =
+  | THREE.Texture
+  | TSL.TextureNode
+  | FeedbackPass
+  | null;
 
 interface FeedbackPassUpdate {
   textures?: Record<string, FeedbackTextureInput>;
@@ -77,7 +81,7 @@ interface FeedbackPassUpdate {
 
 interface FeedbackPass {
   readonly node: TSL.TextureNode;
-  readonly texture: THREE.Texture;
+  readonly texture: THREE.Texture | null;
   readonly width: number;
   readonly height: number;
   update(values?: FeedbackPassUpdate): void;
@@ -90,51 +94,87 @@ interface ShekereGpuApi {
 }
 ```
 
-Example:
+Example using ADR 0008 motion as the seed for state that keeps spreading after
+the source motion stops:
 
 ```javascript
 export function setup(scene) {
-  this.aura = Shekere.gpu.createFeedbackPass({
-    name: "motion-aura",
-    width: 320,
-    height: 180,
-    format: "rgba16f",
-    textures: ["motion"],
-    uniforms: { decay: 0.96, intensity: 1.0 },
-    build({ previous, textures, uniforms }) {
-      const next = textures.motion.mul(uniforms.intensity);
-      return TSL.max(previous.mul(uniforms.decay), next);
-    }
-  });
+  this.scene = scene;
+  this.previousBackgroundNode = scene.backgroundNode;
+  this.ripple = null;
+  this.rippleWidth = 0;
+  this.rippleHeight = 0;
 
-  const material = new THREE.MeshBasicNodeMaterial();
-  material.colorNode = this.aura.node;
-  this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-  scene.add(this.mesh);
+  return {
+    camera: { motion: { enabled: true } }
+  };
 }
 
 export function update({ camera, audio }) {
-  this.aura.update({
-    textures: { motion: camera.motion.maskTexture },
+  if (!camera.motion.active) return;
+
+  const width = camera.motion.width;
+  const height = camera.motion.height;
+  if (!this.ripple || width !== this.rippleWidth || height !== this.rippleHeight) {
+    this.ripple?.dispose();
+    this.rippleWidth = width;
+    this.rippleHeight = height;
+    this.ripple = Shekere.gpu.createFeedbackPass({
+      name: "motion-ripple",
+      width,
+      height,
+      format: "rgba16f",
+      textures: ["motion"],
+      uniforms: { decay: 0.97, intensity: 1.0 },
+      build({ previous, textures, uniforms, uv }) {
+        const texel = TSL.vec2(1 / width, 1 / height);
+        const prior = previous.sample(uv).r;
+        const horizontal = TSL.max(
+          previous.sample(uv.add(TSL.vec2(texel.x, 0))).r,
+          previous.sample(uv.sub(TSL.vec2(texel.x, 0))).r
+        );
+        const vertical = TSL.max(
+          previous.sample(uv.add(TSL.vec2(0, texel.y))).r,
+          previous.sample(uv.sub(TSL.vec2(0, texel.y))).r
+        );
+        const spread = TSL.max(
+          prior,
+          TSL.max(horizontal, vertical)
+        ).mul(uniforms.decay);
+        const seed = textures.motion.sample(uv).r.mul(uniforms.intensity);
+        const next = TSL.max(spread, seed);
+        return TSL.vec4(next, next, next, 1);
+      }
+    });
+
+    const screenUv = TSL.screenUV.flipY();
+    const cameraColor = Shekere.camera.textureNode.sample(screenUv).rgb;
+    const ripple = this.ripple.node.sample(screenUv).r;
+    this.scene.backgroundNode = cameraColor.add(TSL.vec3(0.1, 0.5, 1).mul(ripple));
+  }
+
+  this.ripple.update({
+    // Host-owned stable nodes are read-only inputs. Passing the node avoids
+    // rebinding when ADR 0008 swaps its internal motion render targets.
+    textures: { motion: Shekere.camera.motion.maskNode },
     uniforms: {
-      decay: 0.94 + audio.mid * 0.05,
+      decay: 0.95 + audio.mid * 0.04,
       intensity: 1.0 + audio.bass * 3.0
     }
   });
 }
 
 export function cleanup(scene) {
-  scene.remove(this.mesh);
-  this.mesh.geometry.dispose();
-  this.mesh.material.dispose();
-  this.aura.dispose();
+  scene.backgroundNode = this.previousBackgroundNode;
+  this.ripple?.dispose();
 }
 ```
 
 The API is not specific to cameras, motion, particles, or any visual shape.
-Texture inputs may include camera video, ADR 0008 motion textures, loaded
-assets, or another feedback pass. Uniform values may be derived
-from audio, waveform summaries, MIDI, OSC, time, or arbitrary sketch logic.
+Texture inputs may include camera video, ADR 0008 host-owned stable motion
+nodes, raw textures, loaded assets, or another feedback pass. Uniform values
+may be derived from audio, waveform summaries, MIDI, OSC, time, or arbitrary
+sketch logic.
 
 ### 2. Build TSL graphs once and update only inputs
 
@@ -149,6 +189,20 @@ nodes; it will not rebuild or recompile the TSL graph. Missing or `null`
 texture inputs will use the black fallback. Unknown texture or uniform names,
 wrong uniform dimensions, and non-finite values will reject that update and
 report a sketch-scoped error without corrupting the pass's previous values.
+
+When an input is a host-owned stable `TSL.TextureNode`, such as
+`Shekere.camera.textureNode` or `Shekere.camera.motion.maskNode`, the feedback
+service will resolve its latest underlying texture immediately before pass
+execution. It will never mutate or dispose the source node. A feedback-pass
+dependency must be supplied as the `FeedbackPass` object, not as
+`FeedbackPass.node`, so the host can validate creation order and cycles.
+
+Texture nodes in `FeedbackBuildContext` are not implicitly sampled. Build
+callbacks must use `.sample(uv)` (and select `.r`, `.rgb`, or `.rgba` as
+appropriate). The supplied `uv` is the feedback target's normalized
+offscreen-pass UV. Displaying the result through `scene.backgroundNode` must
+instead use `TSL.screenUV.flipY()` so sphere/background geometry UVs cannot
+zoom or distort the texture.
 
 When a texture input is another `FeedbackPass`, the host will retain that
 pass-level dependency rather than snapshotting its current raw texture. Just
@@ -165,10 +219,17 @@ calls for the same pass in one sketch frame will coalesce, with the last valid
 input values winning. A pass that is not queued retains its previous state and
 does not consume an offscreen render pass that frame.
 
-After the active sketch's `update(context)` returns, the host will execute
-queued feedback passes before the main scene and post-processing render. This
-allows node materials in the main scene to sample the newly produced state in
-the same displayed frame.
+The Visualizer frame order will be:
+
+1. update stable camera bindings;
+2. execute ADR 0008 camera motion analysis for a new camera frame;
+3. call the active sketch's `update(context)`;
+4. execute queued feedback passes;
+5. render the main scene and post-processing pipeline.
+
+This ordering lets a feedback pass consume the latest ADR 0008 motion state
+and lets the main scene sample newly produced feedback in the same displayed
+frame.
 
 Passes will execute in creation order. A pass may sample its own prior state
 through `previous`, or a pass created earlier through that pass's stable
@@ -189,13 +250,20 @@ will update its underlying texture value to the latest read target, allowing
 TSL materials to retain the node across ping-pong swaps.
 
 `FeedbackPass.texture` will return the current output texture and may therefore
-return a different texture after an execution. It is intended for inspection
-or APIs that explicitly refresh their texture reference. TSL sketches should
-prefer the stable `node` property.
+return a different texture after an execution. It returns `null` after manual
+disposal or pass failure. It is intended for inspection or APIs that explicitly
+refresh their texture reference. TSL sketches should prefer the stable `node`
+property.
 
 Both render targets, their textures, the stable texture node, the fullscreen
 quad, and the node material are host-owned. Sketches must not dispose or mutate
 them except through `clear()` and `dispose()`.
+
+`dispose()` is idempotent, cancels queued work and dependencies, disposes both
+targets exactly once, changes `texture` to `null`, and points the still-stable
+public `node` at the host-owned black fallback. Calls to `update()` or `clear()`
+after disposal are rejected as sketch-scoped errors without affecting other
+passes.
 
 ### 5. Validate size, format, and resource budgets
 
@@ -229,26 +297,42 @@ demonstrated effect cannot meet its performance target with texture feedback.
 
 ### 7. Centralize renderer state and lifecycle ownership
 
-The GPU feedback service will save and restore the renderer's active render
-target, viewport/scissor state, clear state, and other state changed by an
-offscreen pass. Feedback execution must not change the scene camera, host
-post-processing nodes, or subsequent sketch rendering.
+The GPU feedback service will use the same proven renderer-state boundary as
+ADR 0008: `RendererUtils.saveRendererState()`,
+`RendererUtils.resetRendererState()`, and
+`RendererUtils.restoreRendererState()` in a `try/finally` block. The shared
+pattern should be factored into a common host utility rather than reimplemented
+with different state coverage. Feedback execution must not change the scene
+camera, host post-processing nodes, or subsequent sketch rendering.
 
-Every pass will belong to the currently loaded sketch scope. Calling
-`dispose()` is supported and expected in explicit sketch cleanup, but the host
-will also dispose all remaining scoped passes after the sketch's cleanup hook,
-on failed module loading, and on Visualizer unload. A sketch cannot transfer a
-pass into another sketch scope.
+Every pass will belong to one sketch scope. On a code update, the host will:
 
-`clear()` will reset both ping-pong targets to the configured clear value,
-reset time-dependent pass history, and retain allocated resources. Resize is
-not implicit: a sketch that needs another resolution must dispose the pass and
-create a new one, preventing partially defined state-resampling behavior.
+1. call the old sketch's cleanup hook;
+2. dispose the old scope in `finally`, even if cleanup throws;
+3. open a candidate scope before importing the new module, so top-level or
+   setup-time allocations cannot escape tracking;
+4. commit that candidate as the active scope only after import and setup
+   succeed;
+5. roll back and dispose the entire candidate scope if import or setup fails.
+
+Calling `dispose()` remains supported and expected in explicit sketch cleanup,
+but the scope registry is the mandatory leak-prevention backstop. All remaining
+active passes are also disposed on Visualizer unload. A sketch cannot transfer
+a pass into another sketch scope.
+
+`clear()` will queue a reset of both ping-pong targets to the configured clear
+value at the next feedback execution phase, reset time-dependent pass history,
+and retain allocated resources. If `clear()` and `update()` are called in the
+same sketch frame, clearing occurs first and the queued update then reads the
+clear value. Resize is not implicit: a sketch that needs another resolution
+must dispose the pass and create a new one. Camera-motion-driven examples must
+therefore create passes lazily from `camera.motion.width` and `height`, and
+recreate them when either dimension changes.
 
 If graph compilation or offscreen rendering fails, the host will disable and
 dispose only the failing pass, replace its public node input with the black
-fallback, and report the error. Other passes, the active sketch, the camera,
-and the main render loop will continue.
+fallback, set `texture` to `null`, and report the error. Other passes, the
+active sketch, the camera, and the main render loop will continue.
 
 ## Expected Implementation Scope
 
@@ -261,8 +345,9 @@ A future implementation is expected to include, at minimum:
   deterministic renderer-state restoration;
 - lifecycle integration with dynamic module loading, cleanup failures, hot
   reload, sketch switching, and Visualizer unload;
-- examples for an audio-reactive motion aura, a ripple, and a texture-state
-  particle system to demonstrate that the API is not effect-specific;
+- examples for a motion-seeded expanding ripple and a texture-state particle
+  system to demonstrate persistent state that ADR 0008's existing motion aura
+  intentionally does not provide;
 - English and Japanese API, ownership, limits, scheduling, and cleanup
   documentation;
 - unit tests for validation/lifecycle and renderer integration tests for
@@ -342,30 +427,42 @@ A future implementation must verify:
    write target;
 4. a pass that is not queued performs no offscreen render and retains state;
 5. multiple updates in one frame coalesce with the last valid values;
-6. named texture and uniform values update without rebuilding the TSL graph;
+6. named texture and uniform values update without rebuilding the TSL graph,
+   and ADR 0008 stable texture nodes resolve their latest underlying texture
+   immediately before execution;
 7. missing textures use the black fallback and invalid updates preserve prior
    valid inputs;
-8. passes execute in creation order and invalid forward/cyclic dependencies
-   are rejected;
-9. `node` identity remains stable while `texture` follows ping-pong output;
+8. passes execute in creation order, invalid forward/cyclic dependencies are
+   rejected, and a feedback dependency passed as `FeedbackPass.node` is
+   rejected in favor of the `FeedbackPass` object;
+9. `node` identity remains stable while `texture` follows ping-pong output,
+   and disposal or failure leaves the node on fallback with `texture === null`;
 10. time is monotonic and `deltaTime` is capped at 0.1 seconds;
-11. `clear()` resets both targets without reallocating them;
+11. `clear()` resets both targets without reallocating them, and a same-frame
+    update executes after the clear;
 12. size, pass-count, logical-pixel, format, clear-value, and finite-uniform
     validation occurs before partial allocation or mutation;
-13. renderer target, viewport, scissor, clear, scene, and post-processing state
-    are unchanged after feedback execution;
-14. manual dispose, cleanup success, cleanup failure, module-load failure, hot
-    reload, sketch switching, and Visualizer unload release all scoped GPU
-    resources exactly once;
+13. the shared ADR 0008 `RendererUtils` state boundary leaves renderer target,
+    viewport, scissor, clear, scene, and post-processing state unchanged after
+    feedback execution;
+14. manual dispose, candidate-scope commit and rollback, cleanup success,
+    cleanup failure, module import/setup failure, hot reload, sketch switching,
+    and Visualizer unload release all scoped GPU resources exactly once;
 15. a failing pass is isolated and does not stop other passes or the main
     render loop;
-16. an audio-reactive ADR 0008 motion aura works without effect-specific host
-    code;
-17. ripple and texture-state particle examples demonstrate persistent state
-    independent of the source input;
-18. the supported WebGPU and WebGL 2 paths produce equivalent feedback
+16. the frame order is camera binding, ADR 0008 analysis, sketch update,
+    feedback execution, then main/post-processing render;
+17. a motion-seeded ripple uses actual `camera.motion.width` and `height`,
+    recreates on dimension changes, and persists independently after the source
+    motion stops;
+18. texture-state particle examples demonstrate that the API is not specific
+    to camera motion;
+19. the supported WebGPU and WebGL 2 paths produce equivalent feedback
     semantics within expected numeric tolerance;
-19. no public renderer, raw render target, backend handle, CPU image readback,
+20. no public renderer, raw render target, backend handle, CPU image readback,
     or frame-sized Tauri IPC path is introduced;
-20. TypeScript strict checks, production build, documentation build, and
+21. feedback build nodes sample normalized pass `uv`, while any
+    `scene.backgroundNode` presentation uses `TSL.screenUV.flipY()` without
+    zoom, distortion, or vertical inversion;
+22. TypeScript strict checks, production build, documentation build, and
     packaged application tests pass.
