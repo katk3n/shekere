@@ -72,7 +72,7 @@ export function setup(scene) {
   };
 }
 
-export function update({ time, audio, camera, bloom, rgbShift, film, vignette }) {
+export function update({ time, audio, camera, bloom, rgbShift, film }) {
   // Use the host-owned camera texture as the full-render background.
   if (this.cameraTexture !== camera.texture) {
     this.cameraTexture = camera.texture;
@@ -126,20 +126,12 @@ export function update({ time, audio, camera, bloom, rgbShift, film, vignette })
   bloom.threshold = 1.1;
   rgbShift.amount = this.smoothHigh * 0.003;
   film.intensity = this.smoothVolume * 0.08;
-  vignette.offset = 1.15;
-  vignette.darkness = 1 + this.smoothBass * 0.2;
 }
 
 export function cleanup(scene) {
   scene.background = this.previousBackground;
-  scene.remove(this.outerLine, this.glowLine, this.coreLine);
-
-  this.outerMaterial.dispose();
-  this.glowMaterial.dispose();
-  this.coreMaterial.dispose();
-  this.waveformGeometry.dispose();
-
   // Release the reference without disposing the host-owned VideoTexture.
   this.cameraTexture = null;
   this.scene = null;
+  Shekere.clearScene(scene);
 }

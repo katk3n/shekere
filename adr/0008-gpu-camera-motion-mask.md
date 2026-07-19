@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented
 
 ## Date
 
@@ -154,6 +154,26 @@ interface CameraData {
 }
 ```
 
+For TSL graphs created during `setup(scene)`, the Visualizer will also expose
+stable host-owned texture nodes through the global Shekere namespace:
+
+```typescript
+interface ShekereCameraMotionNodes {
+  readonly maskNode: TSL.TextureNode;
+  readonly trailNode: TSL.TextureNode;
+}
+
+Shekere.camera.motion: ShekereCameraMotionNodes;
+```
+
+Both nodes keep the same identity for the lifetime of the Visualizer. The host
+updates their underlying texture values after analysis and ping-pong swaps.
+While analysis is disabled, initializing, unavailable, or failed, both nodes
+sample a host-owned black fallback texture. Sketches may sample these nodes but
+must not replace their values or dispose the nodes or fallback texture. TSL
+materials should prefer these stable nodes over manually rebinding raw texture
+references every frame.
+
 `camera.motion` will keep the same identity across render frames. When motion
 analysis is disabled, initializing, unavailable, or failed, its contract is:
 
@@ -229,6 +249,8 @@ A future implementation is expected to include, at minimum:
 - a Visualizer-owned TypeScript camera motion analyzer with TSL offscreen
   passes and deterministic cleanup;
 - sketch configuration parsing and `context.camera.motion` injection;
+- stable `Shekere.camera.motion.maskNode` and `trailNode` bindings with a black
+  fallback texture;
 - lifecycle integration with camera start, stop, device switching, hot reload,
   and Visualizer unload;
 - an audio-reactive aura example that samples `trailTexture` without disposing

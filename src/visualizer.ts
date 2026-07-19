@@ -9,6 +9,13 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 import { CameraManager, type CameraStatus } from './cameraManager';
+import { CameraNodeBindings } from './cameraNodeBindings';
+import { clearScene } from './sceneCleanup';
+import {
+    CameraMotionAnalyzer,
+    type CameraMotionConfig,
+    type CameraMotionNodes
+} from './cameraMotionAnalyzer';
 
 // Expose THREE globally so user sketches can use it without importing
 // Clone the namespace to avoid "assign to readonly property" errors
@@ -28,14 +35,6 @@ import { CameraManager, type CameraStatus } from './cameraManager';
     film,
     rgbShift
 };
-
-// Shekere API namespace
-const Shekere = {
-    convertFileSrc,
-    clearScene: (container: THREE.Object3D) => clearScene(container),
-    SKETCH_DIR: ""
-};
-(window as any).Shekere = Shekere;
 
 const cameraManager = new CameraManager({
     onStatus: (status: CameraStatus) => {
@@ -63,35 +62,12 @@ if (navigator.mediaDevices) {
 
 window.addEventListener('beforeunload', () => {
     navigator.mediaDevices?.removeEventListener('devicechange', handleCameraDeviceChange);
+    cameraMotionAnalyzer.dispose();
+    cameraNodeBindings.dispose();
     cameraManager.dispose();
 });
 
 
-
-/**
- * Utility to clear all objects from a THREE.Object3D (usually the scene)
- * and dispose of their geometries and materials to prevent memory leaks.
- */
-function clearScene(container: THREE.Object3D) {
-    while (container.children.length > 0) {
-        const object = container.children[0];
-        
-        object.traverse((child: any) => {
-            if (child.isMesh) {
-                if (child.geometry) child.geometry.dispose();
-                if (child.material) {
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach((m: any) => m.dispose());
-                    } else {
-                        child.material.dispose();
-                    }
-                }
-            }
-        });
-
-        container.remove(object);
-    }
-}
 
 interface SketchConfig {
     audio?: {
@@ -102,6 +78,9 @@ interface SketchConfig {
     renderer?: {
         toneMapping?: number;
         toneMappingExposure?: number;
+    };
+    camera?: {
+        motion?: CameraMotionConfig;
     };
 }
 
@@ -119,6 +98,26 @@ camera.position.z = 5;
 
 // WebGPURenderer is required for TSL
 const renderer = new WebGPURenderer({ antialias: true });
+const cameraMotionAnalyzer = new CameraMotionAnalyzer(renderer, cameraManager.data.motion);
+const cameraNodeBindings = new CameraNodeBindings();
+const Shekere: {
+    convertFileSrc: typeof convertFileSrc;
+    clearScene: (container: THREE.Object3D) => void;
+    SKETCH_DIR: string;
+    camera: {
+        textureNode: CameraNodeBindings['textureNode'];
+        motion: CameraMotionNodes;
+    };
+} = {
+    convertFileSrc,
+    clearScene: (container: THREE.Object3D) => clearScene(container),
+    SKETCH_DIR: "",
+    camera: {
+        textureNode: cameraNodeBindings.textureNode,
+        motion: cameraMotionAnalyzer.nodes
+    }
+};
+(window as any).Shekere = Shekere;
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 1);
 renderer.setPixelRatio(window.devicePixelRatio); // Better quality on Retina displays
@@ -689,6 +688,8 @@ function animate() {
     if (audioActive) {
         latestAudioData = computeAudioData();
     }
+    cameraNodeBindings.update(cameraManager.data);
+    cameraMotionAnalyzer.update(cameraManager.data);
     if (currentModule && typeof currentModule.update === 'function') {
         const time = timer.getElapsed();
 
@@ -849,9 +850,11 @@ listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSetting
 
         const userModule = await import(/* @vite-ignore */ blobUrl);
         const sketchContext = {};
+        let sketchConfig: SketchConfig | undefined;
 
         if (typeof userModule.setup === 'function') {
             const config = userModule.setup.call(sketchContext, scene);
+            sketchConfig = config ?? undefined;
             
             // Default renderer state if not specified by sketch
             renderer.toneMapping = THREE.NoToneMapping;
@@ -869,6 +872,8 @@ listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSetting
             }
         }
 
+        cameraMotionAnalyzer.configure(sketchConfig?.camera?.motion);
+
         currentModule = {
             update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
             cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
@@ -878,6 +883,7 @@ listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSetting
 
         URL.revokeObjectURL(blobUrl);
     } catch (e: any) {
+        cameraMotionAnalyzer.configure();
         console.error('Failed to execute user sketch:', e);
     }
 });

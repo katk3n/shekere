@@ -46,6 +46,28 @@ numeric values are `0`.
 Restarting capture or changing devices can replace `camera.texture`. Sketches
 must compare and update their material texture reference as shown above.
 
+### Stable TSL node
+
+TSL graphs created in `setup(scene)` can use the stable camera node instead of
+rebinding raw texture references:
+
+```javascript
+export function setup(scene) {
+  const cameraColor = Shekere.camera.textureNode.sample(TSL.uv()).rgb;
+  this.material = new THREE.MeshBasicNodeMaterial();
+  this.material.colorNode = cameraColor;
+}
+```
+
+`Shekere.camera.textureNode` keeps the same identity while Shekere updates its
+underlying `VideoTexture`. It samples a black sRGB fallback while capture is
+inactive, unavailable, or starting.
+
+::: warning Node ownership
+The node and its fallback texture belong to Shekere. Sample the node but do not
+assign its `value` or dispose it.
+:::
+
 ::: warning Texture ownership
 The `VideoTexture` belongs to Shekere. Never call `camera.texture.dispose()` in
 a sketch. During cleanup, dispose only geometry, materials, and textures that
@@ -55,6 +77,9 @@ the sketch created itself.
 Camera capture is independent of sketch lifecycle. Reloading or switching a
 sketch does not stop an active camera. Click **Stop Camera** when capture is no
 longer needed.
+
+To create effects that follow moving image regions, see
+[Camera Motion](./camera-motion.md).
 
 ## Capture defaults and troubleshooting
 

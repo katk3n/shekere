@@ -24,7 +24,7 @@ export function setup(scene) {
   };
 }
 
-export function update({ time, audio, camera, bloom, rgbShift, film, vignette }) {
+export function update({ time, audio, camera, bloom, rgbShift, film }) {
   // Camera restart and device switching can replace the host-owned texture.
   if (this.material.map !== camera.texture) {
     this.material.map = camera.texture;
@@ -62,15 +62,10 @@ export function update({ time, audio, camera, bloom, rgbShift, film, vignette })
   bloom.threshold = 0.6;
   rgbShift.amount = this.smoothHigh * 0.012;
   film.intensity = this.smoothVolume * 0.45;
-  vignette.offset = 1.1;
-  vignette.darkness = 0.8 + this.smoothBass * 0.5;
 }
 
 export function cleanup(scene) {
-  scene.remove(this.mesh);
-
   // Detach, but never dispose, the host-owned camera VideoTexture.
   this.material.map = null;
-  this.geometry.dispose();
-  this.material.dispose();
+  Shekere.clearScene(scene);
 }

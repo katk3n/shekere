@@ -6,6 +6,15 @@ export interface CameraData {
   width: number;
   height: number;
   frameRate: number;
+  motion: CameraMotionData;
+}
+
+export interface CameraMotionData {
+  active: boolean;
+  maskTexture: THREE.Texture | null;
+  trailTexture: THREE.Texture | null;
+  width: number;
+  height: number;
 }
 
 export type CameraState = "inactive" | "starting" | "active" | "error";
@@ -142,6 +151,13 @@ export class CameraManager {
     width: 0,
     height: 0,
     frameRate: 0,
+    motion: {
+      active: false,
+      maskTexture: null,
+      trailTexture: null,
+      width: 0,
+      height: 0,
+    },
   };
 
   private readonly mediaDevices: MediaDevices | undefined;
