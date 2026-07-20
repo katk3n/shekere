@@ -33,6 +33,8 @@ import {
     type FxSettingsChange
 } from './fxSettings';
 import { convertOscSketchData } from './oscData';
+import { applyMidiEvent, createMidiState } from './midiState';
+import { releaseAudioCapture, startAudioCapture } from './audioCaptureLifecycle';
 
 // Expose THREE globally so user sketches can use it without importing
 // Clone the namespace to avoid "assign to readonly property" errors
@@ -356,49 +358,65 @@ async function startAudio() {
         const constraints = currentAudioDeviceId 
             ? { audio: { deviceId: { exact: currentAudioDeviceId }, ...audioConstraints }, video: false }
             : { audio: audioConstraints, video: false };
-        audioStream = await navigator.mediaDevices.getUserMedia(constraints);
-        sendAudioDevices();
         const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-        audioContext = new AudioContextCtor();
-        analyserNode = audioContext.createAnalyser();
-        analyserNode.fftSize = FFT_SIZE;
-        analyserNode.smoothingTimeConstant = 0.5;
-        analyserNode.minDecibels = -70;
-        analyserNode.maxDecibels = -10;
-        audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
+        const resources = await startAudioCapture({
+            acquireStream: () => navigator.mediaDevices.getUserMedia(constraints),
+            createContext: () => new AudioContextCtor(),
+            initialize: (stream, context) => {
+                analyserNode = context.createAnalyser();
+                analyserNode.fftSize = FFT_SIZE;
+                analyserNode.smoothingTimeConstant = 0.5;
+                analyserNode.minDecibels = -70;
+                analyserNode.maxDecibels = -10;
+                audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
 
-        channelSplitterNode = audioContext.createChannelSplitter(2);
-        leftWaveformAnalyserNode = audioContext.createAnalyser();
-        rightWaveformAnalyserNode = audioContext.createAnalyser();
-        leftWaveformAnalyserNode.fftSize = FFT_SIZE;
-        rightWaveformAnalyserNode.fftSize = FFT_SIZE;
-        
-        gainNode = audioContext.createGain();
-        gainNode.gain.value = currentAudioSensitivity;
+                channelSplitterNode = context.createChannelSplitter(2);
+                leftWaveformAnalyserNode = context.createAnalyser();
+                rightWaveformAnalyserNode = context.createAnalyser();
+                leftWaveformAnalyserNode.fftSize = FFT_SIZE;
+                rightWaveformAnalyserNode.fftSize = FFT_SIZE;
 
-        audioSourceNode = audioContext.createMediaStreamSource(audioStream);
-        audioSourceNode.connect(gainNode);
-        gainNode.connect(analyserNode);
-        gainNode.connect(channelSplitterNode);
-        channelSplitterNode.connect(leftWaveformAnalyserNode, 0);
-        channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
+                gainNode = context.createGain();
+                gainNode.gain.value = currentAudioSensitivity;
 
-        // A mono source must still expose safe, equivalent left/right arrays.
-        // WKWebView may omit channelCount for built-in Mac microphones, so the
-        // waveform read also has an unknown-channel fallback below.
-        reportedInputChannelCount = audioStream.getAudioTracks()[0]?.getSettings().channelCount;
-        isMonoInput = reportedInputChannelCount === 1;
-        
-        // Always initialize Meyda with all core features
-        meydaAnalyzer = Meyda.createMeydaAnalyzer({
-            audioContext: audioContext,
-            source: gainNode,
-            bufferSize: FFT_SIZE,
-            featureExtractors: CORE_FEATURES
+                audioSourceNode = context.createMediaStreamSource(stream);
+                audioSourceNode.connect(gainNode);
+                gainNode.connect(analyserNode);
+                gainNode.connect(channelSplitterNode);
+                channelSplitterNode.connect(leftWaveformAnalyserNode, 0);
+                channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
+
+                // A mono source must still expose safe, equivalent left/right arrays.
+                // WKWebView may omit channelCount for built-in Mac microphones, so the
+                // waveform read also has an unknown-channel fallback below.
+                reportedInputChannelCount = stream.getAudioTracks()[0]?.getSettings().channelCount;
+                isMonoInput = reportedInputChannelCount === 1;
+
+                // Always initialize Meyda with all core features
+                meydaAnalyzer = Meyda.createMeydaAnalyzer({
+                    audioContext: context,
+                    source: gainNode,
+                    bufferSize: FFT_SIZE,
+                    featureExtractors: CORE_FEATURES
+                });
+            },
+            onReleaseError: error => console.error('Failed to release audio capture:', error)
         });
-        
+        audioStream = resources.stream;
+        audioContext = resources.context;
+        sendAudioDevices();
         audioActive = true;
     } catch (e) {
+        analyserNode = null;
+        channelSplitterNode = null;
+        leftWaveformAnalyserNode = null;
+        rightWaveformAnalyserNode = null;
+        audioSourceNode = null;
+        gainNode = null;
+        audioDataArray = null;
+        meydaAnalyzer = null;
+        isMonoInput = false;
+        reportedInputChannelCount = undefined;
         console.error('Failed to start audio capture:', e);
     }
 }
@@ -410,14 +428,10 @@ function stopAudio() {
     channelSplitterNode?.disconnect();
     leftWaveformAnalyserNode?.disconnect();
     rightWaveformAnalyserNode?.disconnect();
-    if (audioStream) {
-        audioStream.getTracks().forEach(t => t.stop());
-        audioStream = null;
-    }
-    if (audioContext) {
-        audioContext.close().catch(console.error);
-        audioContext = null;
-    }
+    const resources = { stream: audioStream, context: audioContext };
+    audioStream = null;
+    audioContext = null;
+    void releaseAudioCapture(resources, console.error);
     analyserNode = null;
     channelSplitterNode = null;
     leftWaveformAnalyserNode = null;
@@ -564,23 +578,12 @@ let latestAudioData: AudioAnalysisData = {
     features: {},
     waveform
 };
-let latestMidiData = {
-    notes: new Array(128).fill(0) as number[],
-    cc: new Array(128).fill(0) as number[]
-};
+let latestMidiData = createMidiState();
 let latestOscData: Record<string, unknown> = {};
 let oscEvents: { address: string; data: unknown }[] = [];
 
 listen<{ status: number; data1: number; data2: number }>('midi-event', (event) => {
-    const { status, data1, data2 } = event.payload;
-    const type = status & 0xF0;
-    if (type === 0x90) {
-        latestMidiData.notes[data1] = data2 / 127.0;
-    } else if (type === 0x80) {
-        latestMidiData.notes[data1] = 0;
-    } else if (type === 0xB0) {
-        latestMidiData.cc[data1] = data2 / 127.0;
-    }
+    latestMidiData = applyMidiEvent(latestMidiData, event.payload);
 });
 
 listen<{ address: string; args: unknown[] }>('osc-event', (event) => {

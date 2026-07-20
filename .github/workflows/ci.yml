@@ -57,3 +57,6 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test
+
+      - name: Build Tauri app smoke test
+        run: npm run tauri build -- --debug --bundles app --ci --no-sign

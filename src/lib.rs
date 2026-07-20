@@ -68,14 +68,26 @@ fn setup_osc(app_handle: tauri::AppHandle) -> anyhow::Result<()> {
     loop {
         match socket.recv_from(&mut buf) {
             Ok((size, _addr)) => {
-                let (_, packet) = rosc::decoder::decode_udp(&buf[..size]).unwrap();
-                handle_packet(packet, &app_handle);
+                if let Err(error) = decode_osc_datagram(&buf[..size], &mut |event| {
+                    let _ = app_handle.emit("osc-event", event);
+                }) {
+                    eprintln!("Failed to decode OSC packet: {}", error);
+                }
             }
             Err(e) => {
                 eprintln!("Error receiving UDP packet: {}", e);
             }
         }
     }
+}
+
+fn decode_osc_datagram<F>(data: &[u8], emit_event: &mut F) -> Result<(), rosc::OscError>
+where
+    F: FnMut(OscEvent),
+{
+    let (_, packet) = rosc::decoder::decode_udp(data)?;
+    visit_osc_packet(packet, emit_event);
+    Ok(())
 }
 
 fn osc_argument_to_json(argument: rosc::OscType) -> serde_json::Value {
@@ -117,15 +129,9 @@ where
     }
 }
 
-fn handle_packet(packet: rosc::OscPacket, app_handle: &tauri::AppHandle) {
-    visit_osc_packet(packet, &mut |event| {
-        let _ = app_handle.emit("osc-event", event);
-    });
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{osc_argument_to_json, visit_osc_packet, OscEvent};
+    use super::{decode_osc_datagram, osc_argument_to_json, visit_osc_packet, OscEvent};
     use rosc::{OscBundle, OscMessage, OscPacket, OscType};
     use serde_json::json;
 
@@ -222,6 +228,60 @@ mod tests {
         );
         assert_eq!(events[1].args, vec![json!(false)]);
         assert_eq!(events[2].args, vec![serde_json::Value::Null]);
+    }
+
+    #[test]
+    fn decodes_valid_datagrams_and_emits_events() {
+        let bytes = rosc::encoder::encode(&message(
+            "/valid",
+            vec![OscType::Int(42), OscType::String("value".to_string())],
+        ))
+        .expect("test packet should encode");
+        let mut events = Vec::new();
+
+        let result = decode_osc_datagram(&bytes, &mut |event| events.push(event));
+
+        assert!(result.is_ok());
+        assert_eq!(
+            events,
+            vec![OscEvent {
+                address: "/valid".to_string(),
+                args: vec![json!(42), json!("value")],
+            }]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_datagrams_without_emitting() {
+        let mut events = Vec::new();
+
+        let result = decode_osc_datagram(&[], &mut |event| events.push(event));
+
+        assert!(result.is_err());
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn rejects_malformed_datagrams_without_emitting() {
+        let mut events = Vec::new();
+
+        let result = decode_osc_datagram(b"not an osc packet", &mut |event| events.push(event));
+
+        assert!(result.is_err());
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn rejects_truncated_datagrams_without_emitting() {
+        let packet = message("/truncated", vec![OscType::Long(123)]);
+        let mut bytes = rosc::encoder::encode(&packet).expect("test packet should encode");
+        bytes.truncate(bytes.len() - 1);
+        let mut events = Vec::new();
+
+        let result = decode_osc_datagram(&bytes, &mut |event| events.push(event));
+
+        assert!(result.is_err());
+        assert!(events.is_empty());
     }
 }
 

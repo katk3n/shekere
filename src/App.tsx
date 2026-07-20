@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { useCameraControl } from "./hooks/useCameraControl";
-import { parse as parseToml } from "smol-toml";
 import shekereIcon from "./assets/shekere-icon.png";
 import {
   findAdjacentPlaylistIndex,
@@ -42,24 +41,10 @@ import {
   type FxSettingsChange,
 } from "./fxSettings";
 import { parseOscMonitorArgs } from "./oscData";
+import { parsePlaylistConfig } from "./playlistConfig";
+import { startSketchFileWatcher } from "./sketchFileWatcher";
 
 // --- Types ---
-interface PlaylistToml {
-  sketch?: Array<{
-    file: string;
-    midi_note?: number;
-    midi_cc?: number;
-    osc_key?: string;
-    osc_value?: string;
-  }>;
-  midi?: {
-    navigation?: MidiNavigation;
-  };
-  osc?: {
-    navigation?: OscNavigation;
-  };
-}
-
 interface WaveformPreviewChannel {
   min: number[];
   max: number[];
@@ -352,53 +337,24 @@ export default function App() {
   useEffect(() => {
     if (!currentSketch) return;
 
-    let unwatch: (() => void) | null = null;
-    let lastEmitTime = 0;
-    const THROTTLE_MS = 150;
-
-    const loadAndEmit = async () => {
-      try {
-        const code = await readTextFile(currentSketch);
-        const dir = currentSketch.substring(0, Math.max(currentSketch.lastIndexOf('/'), currentSketch.lastIndexOf('\\')) + 1);
-        await emit("user-code-update", {
-          code,
-          dir,
-          sketchPath: currentSketch,
-          fxSettings: fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
-        });
-        setError(null);
-      } catch (err: any) {
+    return startSketchFileWatcher({
+      sketchPath: currentSketch,
+      fxSettings: fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
+      readFile: readTextFile,
+      emitUpdate: (payload) => emit("user-code-update", payload),
+      watchFile: watch,
+      onLoadSuccess: () => setError(null),
+      onLoadError: (err) => {
         console.error("Failed to read or emit file:", err);
-        setError(`Failed to read file: ${err.message || err}`);
-      }
-    };
-
-    loadAndEmit();
-
-    watch(
-      currentSketch,
-      (event) => {
-        if (
-          event.type === "any" ||
-          event.type === "other" ||
-          (typeof event.type === "object" && "modify" in event.type)
-        ) {
-          const now = Date.now();
-          if (now - lastEmitTime > THROTTLE_MS) {
-            lastEmitTime = now;
-            loadAndEmit();
-          }
-        }
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to read file: ${message}`);
       },
-      { recursive: false, delayMs: 20 }
-    ).then((unwatchFn) => {
-      unwatch = unwatchFn;
-    }).catch((err: any) => {
-      console.error("Failed to start watcher:", err);
-      setError(`Failed to start watcher: ${err.message || err}`);
+      onWatchError: (err) => {
+        console.error("Failed to start watcher:", err);
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to start watcher: ${message}`);
+      },
     });
-
-    return () => { if (unwatch) unwatch(); };
   }, [currentSketch, currentIndex]);
 
   // --- File Handlers ---
@@ -430,30 +386,15 @@ export default function App() {
       });
       if (selected && typeof selected === "string") {
         const content = await readTextFile(selected);
-        const data = parseToml(content) as unknown as PlaylistToml;
-        
-        const baseDir = selected.substring(0, selected.lastIndexOf('/') + 1) || selected.substring(0, selected.lastIndexOf('\\') + 1);
+        const config = parsePlaylistConfig(content, selected);
 
-        if (data.sketch && Array.isArray(data.sketch)) {
-          const newPlaylist: PlaylistEntry[] = data.sketch.map((s: any) => ({
-            path: s.file.startsWith('/') || s.file.includes(':') ? s.file : baseDir + s.file,
-            midiNote: s.midi_note,
-            midiCc: s.midi_cc,
-            oscKey: s.osc_key,
-            oscValue: s.osc_value
-          }));
-
-          while (newPlaylist.length < 9) newPlaylist.push({ path: null });
-          setPlaylist(newPlaylist);
+        if (config.playlist) {
+          setPlaylist(config.playlist);
           setCurrentIndex(0);
         }
 
-        if (data.midi && data.midi.navigation) {
-          setMidiNavigation(data.midi.navigation);
-        }
-        if (data.osc && data.osc.navigation) {
-          setOscNavigation(data.osc.navigation);
-        }
+        if (config.midiNavigation) setMidiNavigation(config.midiNavigation);
+        if (config.oscNavigation) setOscNavigation(config.oscNavigation);
         setError(null);
       }
     } catch (err: any) {
