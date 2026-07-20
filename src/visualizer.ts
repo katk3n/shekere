@@ -16,6 +16,7 @@ import {
     type CameraMotionConfig,
     type CameraMotionNodes
 } from './cameraMotionAnalyzer';
+import { GpuFeedbackService, type ShekereGpuApi } from './gpuFeedback';
 
 // Expose THREE globally so user sketches can use it without importing
 // Clone the namespace to avoid "assign to readonly property" errors
@@ -62,6 +63,7 @@ if (navigator.mediaDevices) {
 
 window.addEventListener('beforeunload', () => {
     navigator.mediaDevices?.removeEventListener('devicechange', handleCameraDeviceChange);
+    gpuFeedbackService.dispose();
     cameraMotionAnalyzer.dispose();
     cameraNodeBindings.dispose();
     cameraManager.dispose();
@@ -98,6 +100,7 @@ camera.position.z = 5;
 
 // WebGPURenderer is required for TSL
 const renderer = new WebGPURenderer({ antialias: true });
+const gpuFeedbackService = new GpuFeedbackService(renderer);
 const cameraMotionAnalyzer = new CameraMotionAnalyzer(renderer, cameraManager.data.motion);
 const cameraNodeBindings = new CameraNodeBindings();
 const Shekere: {
@@ -108,6 +111,7 @@ const Shekere: {
         textureNode: CameraNodeBindings['textureNode'];
         motion: CameraMotionNodes;
     };
+    gpu: ShekereGpuApi;
 } = {
     convertFileSrc,
     clearScene: (container: THREE.Object3D) => clearScene(container),
@@ -115,7 +119,8 @@ const Shekere: {
     camera: {
         textureNode: cameraNodeBindings.textureNode,
         motion: cameraMotionAnalyzer.nodes
-    }
+    },
+    gpu: gpuFeedbackService
 };
 (window as any).Shekere = Shekere;
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -683,6 +688,7 @@ const timer = new THREE.Timer();
 function animate() {
     requestAnimationFrame(animate);
     timer.update();
+    const time = timer.getElapsed();
 
     // Compute audio data locally on every frame (no IPC)
     if (audioActive) {
@@ -691,8 +697,6 @@ function animate() {
     cameraNodeBindings.update(cameraManager.data);
     cameraMotionAnalyzer.update(cameraManager.data);
     if (currentModule && typeof currentModule.update === 'function') {
-        const time = timer.getElapsed();
-
         // Proxy objects to allow sketches to modify FX parameters
         const bloomControl = {
             get strength() { return (bloomNode as any).strength.value; },
@@ -751,6 +755,8 @@ function animate() {
         }
         oscEvents.length = 0;
     }
+
+    gpuFeedbackService.executeQueued(time);
 
     // Render using RenderPipeline
     postProcessing.render();
@@ -823,7 +829,7 @@ function syncToHost() {
     lastSyncTime = now;
 }
 
-(async function() {
+const rendererReady = (async function() {
     await renderer.init();
     animate();
     // Broadcast initial audio devices after a short delay to ensure host is listening
@@ -832,21 +838,40 @@ function syncToHost() {
 })();
 
 // --- 5. Dynamic Module Loader ---
-listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSettingsPayload }>('user-code-update', async (event) => {
-    try {
-        const { code: jsCode, dir, sketchPath, fxSettings } = event.payload;
+interface UserCodeUpdatePayload {
+    code: string;
+    dir?: string;
+    sketchPath?: string;
+    fxSettings?: FxSettingsPayload;
+}
 
-        activeSketchPath = sketchPath ?? null;
+async function loadUserCode(payload: UserCodeUpdatePayload): Promise<void> {
+    await rendererReady;
+    const previousModule = currentModule;
+    currentModule = null;
+    activeSketchPath = null;
+    if (previousModule && typeof previousModule.cleanup === 'function') {
+        try {
+            previousModule.cleanup(scene);
+        } catch (error) {
+            console.warn('Cleanup failed:', error);
+        } finally {
+            gpuFeedbackService.disposeActiveScope();
+        }
+    } else {
+        gpuFeedbackService.disposeActiveScope();
+    }
+
+    gpuFeedbackService.beginCandidateScope();
+    let blobUrl: string | null = null;
+    try {
+        const { code: jsCode, dir, sketchPath, fxSettings } = payload;
 
         // Update sketch directory for relative path resolution
         if (dir) Shekere.SKETCH_DIR = dir;
 
         const blob = new Blob([jsCode], { type: 'application/javascript' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        if (currentModule && typeof currentModule.cleanup === 'function') {
-            try { currentModule.cleanup(scene); } catch (e) { console.warn('Cleanup failed:', e); }
-        }
+        blobUrl = URL.createObjectURL(blob);
 
         const userModule = await import(/* @vite-ignore */ blobUrl);
         const sketchContext = {};
@@ -874,16 +899,26 @@ listen<{ code: string; dir?: string; sketchPath?: string; fxSettings?: FxSetting
 
         cameraMotionAnalyzer.configure(sketchConfig?.camera?.motion);
 
+        gpuFeedbackService.commitCandidateScope();
         currentModule = {
             update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
             cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
         };
+        activeSketchPath = sketchPath ?? null;
 
         if (fxSettings) applyFxSettings(fxSettings);
-
-        URL.revokeObjectURL(blobUrl);
     } catch (e: any) {
+        gpuFeedbackService.rollbackCandidateScope();
         cameraMotionAnalyzer.configure();
         console.error('Failed to execute user sketch:', e);
+    } finally {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
     }
+}
+
+let userCodeUpdateQueue = Promise.resolve();
+listen<UserCodeUpdatePayload>('user-code-update', (event) => {
+    userCodeUpdateQueue = userCodeUpdateQueue
+        .then(() => loadUserCode(event.payload))
+        .catch((error) => console.error('Unexpected sketch loader error:', error));
 });

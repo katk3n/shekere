@@ -100,6 +100,5 @@ export function update({ camera, audio, bloom }) {
 [`examples/camera_motion_aura.js`](https://github.com/katk3n/shekere/blob/main/examples/camera_motion_aura.js)
 を参照してください。
 
-独立した速度や寿命を持つparticle、成長するripple、smoke、反復simulation stateは
-このAPIの対象外です。モーションテクスチャは汎用入力maskであり、エフェクト固有の
-GPU simulation stateは提供しません。
+独立した速度や寿命を持つparticle、成長するripple、smoke、反復simulation stateは、
+モーションを入力にしたホスト管理の[GPU feedback pass](./gpu-feedback.md)で実装できます。

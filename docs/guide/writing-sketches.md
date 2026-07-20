@@ -99,6 +99,8 @@ Shekere provides global utilities to assist with development:
   image, with a black fallback while inactive.
 - `Shekere.camera.motion.maskNode` / `trailNode`: Stable, host-owned TSL nodes
   for camera motion graphs created during `setup(scene)`.
+- `Shekere.gpu.createFeedbackPass(options)`: Creates a host-managed, sketch-scoped
+  [GPU feedback pass](./gpu-feedback.md) for persistent texture state.
 - `THREE`: The entire Three.js library is available globally. No imports required.
 - `TSL`: The Three.js Shading Language module is available globally for building shader nodes.
 
