@@ -2,13 +2,13 @@ import * as THREE from "three";
 import {
   NodeMaterial,
   QuadMesh,
-  RendererUtils,
   type Node,
   type Renderer,
   type UniformNode,
 } from "three/webgpu";
 import * as TSL from "three/tsl";
 import type { CameraMotionData } from "./cameraManager";
+import { withRendererState } from "./rendererState";
 
 export interface CameraMotionConfig {
   enabled?: boolean;
@@ -326,13 +326,7 @@ class GpuCameraMotionPipeline implements CameraMotionPipeline {
   }
 
   private withRendererState(renderPasses: () => void): void {
-    const state = RendererUtils.saveRendererState(this.renderer);
-    RendererUtils.resetRendererState(this.renderer, state);
-    try {
-      renderPasses();
-    } finally {
-      RendererUtils.restoreRendererState(this.renderer, state);
-    }
+    withRendererState(this.renderer, renderPasses);
   }
 }
 

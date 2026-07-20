@@ -102,6 +102,5 @@ See [`examples/camera_motion_aura.js`](https://github.com/katk3n/shekere/blob/ma
 for an audio-reactive TSL aura that samples the trail texture.
 
 Effects that require particles with independent velocity and lifetime, growing
-ripples, smoke, or iterative simulation state are outside this API. Motion
-textures provide a generic input mask; they do not provide effect-specific GPU
-simulation state.
+ripples, smoke, or iterative simulation state can use motion as an input to a
+host-managed [GPU feedback pass](./gpu-feedback.md).
