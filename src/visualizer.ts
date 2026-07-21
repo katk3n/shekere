@@ -17,6 +17,24 @@ import {
     type CameraMotionNodes
 } from './cameraMotionAnalyzer';
 import { GpuFeedbackService, type ShekereGpuApi } from './gpuFeedback';
+import {
+    analyzeFrequencyData,
+    downsampleWaveform,
+    normalizeWaveformChannels,
+    type WaveformPreviewChannel
+} from './audioAnalysis';
+import { SketchLoader, type SketchLoadPayload } from './sketchLoader';
+import {
+    createFxRuntimePatch,
+    createFxSettingsChangedPayload,
+    haveFxRuntimeValuesChanged,
+    shouldApplyFxSettings,
+    type FxRuntimeValues,
+    type FxSettingsChange
+} from './fxSettings';
+import { convertOscSketchData } from './oscData';
+import { applyMidiEvent, createMidiState } from './midiState';
+import { releaseAudioCapture, startAudioCapture } from './audioCaptureLifecycle';
 
 // Expose THREE globally so user sketches can use it without importing
 // Clone the namespace to avoid "assign to readonly property" errors
@@ -78,19 +96,12 @@ interface SketchConfig {
         features?: string[];
     };
     renderer?: {
-        toneMapping?: number;
+        toneMapping?: THREE.ToneMapping;
         toneMappingExposure?: number;
     };
     camera?: {
         motion?: CameraMotionConfig;
     };
-}
-
-// Type definition for user-provided sketch modules
-interface SketchModule {
-    setup?: (scene: THREE.Scene) => SketchConfig | void;
-    update?: (context: any) => void;
-    cleanup?: (scene: THREE.Scene) => void;
 }
 
 // --- 1. Three.js Basic Setup ---
@@ -237,7 +248,6 @@ function emitPreviewFrame() {
 const FFT_SIZE = 4096;
 const BAND_COUNT = 256;
 const WAVEFORM_PREVIEW_BUCKET_COUNT = 128;
-const WAVEFORM_SILENCE_THRESHOLD = 0.001;
 const BASS_MAX_HZ = 250;
 const MID_MAX_HZ = 2_000;
 const DEFAULT_MIN_FREQ = 27.5;
@@ -267,11 +277,6 @@ const waveform: AudioWaveform = {
     left: new Float32Array(FFT_SIZE),
     right: new Float32Array(FFT_SIZE)
 };
-
-interface WaveformPreviewChannel {
-    min: number[];
-    max: number[];
-}
 
 interface WaveformPreview {
     left: WaveformPreviewChannel;
@@ -353,49 +358,65 @@ async function startAudio() {
         const constraints = currentAudioDeviceId 
             ? { audio: { deviceId: { exact: currentAudioDeviceId }, ...audioConstraints }, video: false }
             : { audio: audioConstraints, video: false };
-        audioStream = await navigator.mediaDevices.getUserMedia(constraints);
-        sendAudioDevices();
         const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-        audioContext = new AudioContextCtor();
-        analyserNode = audioContext.createAnalyser();
-        analyserNode.fftSize = FFT_SIZE;
-        analyserNode.smoothingTimeConstant = 0.5;
-        analyserNode.minDecibels = -70;
-        analyserNode.maxDecibels = -10;
-        audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
+        const resources = await startAudioCapture({
+            acquireStream: () => navigator.mediaDevices.getUserMedia(constraints),
+            createContext: () => new AudioContextCtor(),
+            initialize: (stream, context) => {
+                analyserNode = context.createAnalyser();
+                analyserNode.fftSize = FFT_SIZE;
+                analyserNode.smoothingTimeConstant = 0.5;
+                analyserNode.minDecibels = -70;
+                analyserNode.maxDecibels = -10;
+                audioDataArray = new Uint8Array(new ArrayBuffer(analyserNode.frequencyBinCount));
 
-        channelSplitterNode = audioContext.createChannelSplitter(2);
-        leftWaveformAnalyserNode = audioContext.createAnalyser();
-        rightWaveformAnalyserNode = audioContext.createAnalyser();
-        leftWaveformAnalyserNode.fftSize = FFT_SIZE;
-        rightWaveformAnalyserNode.fftSize = FFT_SIZE;
-        
-        gainNode = audioContext.createGain();
-        gainNode.gain.value = currentAudioSensitivity;
+                channelSplitterNode = context.createChannelSplitter(2);
+                leftWaveformAnalyserNode = context.createAnalyser();
+                rightWaveformAnalyserNode = context.createAnalyser();
+                leftWaveformAnalyserNode.fftSize = FFT_SIZE;
+                rightWaveformAnalyserNode.fftSize = FFT_SIZE;
 
-        audioSourceNode = audioContext.createMediaStreamSource(audioStream);
-        audioSourceNode.connect(gainNode);
-        gainNode.connect(analyserNode);
-        gainNode.connect(channelSplitterNode);
-        channelSplitterNode.connect(leftWaveformAnalyserNode, 0);
-        channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
+                gainNode = context.createGain();
+                gainNode.gain.value = currentAudioSensitivity;
 
-        // A mono source must still expose safe, equivalent left/right arrays.
-        // WKWebView may omit channelCount for built-in Mac microphones, so the
-        // waveform read also has an unknown-channel fallback below.
-        reportedInputChannelCount = audioStream.getAudioTracks()[0]?.getSettings().channelCount;
-        isMonoInput = reportedInputChannelCount === 1;
-        
-        // Always initialize Meyda with all core features
-        meydaAnalyzer = Meyda.createMeydaAnalyzer({
-            audioContext: audioContext,
-            source: gainNode,
-            bufferSize: FFT_SIZE,
-            featureExtractors: CORE_FEATURES
+                audioSourceNode = context.createMediaStreamSource(stream);
+                audioSourceNode.connect(gainNode);
+                gainNode.connect(analyserNode);
+                gainNode.connect(channelSplitterNode);
+                channelSplitterNode.connect(leftWaveformAnalyserNode, 0);
+                channelSplitterNode.connect(rightWaveformAnalyserNode, 1);
+
+                // A mono source must still expose safe, equivalent left/right arrays.
+                // WKWebView may omit channelCount for built-in Mac microphones, so the
+                // waveform read also has an unknown-channel fallback below.
+                reportedInputChannelCount = stream.getAudioTracks()[0]?.getSettings().channelCount;
+                isMonoInput = reportedInputChannelCount === 1;
+
+                // Always initialize Meyda with all core features
+                meydaAnalyzer = Meyda.createMeydaAnalyzer({
+                    audioContext: context,
+                    source: gainNode,
+                    bufferSize: FFT_SIZE,
+                    featureExtractors: CORE_FEATURES
+                });
+            },
+            onReleaseError: error => console.error('Failed to release audio capture:', error)
         });
-        
+        audioStream = resources.stream;
+        audioContext = resources.context;
+        sendAudioDevices();
         audioActive = true;
     } catch (e) {
+        analyserNode = null;
+        channelSplitterNode = null;
+        leftWaveformAnalyserNode = null;
+        rightWaveformAnalyserNode = null;
+        audioSourceNode = null;
+        gainNode = null;
+        audioDataArray = null;
+        meydaAnalyzer = null;
+        isMonoInput = false;
+        reportedInputChannelCount = undefined;
         console.error('Failed to start audio capture:', e);
     }
 }
@@ -407,14 +428,10 @@ function stopAudio() {
     channelSplitterNode?.disconnect();
     leftWaveformAnalyserNode?.disconnect();
     rightWaveformAnalyserNode?.disconnect();
-    if (audioStream) {
-        audioStream.getTracks().forEach(t => t.stop());
-        audioStream = null;
-    }
-    if (audioContext) {
-        audioContext.close().catch(console.error);
-        audioContext = null;
-    }
+    const resources = { stream: audioStream, context: audioContext };
+    audioStream = null;
+    audioContext = null;
+    void releaseAudioCapture(resources, console.error);
     analyserNode = null;
     channelSplitterNode = null;
     leftWaveformAnalyserNode = null;
@@ -440,8 +457,7 @@ function readWaveform() {
 
     analyserNode.getFloatTimeDomainData(waveform.mono);
     if (isMonoInput) {
-        waveform.left.set(waveform.mono);
-        waveform.right.set(waveform.mono);
+        normalizeWaveformChannels(waveform, isMonoInput, reportedInputChannelCount);
         return;
     }
 
@@ -452,39 +468,7 @@ function readWaveform() {
     // while its MediaStreamTrack omits channelCount. Only use this fallback
     // when the device supplied no channel metadata; an explicitly stereo
     // device can therefore keep an intentionally silent right channel.
-    if (
-        reportedInputChannelCount === undefined &&
-        hasWaveformSignal(waveform.mono) &&
-        !hasWaveformSignal(waveform.right)
-    ) {
-        waveform.left.set(waveform.mono);
-        waveform.right.set(waveform.mono);
-    }
-}
-
-function hasWaveformSignal(samples: Float32Array) {
-    for (let index = 0; index < samples.length; index++) {
-        if (Math.abs(samples[index]) >= WAVEFORM_SILENCE_THRESHOLD) return true;
-    }
-    return false;
-}
-
-function downsampleWaveform(source: Float32Array, target: WaveformPreviewChannel) {
-    for (let bucket = 0; bucket < WAVEFORM_PREVIEW_BUCKET_COUNT; bucket++) {
-        const start = Math.floor((bucket * source.length) / WAVEFORM_PREVIEW_BUCKET_COUNT);
-        const end = Math.floor(((bucket + 1) * source.length) / WAVEFORM_PREVIEW_BUCKET_COUNT);
-        let min = 1;
-        let max = -1;
-
-        for (let sample = start; sample < end; sample++) {
-            const value = source[sample];
-            if (value < min) min = value;
-            if (value > max) max = value;
-        }
-
-        target.min[bucket] = min;
-        target.max[bucket] = max;
-    }
+    normalizeWaveformChannels(waveform, isMonoInput, reportedInputChannelCount);
 }
 
 function updateWaveformPreview() {
@@ -509,48 +493,14 @@ function computeAudioData(): AudioAnalysisData {
     readWaveform();
 
     const sampleRate = audioContext?.sampleRate ?? 44100;
-    const binResolution = sampleRate / FFT_SIZE;
-    const minFreq = audioMinFreq;
-    const maxFreq = audioMaxFreq;
-    const logRatio = Math.pow(maxFreq / minFreq, 1 / BAND_COUNT);
-
-    const bands: number[] = new Array(BAND_COUNT);
-    for (let b = 0; b < BAND_COUNT; b++) {
-        const freqStart = minFreq * Math.pow(logRatio, b);
-        const freqEnd = minFreq * Math.pow(logRatio, b + 1);
-        const binStart = Math.floor(freqStart / binResolution);
-        const binEnd = Math.max(binStart + 1, Math.floor(freqEnd / binResolution));
-
-        let sum = 0, count = 0;
-        for (let i = binStart; i < binEnd && i < audioDataArray.length; i++) {
-            sum += audioDataArray[i];
-            count++;
-        }
-
-        let val = count > 0 ? (sum / count) / 255.0 : 0;
-        // Tilt EQ: boost high frequencies (1.0x → 1.8x)
-        val *= 1.0 + (b / BAND_COUNT) * 0.8;
-        // Non-linear scaling: suppress noise, emphasize clear sounds
-        bands[b] = Math.min(1.0, Math.pow(val, 1.5));
-    }
-
-    const getIdx = (f: number) => {
-        if (f <= minFreq) return 0;
-        if (f >= maxFreq) return BAND_COUNT;
-        return Math.floor(Math.log(f / minFreq) / Math.log(logRatio));
-    };
-
-    const bassEnd = getIdx(BASS_MAX_HZ);
-    const midEnd = getIdx(MID_MAX_HZ);
-
-    const avgRange = (arr: number[], from: number, to: number) => {
-        const s = Math.max(0, from);
-        const e = Math.min(arr.length, to);
-        if (s >= e) return 0;
-        let sum = 0;
-        for (let i = s; i < e; i++) sum += arr[i];
-        return sum / (e - s);
-    };
+    const frequencySummary = analyzeFrequencyData(audioDataArray, sampleRate, {
+        fftSize: FFT_SIZE,
+        bandCount: BAND_COUNT,
+        minFreq: audioMinFreq,
+        maxFreq: audioMaxFreq,
+        bassMaxHz: BASS_MAX_HZ,
+        midMaxHz: MID_MAX_HZ
+    });
 
     let features: Record<string, unknown> = {};
     if (meydaAnalyzer) {
@@ -562,11 +512,7 @@ function computeAudioData(): AudioAnalysisData {
     }
 
     return {
-        volume: bands.reduce((a, b) => a + b, 0) / BAND_COUNT,
-        bass: avgRange(bands, 0, bassEnd),
-        mid: avgRange(bands, bassEnd, midEnd),
-        high: avgRange(bands, midEnd, BAND_COUNT),
-        bands,
+        ...frequencySummary,
         features,
         waveform
     };
@@ -584,50 +530,33 @@ listen<{ sensitivity: number }>('update-audio-sensitivity', (event) => {
     }
 });
 
-interface FxSettingsPayload {
-    sketchPath?: string;
-    bloom?: { strength?: number; radius?: number; threshold?: number };
-    rgbShift?: { amount?: number };
-    film?: { intensity?: number };
-    vignette?: { offset?: number; darkness?: number };
-}
-
-let activeSketchPath: string | null = null;
-
-function applyFxSettings({ bloom, rgbShift, film, vignette }: FxSettingsPayload) {
-    if (bloom) {
-        if (bloom.strength !== undefined) (bloomNode as any).strength.value = bloom.strength;
-        if (bloom.radius !== undefined) (bloomNode as any).radius.value = bloom.radius;
-        if (bloom.threshold !== undefined) (bloomNode as any).threshold.value = bloom.threshold;
+function applyFxSettings(changes: FxSettingsChange) {
+    const patch = createFxRuntimePatch(changes);
+    if (patch.strength !== undefined) (bloomNode as any).strength.value = patch.strength;
+    if (patch.radius !== undefined) (bloomNode as any).radius.value = patch.radius;
+    if (patch.threshold !== undefined) (bloomNode as any).threshold.value = patch.threshold;
+    if (patch.rgbAmount !== undefined) {
+        (rgbNode as any).amount.value = patch.rgbAmount;
+        rgbMix.value = patch.rgbAmount;
     }
-    if (rgbShift) {
-        if (rgbShift.amount !== undefined) {
-            (rgbNode as any).amount.value = rgbShift.amount;
-            rgbMix.value = rgbShift.amount;
-        }
+    if (patch.filmIntensity !== undefined) {
+        filmIntensityUniform.value = patch.filmIntensity;
+        filmMix.value = patch.filmIntensity;
     }
-    if (film) {
-        if (film.intensity !== undefined) {
-            filmIntensityUniform.value = film.intensity;
-            filmMix.value = film.intensity;
-        }
+    if (patch.vignetteOffset !== undefined) {
+        currentVignetteOffset = patch.vignetteOffset;
+        vignetteOffsetUniform.value = patch.vignetteOffset;
     }
-    if (vignette) {
-        if (vignette.offset !== undefined) {
-            currentVignetteOffset = vignette.offset;
-            vignetteOffsetUniform.value = vignette.offset;
-        }
-        if (vignette.darkness !== undefined) {
-            currentVignetteDarkness = vignette.darkness;
-            vignetteDarknessUniform.value = vignette.darkness;
-        }
+    if (patch.vignetteDarkness !== undefined) {
+        currentVignetteDarkness = patch.vignetteDarkness;
+        vignetteDarknessUniform.value = patch.vignetteDarkness;
     }
 }
 
 // Listen for Post-Processing settings from Control Panel. Ignore messages for a
 // sketch that is no longer active so delayed cross-window events cannot leak FX.
-listen<FxSettingsPayload>('update-fx-settings', (event) => {
-    if (event.payload.sketchPath && event.payload.sketchPath !== activeSketchPath) return;
+listen<FxSettingsChange>('update-fx-settings', (event) => {
+    if (!shouldApplyFxSettings(event.payload.sketchPath, sketchLoader.activeSketchPath)) return;
     applyFxSettings(event.payload);
 });
 
@@ -640,7 +569,6 @@ listen<{ strength?: number; radius?: number; threshold?: number }>('update-bloom
 });
 
 // --- 3. Shared state ---
-let currentModule: SketchModule | null = null;
 let latestAudioData: AudioAnalysisData = {
     volume: 0,
     bass: 0,
@@ -650,35 +578,17 @@ let latestAudioData: AudioAnalysisData = {
     features: {},
     waveform
 };
-let latestMidiData = {
-    notes: new Array(128).fill(0) as number[],
-    cc: new Array(128).fill(0) as number[]
-};
-let latestOscData: Record<string, any> = {};
-let oscEvents: { address: string; data: any }[] = [];
+let latestMidiData = createMidiState();
+let latestOscData: Record<string, unknown> = {};
+let oscEvents: { address: string; data: unknown }[] = [];
 
 listen<{ status: number; data1: number; data2: number }>('midi-event', (event) => {
-    const { status, data1, data2 } = event.payload;
-    const type = status & 0xF0;
-    if (type === 0x90) {
-        latestMidiData.notes[data1] = data2 / 127.0;
-    } else if (type === 0x80) {
-        latestMidiData.notes[data1] = 0;
-    } else if (type === 0xB0) {
-        latestMidiData.cc[data1] = data2 / 127.0;
-    }
+    latestMidiData = applyMidiEvent(latestMidiData, event.payload);
 });
 
-listen<{ address: string; args: any[] }>('osc-event', (event) => {
+listen<{ address: string; args: unknown[] }>('osc-event', (event) => {
     const { address, args } = event.payload;
-    let data: any = args;
-    if (address === '/dirt/play' && args.length % 2 === 0) {
-        const obj: Record<string, any> = {};
-        for (let i = 0; i < args.length; i += 2) {
-            obj[String(args[i])] = args[i + 1];
-        }
-        data = obj;
-    }
+    const data = convertOscSketchData(address, args);
     latestOscData[address] = data;
     oscEvents.push({ address, data });
 });
@@ -696,7 +606,7 @@ function animate() {
     }
     cameraNodeBindings.update(cameraManager.data);
     cameraMotionAnalyzer.update(cameraManager.data);
-    if (currentModule && typeof currentModule.update === 'function') {
+    if (sketchLoader.currentModule) {
         // Proxy objects to allow sketches to modify FX parameters
         const bloomControl = {
             get strength() { return (bloomNode as any).strength.value; },
@@ -749,7 +659,7 @@ function animate() {
             vignette: vignetteControl
         };
         try {
-            currentModule.update(context);
+            sketchLoader.currentModule.update(context);
         } catch (e) {
             console.error('Error in update:', e);
         }
@@ -769,7 +679,7 @@ function animate() {
 }
 
 let lastSyncTime = 0;
-let lastSyncedValues = { 
+let lastSyncedValues: FxRuntimeValues = {
     strength: -1, radius: -1, threshold: -1,
     rgbAmount: -1,
     filmIntensity: -1,
@@ -781,7 +691,7 @@ function syncToHost() {
     const now = Date.now();
     if (now - lastSyncTime < SYNC_THROTTLE_MS) return;
 
-    const currentValues = {
+    const currentValues: FxRuntimeValues = {
         strength: (bloomNode as any).strength.value,
         radius: (bloomNode as any).radius.value,
         threshold: (bloomNode as any).threshold.value,
@@ -792,23 +702,13 @@ function syncToHost() {
     };
 
     // Only emit if values have changed significantly
-    const hasChanged = 
-        Math.abs(currentValues.strength - lastSyncedValues.strength) > 0.001 ||
-        Math.abs(currentValues.radius - lastSyncedValues.radius) > 0.001 ||
-        Math.abs(currentValues.threshold - lastSyncedValues.threshold) > 0.001 ||
-        Math.abs(currentValues.rgbAmount - lastSyncedValues.rgbAmount) > 0.0001 ||
-        Math.abs(currentValues.filmIntensity - lastSyncedValues.filmIntensity) > 0.001 ||
-        Math.abs(currentValues.vignetteOffset - lastSyncedValues.vignetteOffset) > 0.001 ||
-        Math.abs(currentValues.vignetteDarkness - lastSyncedValues.vignetteDarkness) > 0.001;
+    const hasChanged = haveFxRuntimeValuesChanged(currentValues, lastSyncedValues);
 
     if (hasChanged) {
-        emit('fx-settings-changed', {
-            sketchPath: activeSketchPath ?? undefined,
-            bloom: { strength: currentValues.strength, radius: currentValues.radius, threshold: currentValues.threshold },
-            rgbShift: { amount: currentValues.rgbAmount },
-            film: { intensity: currentValues.filmIntensity },
-            vignette: { offset: currentValues.vignetteOffset, darkness: currentValues.vignetteDarkness }
-        });
+        emit('fx-settings-changed', createFxSettingsChangedPayload(
+            sketchLoader.activeSketchPath,
+            currentValues
+        ));
         lastSyncedValues = { ...currentValues };
     }
 
@@ -838,87 +738,33 @@ const rendererReady = (async function() {
 })();
 
 // --- 5. Dynamic Module Loader ---
-interface UserCodeUpdatePayload {
-    code: string;
-    dir?: string;
-    sketchPath?: string;
-    fxSettings?: FxSettingsPayload;
-}
+const sketchLoader = new SketchLoader<THREE.Scene, SketchConfig, FxSettingsChange>({
+    ready: rendererReady,
+    scene,
+    scope: gpuFeedbackService,
+    createModuleUrl: (code) => URL.createObjectURL(new Blob([code], { type: 'application/javascript' })),
+    revokeModuleUrl: (url) => URL.revokeObjectURL(url),
+    importModule: (url) => import(/* @vite-ignore */ url),
+    setSketchDirectory: (directory) => { Shekere.SKETCH_DIR = directory; },
+    onSetupConfig: (config) => {
+        // Default renderer state if not specified by sketch
+        renderer.toneMapping = THREE.NoToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        scene.background = null;
 
-async function loadUserCode(payload: UserCodeUpdatePayload): Promise<void> {
-    await rendererReady;
-    const previousModule = currentModule;
-    currentModule = null;
-    activeSketchPath = null;
-    if (previousModule && typeof previousModule.cleanup === 'function') {
-        try {
-            previousModule.cleanup(scene);
-        } catch (error) {
-            console.warn('Cleanup failed:', error);
-        } finally {
-            gpuFeedbackService.disposeActiveScope();
+        if (config?.audio) applyAudioConfig(config.audio);
+        if (config?.renderer) {
+            if (config.renderer.toneMapping !== undefined) renderer.toneMapping = config.renderer.toneMapping;
+            if (config.renderer.toneMappingExposure !== undefined) renderer.toneMappingExposure = config.renderer.toneMappingExposure;
         }
-    } else {
-        gpuFeedbackService.disposeActiveScope();
-    }
+    },
+    onModuleConfigured: (config) => cameraMotionAnalyzer.configure(config?.camera?.motion),
+    applyFxSettings,
+    onCleanupError: (error) => console.warn('Cleanup failed:', error),
+    onLoadError: (error) => console.error('Failed to execute user sketch:', error),
+    onUnexpectedError: (error) => console.error('Unexpected sketch loader error:', error)
+});
 
-    gpuFeedbackService.beginCandidateScope();
-    let blobUrl: string | null = null;
-    try {
-        const { code: jsCode, dir, sketchPath, fxSettings } = payload;
-
-        // Update sketch directory for relative path resolution
-        if (dir) Shekere.SKETCH_DIR = dir;
-
-        const blob = new Blob([jsCode], { type: 'application/javascript' });
-        blobUrl = URL.createObjectURL(blob);
-
-        const userModule = await import(/* @vite-ignore */ blobUrl);
-        const sketchContext = {};
-        let sketchConfig: SketchConfig | undefined;
-
-        if (typeof userModule.setup === 'function') {
-            const config = userModule.setup.call(sketchContext, scene);
-            sketchConfig = config ?? undefined;
-            
-            // Default renderer state if not specified by sketch
-            renderer.toneMapping = THREE.NoToneMapping;
-            renderer.toneMappingExposure = 1.0;
-            scene.background = null;
-
-            if (config) {
-                if (config.audio) {
-                    applyAudioConfig(config.audio);
-                }
-                if (config.renderer) {
-                    if (config.renderer.toneMapping !== undefined) renderer.toneMapping = config.renderer.toneMapping;
-                    if (config.renderer.toneMappingExposure !== undefined) renderer.toneMappingExposure = config.renderer.toneMappingExposure;
-                }
-            }
-        }
-
-        cameraMotionAnalyzer.configure(sketchConfig?.camera?.motion);
-
-        gpuFeedbackService.commitCandidateScope();
-        currentModule = {
-            update: (ctx: any) => userModule.update?.call(sketchContext, ctx),
-            cleanup: (s: any) => userModule.cleanup?.call(sketchContext, s)
-        };
-        activeSketchPath = sketchPath ?? null;
-
-        if (fxSettings) applyFxSettings(fxSettings);
-    } catch (e: any) {
-        gpuFeedbackService.rollbackCandidateScope();
-        cameraMotionAnalyzer.configure();
-        console.error('Failed to execute user sketch:', e);
-    } finally {
-        if (blobUrl) URL.revokeObjectURL(blobUrl);
-    }
-}
-
-let userCodeUpdateQueue = Promise.resolve();
-listen<UserCodeUpdatePayload>('user-code-update', (event) => {
-    userCodeUpdateQueue = userCodeUpdateQueue
-        .then(() => loadUserCode(event.payload))
-        .catch((error) => console.error('Unexpected sketch loader error:', error));
+listen<SketchLoadPayload<FxSettingsChange>>('user-code-update', (event) => {
+    void sketchLoader.enqueue(event.payload);
 });

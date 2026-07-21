@@ -23,69 +23,28 @@ import {
 } from "lucide-react";
 import { useAudioAnalyzer } from "./hooks/useAudioAnalyzer";
 import { useCameraControl } from "./hooks/useCameraControl";
-import { parse as parseToml } from "smol-toml";
 import shekereIcon from "./assets/shekere-icon.png";
+import {
+  findAdjacentPlaylistIndex,
+  resolveKeyboardPlaylistIndex,
+  resolveMidiPlaylistIndex,
+  resolveOscPlaylistIndex,
+  type MidiNavigation,
+  type OscNavigation,
+  type PlaylistEntry,
+} from "./playlistNavigation";
+import {
+  DEFAULT_FX_SETTINGS,
+  isFxChangeForSketch,
+  updateSketchFxSettings,
+  type FxSettings,
+  type FxSettingsChange,
+} from "./fxSettings";
+import { parseOscMonitorArgs } from "./oscData";
+import { parsePlaylistConfig } from "./playlistConfig";
+import { startSketchFileWatcher } from "./sketchFileWatcher";
 
 // --- Types ---
-interface PlaylistEntry {
-  path: string | null;
-  midiNote?: number;
-  midiCc?: number;
-  oscKey?: string;
-  oscValue?: string;
-}
-
-interface Trigger {
-  note?: number;
-  cc?: number;
-}
-
-interface MidiNavigation {
-  next?: Trigger;
-  prev?: Trigger;
-}
-
-interface OscTrigger {
-  key?: string;
-  value?: string;
-}
-
-interface OscNavigation {
-  next?: OscTrigger;
-  prev?: OscTrigger;
-}
-
-interface PlaylistToml {
-  sketch?: Array<{
-    file: string;
-    midi_note?: number;
-    midi_cc?: number;
-    osc_key?: string;
-    osc_value?: string;
-  }>;
-  midi?: {
-    navigation?: MidiNavigation;
-  };
-  osc?: {
-    navigation?: OscNavigation;
-  };
-}
-
-interface FxSettings {
-  bloom: { strength: number; radius: number; threshold: number };
-  rgbShift: { amount: number };
-  film: { intensity: number };
-  vignette: { offset: number; darkness: number };
-}
-
-interface FxSettingsChangedEvent {
-  sketchPath?: string;
-  bloom?: Partial<FxSettings["bloom"]>;
-  rgbShift?: Partial<FxSettings["rgbShift"]>;
-  film?: Partial<FxSettings["film"]>;
-  vignette?: Partial<FxSettings["vignette"]>;
-}
-
 interface WaveformPreviewChannel {
   min: number[];
   max: number[];
@@ -103,20 +62,6 @@ interface AudioActivityEvent {
     right: WaveformPreviewChannel;
   };
 }
-
-const DEFAULT_FX_SETTINGS: FxSettings = {
-  bloom: { strength: 0, radius: 0, threshold: 1 },
-  rgbShift: { amount: 0 },
-  film: { intensity: 0 },
-  vignette: { offset: 0, darkness: 1 },
-};
-
-const mergeFxSettings = (current: FxSettings, changes: FxSettingsChangedEvent): FxSettings => ({
-  bloom: { ...current.bloom, ...changes.bloom },
-  rgbShift: { ...current.rgbShift, ...changes.rgbShift },
-  film: { ...current.film, ...changes.film },
-  vignette: { ...current.vignette, ...changes.vignette },
-});
 
 // --- Helper Components ---
 const LevelBar = ({ label, value, colorClass }: { label: string, value: number, colorClass: string }) => (
@@ -257,39 +202,19 @@ export default function App() {
     ? fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS
     : DEFAULT_FX_SETTINGS;
 
-  const updateCurrentFxSettings = (changes: FxSettingsChangedEvent) => {
+  const updateCurrentFxSettings = (changes: FxSettingsChange) => {
     if (!currentSketch) return;
 
-    setFxSettingsBySketch((settingsBySketch) => ({
-      ...settingsBySketch,
-      [currentSketch]: mergeFxSettings(
-        settingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
-        changes,
-      ),
-    }));
+    setFxSettingsBySketch((settingsBySketch) => (
+      updateSketchFxSettings(settingsBySketch, currentSketch, changes)
+    ));
   };
 
   // --- Switching Logic ---
   const switchIndex = (newIndex: number) => {
-    if (playlist.every(p => !p.path)) return; // All empty
-
     const direction = newIndex > currentIndex ? 1 : -1;
-    let target = newIndex;
-    
-    // Safety wrap
-    if (target < 0) target = playlist.length - 1;
-    if (target >= playlist.length) target = 0;
-
-    // Search for next non-empty
-    let count = 0;
-    while (!playlist[target]?.path && count < playlist.length) {
-      target += direction;
-      if (target < 0) target = playlist.length - 1;
-      if (target >= playlist.length) target = 0;
-      count++;
-    }
-
-    if (playlist[target]?.path) {
+    const target = findAdjacentPlaylistIndex(playlist, currentIndex, direction);
+    if (target !== currentIndex) {
       setCurrentIndex(target);
     }
   };
@@ -297,12 +222,8 @@ export default function App() {
   // --- Keyboard Triggers ---
   useEffect(() => {
     const handleKey = (key: string) => {
-      if (key === "ArrowRight") switchIndex(currentIndex + 1);
-      if (key === "ArrowLeft") switchIndex(currentIndex - 1);
-      if (key >= "1" && key <= "9") {
-        const idx = parseInt(key) - 1;
-        if (idx < playlist.length && playlist[idx].path) setCurrentIndex(idx);
-      }
+      const target = resolveKeyboardPlaylistIndex(playlist, currentIndex, key);
+      if (target !== currentIndex) setCurrentIndex(target);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => handleKey(e.key);
@@ -321,52 +242,15 @@ export default function App() {
   // --- MIDI Triggers ---
   useEffect(() => {
     if (!lastMidi) return;
-    const { status, data1, data2 } = lastMidi;
-    const type = status & 0xF0;
-
-    // Direct Jump
-    playlist.forEach((entry, idx) => {
-      if (!entry.path) return;
-      if (type === 0x90 && entry.midiNote !== undefined && data1 === entry.midiNote && data2 > 0) {
-        setCurrentIndex(idx);
-      }
-      if (type === 0xB0 && entry.midiCc !== undefined && data1 === entry.midiCc) {
-        setCurrentIndex(idx);
-      }
-    });
-
-    // Navigation
-    if (type === 0x90 && data2 > 0) {
-      if (data1 === midiNavigation.next?.note) switchIndex(currentIndex + 1);
-      if (data1 === midiNavigation.prev?.note) switchIndex(currentIndex - 1);
-    }
-    if (type === 0xB0) {
-      if (data1 === midiNavigation.next?.cc) switchIndex(currentIndex + 1);
-      if (data1 === midiNavigation.prev?.cc) switchIndex(currentIndex - 1);
-    }
+    const target = resolveMidiPlaylistIndex(playlist, currentIndex, midiNavigation, lastMidi);
+    if (target !== currentIndex) setCurrentIndex(target);
   }, [lastMidi]);
 
   // --- OSC Triggers ---
   useEffect(() => {
     if (!lastOsc || !lastOsc.args) return;
-    const args = lastOsc.args;
-
-    const match = (trigger?: OscTrigger) => {
-      if (!trigger || !trigger.key || !trigger.value) return false;
-      return args[trigger.key] === trigger.value;
-    };
-
-    // Direct Jump
-    playlist.forEach((entry, idx) => {
-      if (!entry.path) return;
-      if (entry.oscKey && entry.oscValue && args[entry.oscKey] === entry.oscValue) {
-        setCurrentIndex(idx);
-      }
-    });
-
-    // Navigation
-    if (match(oscNavigation.next)) switchIndex(currentIndex + 1);
-    if (match(oscNavigation.prev)) switchIndex(currentIndex - 1);
+    const target = resolveOscPlaylistIndex(playlist, currentIndex, oscNavigation, lastOsc.args);
+    if (target !== currentIndex) setCurrentIndex(target);
   }, [lastOsc]);
 
   // --- Signal Listeners ---
@@ -408,49 +292,15 @@ export default function App() {
       });
     });
 
-    const u3 = listen<any>('osc-event', (e) => {
+    const u3 = listen<{ address: string; args?: unknown }>('osc-event', (e) => {
       const p = e.payload;
-      let argsStr = "";
-      let parsedArgs: Record<string, string> | undefined = undefined;
-      
-      if (p.args && Array.isArray(p.args)) {
-        const rawArgs = p.args.map((a: any) => {
-          if (typeof a === 'object' && a !== null) {
-            const vals = Object.values(a);
-            return vals.length > 0 ? vals[0] : JSON.stringify(a);
-          }
-          return a;
-        });
-        let isKvFormat = rawArgs.length >= 2 && rawArgs.length % 2 === 0;
-        for (let i = 0; i < rawArgs.length; i += 2) {
-          if (typeof rawArgs[i] !== 'string') { isKvFormat = false; break; }
-        }
-        
-        if (isKvFormat) {
-          parsedArgs = {};
-          const focusKeys = ['s', 'n', 'cps', 'note', 'gain', 'speed', 'vowel'];
-          const pairs: string[] = [];
-          for (let i = 0; i < rawArgs.length; i += 2) {
-            const key = String(rawArgs[i]);
-            const val = rawArgs[i + 1];
-            parsedArgs[key] = String(val);
-            if (focusKeys.includes(key)) {
-              const fmtVal = typeof val === 'number' ? (Number.isInteger(val) ? val.toString() : val.toFixed(2)) : String(val);
-              pairs.push(`${key}: ${fmtVal}`);
-            }
-          }
-          if (pairs.length === 0) {
-            pairs.push(`${rawArgs[0]}: ${rawArgs[1]}`);
-            if (rawArgs.length > 2) pairs.push('...');
-          }
-          argsStr = pairs.join(', ');
-        } else {
-          const limitedArgs = rawArgs.slice(0, 3).map((a: any) => typeof a === 'number' ? (Number.isInteger(a) ? a.toString() : a.toFixed(2)) : String(a));
-          argsStr = limitedArgs.join(', ');
-          if (rawArgs.length > 3) argsStr += ', ...';
-        }
-      }
-      setLastOsc({ text: p.address, subText: argsStr, id: Date.now(), args: parsedArgs });
+      const monitorData = parseOscMonitorArgs(p.args);
+      setLastOsc({
+        text: p.address,
+        subText: monitorData.displayText,
+        id: Date.now(),
+        args: monitorData.keyValueArgs,
+      });
     });
 
     const u4 = listen<any>('preview-frame', (e) => {
@@ -473,10 +323,10 @@ export default function App() {
   }, [currentSketch, currentFxSettings]);
 
   useEffect(() => {
-    const unlistenPromise = listen<FxSettingsChangedEvent>(
+    const unlistenPromise = listen<FxSettingsChange>(
       "fx-settings-changed",
       (event) => {
-        if (!event.payload.sketchPath || event.payload.sketchPath !== currentSketch) return;
+        if (!isFxChangeForSketch(event.payload.sketchPath, currentSketch)) return;
         updateCurrentFxSettings(event.payload);
       }
     );
@@ -487,53 +337,24 @@ export default function App() {
   useEffect(() => {
     if (!currentSketch) return;
 
-    let unwatch: (() => void) | null = null;
-    let lastEmitTime = 0;
-    const THROTTLE_MS = 150;
-
-    const loadAndEmit = async () => {
-      try {
-        const code = await readTextFile(currentSketch);
-        const dir = currentSketch.substring(0, Math.max(currentSketch.lastIndexOf('/'), currentSketch.lastIndexOf('\\')) + 1);
-        await emit("user-code-update", {
-          code,
-          dir,
-          sketchPath: currentSketch,
-          fxSettings: fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
-        });
-        setError(null);
-      } catch (err: any) {
+    return startSketchFileWatcher({
+      sketchPath: currentSketch,
+      fxSettings: fxSettingsBySketch[currentSketch] ?? DEFAULT_FX_SETTINGS,
+      readFile: readTextFile,
+      emitUpdate: (payload) => emit("user-code-update", payload),
+      watchFile: watch,
+      onLoadSuccess: () => setError(null),
+      onLoadError: (err) => {
         console.error("Failed to read or emit file:", err);
-        setError(`Failed to read file: ${err.message || err}`);
-      }
-    };
-
-    loadAndEmit();
-
-    watch(
-      currentSketch,
-      (event) => {
-        if (
-          event.type === "any" ||
-          event.type === "other" ||
-          (typeof event.type === "object" && "modify" in event.type)
-        ) {
-          const now = Date.now();
-          if (now - lastEmitTime > THROTTLE_MS) {
-            lastEmitTime = now;
-            loadAndEmit();
-          }
-        }
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to read file: ${message}`);
       },
-      { recursive: false, delayMs: 20 }
-    ).then((unwatchFn) => {
-      unwatch = unwatchFn;
-    }).catch((err: any) => {
-      console.error("Failed to start watcher:", err);
-      setError(`Failed to start watcher: ${err.message || err}`);
+      onWatchError: (err) => {
+        console.error("Failed to start watcher:", err);
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`Failed to start watcher: ${message}`);
+      },
     });
-
-    return () => { if (unwatch) unwatch(); };
   }, [currentSketch, currentIndex]);
 
   // --- File Handlers ---
@@ -565,30 +386,15 @@ export default function App() {
       });
       if (selected && typeof selected === "string") {
         const content = await readTextFile(selected);
-        const data = parseToml(content) as unknown as PlaylistToml;
-        
-        const baseDir = selected.substring(0, selected.lastIndexOf('/') + 1) || selected.substring(0, selected.lastIndexOf('\\') + 1);
+        const config = parsePlaylistConfig(content, selected);
 
-        if (data.sketch && Array.isArray(data.sketch)) {
-          const newPlaylist: PlaylistEntry[] = data.sketch.map((s: any) => ({
-            path: s.file.startsWith('/') || s.file.includes(':') ? s.file : baseDir + s.file,
-            midiNote: s.midi_note,
-            midiCc: s.midi_cc,
-            oscKey: s.osc_key,
-            oscValue: s.osc_value
-          }));
-
-          while (newPlaylist.length < 9) newPlaylist.push({ path: null });
-          setPlaylist(newPlaylist);
+        if (config.playlist) {
+          setPlaylist(config.playlist);
           setCurrentIndex(0);
         }
 
-        if (data.midi && data.midi.navigation) {
-          setMidiNavigation(data.midi.navigation);
-        }
-        if (data.osc && data.osc.navigation) {
-          setOscNavigation(data.osc.navigation);
-        }
+        if (config.midiNavigation) setMidiNavigation(config.midiNavigation);
+        if (config.oscNavigation) setOscNavigation(config.oscNavigation);
         setError(null);
       }
     } catch (err: any) {
